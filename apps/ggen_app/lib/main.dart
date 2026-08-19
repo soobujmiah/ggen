@@ -392,7 +392,7 @@ Future<void> _showWorkspaceSettings(BuildContext context, {required bool canvasF
                 context: context,
                 isScrollControlled: true,
                 showDragHandle: true,
-                builder: (context) => ProfileManagerSheet(current: currentProfile, onApply: onProfileApplied),
+                builder: (context) => ProfileManagerSheet(current: currentProfile, onApply: onProfileApplied, onEvent: (event) => debugLog.info(event, 'Workspace profile event')),
               );
             },
           ),
