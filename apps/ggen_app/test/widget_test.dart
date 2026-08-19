@@ -12,6 +12,7 @@ void main() {
     await tester.pumpWidget(const GgenApp());
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byTooltip('Toggle inspector'), findsNothing);
   });
 
   testWidgets('uses the rail and inspector when space allows', (tester) async {
