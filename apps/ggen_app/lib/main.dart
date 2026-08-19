@@ -7,6 +7,23 @@ import 'debug_log.dart';
 
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 final Set<String> _loggedLayoutModes = <String>{};
+final Set<String> _loggedCanvasGeometries = <String>{};
+
+void _recordCanvasGeometry(BuildContext context, Size size) {
+  if (size.width <= 0 || size.height <= 0) return;
+  final padding = MediaQuery.paddingOf(context);
+  final insets = MediaQuery.viewInsetsOf(context);
+  final key = '${size.width.round()}x${size.height.round()}';
+  if (_loggedCanvasGeometries.add(key)) {
+    debugLog.info('canvas_geometry', 'Canvas bounds measured', {
+      'width': size.width.round(),
+      'height': size.height.round(),
+      'safe_top': padding.top.round(),
+      'safe_bottom': padding.bottom.round(),
+      'keyboard_bottom': insets.bottom.round(),
+    });
+  }
+}
 
 void _recordLayout(String mode, Size size) {
   // Flutter can briefly report zero constraints during the first frame.
@@ -188,8 +205,13 @@ class CanvasArea extends StatelessWidget {
               borderRadius: BorderRadius.circular(4),
               boxShadow: const [BoxShadow(blurRadius: 24, color: Colors.black54)],
             ),
-            child: const Center(
-              child: Text('Untitled project', style: TextStyle(color: Colors.black54)),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                _recordCanvasGeometry(context, constraints.biggest);
+                return const Center(
+                  child: Text('Untitled project', style: TextStyle(color: Colors.black54)),
+                );
+              },
             ),
           ),
         ),
