@@ -4,9 +4,10 @@ import 'workspace_profile.dart';
 import 'workspace_profile_store.dart';
 
 class ProfileManagerSheet extends StatefulWidget {
-  const ProfileManagerSheet({required this.current, required this.onApply, super.key});
+  const ProfileManagerSheet({required this.current, required this.onApply, this.onEvent, super.key});
   final WorkspaceProfile current;
   final ValueChanged<WorkspaceProfile> onApply;
+  final ValueChanged<String>? onEvent;
 
   @override
   State<ProfileManagerSheet> createState() => _ProfileManagerSheetState();
@@ -34,6 +35,7 @@ class _ProfileManagerSheetState extends State<ProfileManagerSheet> {
     final profiles = await _store.load();
     final next = [...profiles.where((p) => p.name != name), widget.current.copyWith(name: name.trim())];
     await _store.save(next);
+    widget.onEvent?.call('profile_save');
     final refreshed = await _store.load();
     if (mounted) setState(() { _profiles = Future.value(refreshed); });
   }
@@ -41,6 +43,7 @@ class _ProfileManagerSheetState extends State<ProfileManagerSheet> {
   Future<void> _delete(WorkspaceProfile profile) async {
     final profiles = await _store.load();
     await _store.save(profiles.where((p) => p.name != profile.name).toList());
+    widget.onEvent?.call('profile_delete');
     final refreshed = await _store.load();
     if (mounted) setState(() { _profiles = Future.value(refreshed); });
   }
