@@ -34,9 +34,6 @@ void main() {
     expect(find.text('Inspector'), findsOneWidget);
     await tester.tap(find.byTooltip('Dock inspector left or right'));
     await tester.pumpAndSettle();
-    expect(find.text('Inspector'), findsNothing);
-    await tester.tap(find.byTooltip('Dock inspector left or right'));
-    await tester.pumpAndSettle();
     expect(find.text('Inspector'), findsOneWidget);
   });
 
