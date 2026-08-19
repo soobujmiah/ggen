@@ -45,4 +45,4 @@ Durable output must be committed and pushed. Never rely on an installed package,
 
 ## Current blocker
 
-Historical GitHub Actions runs were rejected because the account reported failed payments or an insufficient spending limit. Public governance run `32258583134` for commit `d03cf01c6f60e7fcc43543ac6e9adc0e18b89026` later completed successfully, including the reusable core test. Record any future interruption as an account/infrastructure result rather than a source-code result; never infer a green or failed claim without the exact run output.
+Historical GitHub Actions runs were rejected because the account reported failed payments or an insufficient spending limit. Public governance run `32258736289` for commit `1760880d8b65f93b8d677645e5619b35d074a0bc` later completed successfully, including the reusable core test. Record any future interruption as an account/infrastructure result rather than a source-code result; never infer a green or failed claim without the exact run output.

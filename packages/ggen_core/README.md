@@ -11,6 +11,7 @@ Current implementation includes:
 - SPDX/license review, source receipts, asset provenance, distribution eligibility and protected-pack availability states;
 - project schema/version, path-free transactional storage, resource-bounded jobs and autosave/recovery journal contracts;
 - reversible preview/commit/cancel tool sessions and adaptive touch/stylus/mouse/keyboard input events;
+- deterministic bounded JSON project serialization and fail-closed schema migration policy;
 - pure Dart unit tests.
 
 This package intentionally imports no Flutter, Android, filesystem, network, AI provider, BG/RGEN implementation or protected asset. It is not yet a graphics engine or application.

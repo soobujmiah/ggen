@@ -13,7 +13,8 @@
 - finite resource budgets, explicit bounded job states/transitions and progress/failure contracts;
 - bounded autosave policy and append/replay recovery journal interfaces;
 - reversible tool-session preview/commit/cancel semantics;
-- adaptive touch, stylus, mouse and keyboard capability/event contracts that reject unsupported pressure or tilt claims.
+- adaptive touch, stylus, mouse and keyboard capability/event contracts that reject unsupported pressure or tilt claims;
+- deterministic bounded JSON project serialization, canonical extension ordering and fail-closed schema migration policy.
 
 This slice deliberately contains no copied reference UI, no protected-asset mutation or bytes, no AI/provider call, no platform path, no Flutter widget and no graphics implementation.
 
@@ -23,7 +24,7 @@ This slice deliberately contains no copied reference UI, no protected-asset muta
 - Local pinned-Dart verification on 2026-08-19: Dart SDK 3.13.0; format check passed, `dart analyze --fatal-infos` passed, and **22 unit tests passed**.
 - Dependency resolution: exact direct versions and generated `pubspec.lock` are committed; all 48 locked packages have provenance receipts with unresolved license status explicitly blocking distribution until review.
 - Public governance: legal files, provenance, documentation, public/private boundary, absent-pack state, build-security, full reachable-history safety scan and source receipt all pass locally.
-- GitHub Actions: public governance run `32258583134` for commit `d03cf01c6f60e7fcc43543ac6e9adc0e18b89026` completed successfully; both governance and the reusable core test were green. Earlier billing failures remain historical operational evidence, not a current source-code result.
+- GitHub Actions: public governance run `32258736289` for commit `1760880d8b65f93b8d677645e5619b35d074a0bc` completed successfully; both governance and the reusable core test were green. Earlier billing failures remain historical operational evidence, not a current source-code result.
 - Flutter application/device verification: not claimed; no Flutter UI exists yet.
 
 ## Next after the green foundation
@@ -31,6 +32,6 @@ This slice deliberately contains no copied reference UI, no protected-asset muta
 1. Pin/provision the Codespaces Flutter/Android toolchain.
 2. Prototype an original compact-phone canvas shell using the same contracts.
 3. Add tablet/desktop adaptive tests before adding creative surface breadth.
-4. Define the first measured UDM serialization adapter and migration fixtures.
+4. Define measured product limits and explicit migration fixtures before accepting another schema version.
 
 Redmi Turbo 4 Pro physical testing becomes mandatory when Android builds, UI, storage, performance or backend claims begin. No physical-device claim is made by this package verification.

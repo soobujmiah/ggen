@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-19 — Deterministic project serialization contract
+
+- Added canonical bounded JSON serialization for the current project envelope.
+- Added strict JSON-safe extension validation, stable node-kind wire names, round-trip/canonical-order tests and fail-closed schema migration policy.
+- Added malformed-schema, unknown-kind and resource-limit tests.
+
 ## 2026-08-19 — Public governance workflow verified
 
 - Public governance run `32258583134` for commit `d03cf01c6f60e7fcc43543ac6e9adc0e18b89026` completed successfully; licensing/public-safety governance and the reusable core test were green.

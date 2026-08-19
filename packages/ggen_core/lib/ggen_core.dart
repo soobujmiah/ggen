@@ -10,3 +10,4 @@ export 'src/jobs/job_contract.dart';
 export 'src/recovery/recovery_contract.dart';
 export 'src/tools/tool_session.dart';
 export 'src/input/input_contract.dart';
+export 'src/serialization/project_codec.dart';

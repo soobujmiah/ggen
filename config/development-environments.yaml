@@ -86,7 +86,7 @@ brains:
         purpose: requirements risks milestones decisions and traceability
       releases:
         purpose: signed immutable distributable artifacts and provenance
-    current_blocker: Historical billing/spending-limit failures affected earlier runs; public governance run 32258583134 for commit d03cf01 succeeded, including the reusable core test.
+    current_blocker: Historical billing/spending-limit failures affected earlier runs; public governance run 32258736289 for commit 1760880 succeeded, including the reusable core test.
 
   redmi_turbo_4_pro:
     role: physical_android_validation_and_optional_phone_workstation

@@ -40,7 +40,7 @@
 
 ## CI operational status
 
-The Phase 0 governance checks passed at the private-vault head; the fresh public repository adds independent licensing and public-safety checks. Historical GitHub run `32250437292` did not start because the account reported failed payments or an insufficient spending limit; that was an account/billing failure, not a protected-asset or documentation test failure. Public governance run `32258583134` for commit `d03cf01c6f60e7fcc43543ac6e9adc0e18b89026` completed successfully, including the reusable core test. Continue recording any future billing interruption separately from source results.
+The Phase 0 governance checks passed at the private-vault head; the fresh public repository adds independent licensing and public-safety checks. Historical GitHub run `32250437292` did not start because the account reported failed payments or an insufficient spending limit; that was an account/billing failure, not a protected-asset or documentation test failure. Public governance run `32258736289` for commit `1760880d8b65f93b8d677645e5619b35d074a0bc` completed successfully, including the reusable core test. Continue recording any future billing interruption separately from source results.
 
 ## Gate decision
 
