@@ -9,6 +9,9 @@ final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 final Set<String> _loggedLayoutModes = <String>{};
 
 void _recordLayout(String mode, Size size) {
+  // Flutter can briefly report zero constraints during the first frame.
+  // Never export that transient value as device layout evidence.
+  if (size.width <= 0 || size.height <= 0) return;
   if (_loggedLayoutModes.add(mode)) {
     debugLog.info('layout_mode', 'Workspace layout selected', {
       'mode': mode,
@@ -114,7 +117,11 @@ class StudioShell extends StatelessWidget {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 700;
-          _recordLayout(compact ? 'compact_bottom_navigation' : 'wide_rail_navigation', constraints.biggest);
+          final viewport = MediaQuery.sizeOf(context);
+          _recordLayout(
+            compact ? 'compact_bottom_navigation' : 'wide_rail_navigation',
+            viewport,
+          );
           final inspector = constraints.maxWidth >= 900
               ? const SizedBox(width: 280, child: InspectorPanel())
               : const SizedBox.shrink();
