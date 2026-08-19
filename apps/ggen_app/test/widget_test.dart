@@ -15,6 +15,16 @@ void main() {
     expect(find.byTooltip('Toggle inspector'), findsNothing);
   });
 
+  testWidgets('uses rail without inspector at tablet width', (tester) async {
+    tester.view.physicalSize = const Size(800, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(const GgenApp());
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.text('Inspector'), findsNothing);
+    expect(find.byTooltip('Toggle inspector'), findsNothing);
+  });
+
   testWidgets('uses the rail and inspector when space allows', (tester) async {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1;
