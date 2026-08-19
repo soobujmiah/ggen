@@ -105,57 +105,98 @@ class GgenApp extends StatelessWidget {
   }
 }
 
-class StudioShell extends StatelessWidget {
+class StudioShell extends StatefulWidget {
   const StudioShell({super.key});
+
+  @override
+  State<StudioShell> createState() => _StudioShellState();
+}
+
+class _StudioShellState extends State<StudioShell> {
+  bool _immersive = false;
+
+  void _setImmersive(bool value) {
+    setState(() => _immersive = value);
+    debugLog.info('immersive_mode', value ? 'Canvas chrome hidden' : 'Canvas chrome restored');
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('GGEN'),
-        actions: [
-          IconButton(
-            tooltip: 'Save project',
-            onPressed: () {},
-            icon: const Icon(Icons.save_outlined),
-          ),
-          IconButton(
-            tooltip: 'Export diagnostics',
-            onPressed: () => _showDiagnostics(context),
-            icon: const Icon(Icons.bug_report_outlined),
-          ),
-          IconButton(
-            tooltip: 'More actions',
-            onPressed: () {},
-            icon: const Icon(Icons.more_horiz),
-          ),
-        ],
-      ),
+      appBar: _immersive
+          ? null
+          : AppBar(
+              title: const Text('GGEN'),
+              actions: [
+                IconButton(
+                  tooltip: 'Immersive canvas',
+                  onPressed: () => _setImmersive(true),
+                  icon: const Icon(Icons.fullscreen),
+                ),
+                IconButton(
+                  tooltip: 'Export diagnostics',
+                  onPressed: () => _showDiagnostics(context),
+                  icon: const Icon(Icons.bug_report_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Save project',
+                  onPressed: () {},
+                  icon: const Icon(Icons.save_outlined),
+                ),
+                IconButton(
+                  tooltip: 'More actions',
+                  onPressed: () {},
+                  icon: const Icon(Icons.more_horiz),
+                ),
+              ],
+            ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 700;
-          final viewport = MediaQuery.sizeOf(context);
           _recordLayout(
-            compact ? 'compact_bottom_navigation' : 'wide_rail_navigation',
-            viewport,
+            _immersive
+                ? 'immersive_canvas'
+                : compact
+                    ? 'compact_bottom_navigation'
+                    : 'wide_rail_navigation',
+            MediaQuery.sizeOf(context),
           );
-          final inspector = constraints.maxWidth >= 900
+          final showPanels = !_immersive;
+          final inspector = showPanels && constraints.maxWidth >= 900
               ? const SizedBox(width: 280, child: InspectorPanel())
               : const SizedBox.shrink();
-          return Row(
+          return Stack(
             children: [
-              if (!compact) const ToolRail(),
-              Expanded(child: CanvasArea(size: constraints.biggest)),
-              if (!compact) inspector,
+              Row(
+                children: [
+                  if (showPanels && !compact) const ToolRail(),
+                  Expanded(child: CanvasArea(size: constraints.biggest)),
+                  if (showPanels) inspector,
+                ],
+              ),
+              if (_immersive)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: SafeArea(
+                    child: IconButton.filledTonal(
+                      tooltip: 'Show workspace controls',
+                      onPressed: () => _setImmersive(false),
+                      icon: const Icon(Icons.fullscreen_exit),
+                    ),
+                  ),
+                ),
             ],
           );
         },
       ),
-      bottomNavigationBar: LayoutBuilder(
-        builder: (context, constraints) => constraints.maxWidth < 700
-            ? const CompactNavigationBar()
-            : const StatusBar(),
-      ),
+      bottomNavigationBar: _immersive
+          ? null
+          : LayoutBuilder(
+              builder: (context, constraints) => constraints.maxWidth < 700
+                  ? const CompactNavigationBar()
+                  : const StatusBar(),
+            ),
     );
   }
 }
