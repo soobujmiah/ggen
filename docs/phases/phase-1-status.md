@@ -1,31 +1,35 @@
 # Phase 1 — Core Foundation Status
 
-**Status:** Started 2026-08-19 after documentation-first quality standard approval.
+**Status:** Active; platform-neutral foundation is being expanded before any creative-surface implementation.
 
-## Initial implementation slice
+## Implemented contracts
 
-Build a pure-Dart `ggen_core` package before application UI:
+- validated stable identifiers and immutable document/artboard/node values;
+- bounded revision-based undo/redo transactions with stale-transaction rejection;
+- professional tool descriptors, typed parameters, mandatory computer-quality gates and mobile-friendly input declarations;
+- SPDX expression validation strategy, `LicenseDescriptor`, `SourceReceipt`, `AssetProvenance`, distribution eligibility and protected availability states;
+- project schema/version envelope contracts;
+- path-free transactional project storage interfaces and content-addressed store receipts;
+- finite resource budgets, explicit bounded job states/transitions and progress/failure contracts;
+- bounded autosave policy and append/replay recovery journal interfaces.
 
-- stable identifiers and immutable project values;
-- minimal Universal Document Model project/artboard/layer/node contracts;
-- professional tool descriptors, typed parameters, quality gates and adaptive input capabilities;
-- reversible command/history transaction foundation;
-- unit tests for invariants, history and mandatory quality policy.
-
-This slice deliberately contains no copied reference UI, no protected-asset mutation, no AI/provider call, no platform path, no Flutter widget, and no graphics implementation.
+This slice deliberately contains no copied reference UI, no protected-asset mutation or bytes, no AI/provider call, no platform path, no Flutter widget and no graphics implementation.
 
 ## Verification state
 
-- Source implementation: implemented in pure Dart under `packages/ggen_core`.
-- Arena verification: downloaded the exact disposable Dart 3.13.0 SDK outside the repository; `dart format`, `dart analyze --fatal-infos`, and **6 unit tests** passed.
-- Dependency resolution: exact direct versions and generated `pubspec.lock` committed.
-- GitHub CI: core workflow defined with Dart 3.13.0 and enforced lockfile; account billing may prevent it from starting.
+- Source implementation: pure Dart under `packages/ggen_core`.
+- Local pinned-Dart verification on 2026-08-19: Dart SDK 3.13.0; format check passed, `dart analyze --fatal-infos` passed, and **17 unit tests passed**.
+- Dependency resolution: exact direct versions and generated `pubspec.lock` are committed; all 48 locked packages have provenance receipts with unresolved license status explicitly blocking distribution until review.
+- Public governance: legal files, provenance, documentation, public/private boundary, absent-pack state, build-security, full reachable-history safety scan and source receipt all pass locally.
+- GitHub Actions: workflows are committed and pushed; remote execution remains subject to the documented account billing/spending-limit blocker.
 - Flutter application/device verification: not claimed; no Flutter UI exists yet.
 
-## Next after a green core package
+## Next after the green foundation
 
-1. Pin/provision the Codespaces Flutter/Android toolchain.
-2. Define UDM schema versioning and serialization policy.
-3. Implement transactional project store interfaces and resource-bounded job state.
-4. Prototype an original compact-phone canvas shell using the same tool contracts.
+1. Add transactional tool-session preview/commit/cancel semantics.
+2. Add adaptive pointer/stylus/mouse/keyboard capability event contracts.
+3. Pin/provision the Codespaces Flutter/Android toolchain.
+4. Prototype an original compact-phone canvas shell using the same contracts.
 5. Add tablet/desktop adaptive tests before adding creative surface breadth.
+
+Redmi Turbo 4 Pro physical testing becomes mandatory when Android builds, UI, storage, performance or backend claims begin. No physical-device claim is made by this package verification.

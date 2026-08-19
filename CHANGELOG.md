@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-19 — Phase 1 persistence, jobs and recovery contracts
+
+- Added project schema/version envelopes, path-free transactional storage interfaces and content-addressed store receipts.
+- Added finite resource budgets, explicit job state transitions, monotonic progress and bounded failure codes.
+- Added autosave policies and append/replay recovery journal interfaces without coupling the domain to a filesystem or worker.
+- Local Dart 3.13.0 verification passed: formatting, fatal-info analysis and 17 unit tests.
+
+
 ## 2026-08-19 — Hybrid brain, Font Studio and 3D DCC scope
 
 - Inspected the current Arena orchestration machine and recorded its capabilities/limits.

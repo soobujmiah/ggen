@@ -16,7 +16,7 @@ Protected features report `UNAVAILABLE_NO_PACK` until an owner-supplied pack is 
 
 ## Current status
 
-**Phase 1 core foundation:** implemented in pure Dart under [`packages/ggen_core`](packages/ggen_core). It currently contains validated stable IDs, immutable document values, bounded revision history, professional tool descriptors, typed parameters, quality gates and input capability contracts. It intentionally contains no Flutter UI, protected bytes, provider calls or graphics engine.
+**Phase 1 core foundation:** implemented in pure Dart under [`packages/ggen_core`](packages/ggen_core). It currently contains validated stable IDs, immutable document values, bounded revision history, professional tool descriptors, typed parameters, quality gates, licensing/provenance, project schema/storage, bounded jobs and recovery-journal contracts. It intentionally contains no Flutter UI, protected bytes, provider calls or graphics engine.
 
 No Android build, physical-device run, GPU/NPU execution or production release claim is made here. The Redmi Turbo 4 Pro is the authoritative device for future Android evidence.
 
