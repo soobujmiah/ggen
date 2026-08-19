@@ -39,13 +39,13 @@ class DebugLogStore {
   }
 
   String _redact(String value) => value
-      .replaceAll(RegExp(r'(?i)(authorization|cookie|api[_-]?key|token|password)\s*[:=]\s*[^,;\s]+'), r'\$1=[REDACTED]')
+      .replaceAll(RegExp(r'(authorization|cookie|api[_-]?key|token|password)\s*[:=]\s*[^,;\s]+', caseSensitive: false), r'\$1=[REDACTED]')
       .substring(0, value.length > 1000 ? 1000 : value.length);
 
   Map<String, Object?> _redactMap(Map<String, Object?> source) => source.map(
         (key, value) => MapEntry(
           key,
-          RegExp(r'(?i)(authorization|cookie|api[_-]?key|token|password|secret)').hasMatch(key)
+          RegExp(r'(authorization|cookie|api[_-]?key|token|password|secret)', caseSensitive: false).hasMatch(key)
               ? '[REDACTED]'
               : value is String ? _redact(value) : value,
         ),
