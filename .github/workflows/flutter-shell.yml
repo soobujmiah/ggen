@@ -1,0 +1,31 @@
+name: Flutter shell
+
+on:
+  pull_request:
+    paths:
+      - 'apps/ggen_app/**'
+      - '.github/workflows/flutter-shell.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/ggen_app/**'
+      - '.github/workflows/flutter-shell.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: stable
+          cache: false
+      - name: Verify Flutter pin
+        run: flutter --version
+      - name: Test Flutter shell
+        working-directory: apps/ggen_app
+        run: flutter test
