@@ -1,0 +1,15 @@
+{
+  "name": "GGEN pinned Flutter workspace",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/bootstrap.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": ["Dart-Code.flutter"]
+    }
+  }
+}
