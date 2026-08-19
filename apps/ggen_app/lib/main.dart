@@ -9,6 +9,8 @@ import 'workspace_preferences.dart';
 
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 final Set<String> _loggedLayoutModes = <String>{};
+enum InspectorDock { left, right }
+
 final Set<String> _loggedCanvasGeometries = <String>{};
 
 void _recordCanvasGeometry(BuildContext context, Size size) {
@@ -118,6 +120,7 @@ class _StudioShellState extends State<StudioShell> {
   bool _immersive = false;
   bool _showInspector = true;
   bool _canvasFirst = true;
+  InspectorDock _inspectorDock = InspectorDock.right;
 
   @override
   void initState() {
@@ -131,11 +134,12 @@ class _StudioShellState extends State<StudioShell> {
     setState(() {
       _showInspector = prefs.inspectorVisible;
       _canvasFirst = prefs.canvasFirst;
+      _inspectorDock = prefs.inspectorDock == 'left' ? InspectorDock.left : InspectorDock.right;
     });
-    debugLog.info('workspace_restore', 'Workspace preferences restored', {'inspector_visible': _showInspector, 'canvas_first': _canvasFirst});
+    debugLog.info('workspace_restore', 'Workspace preferences restored', {'inspector_visible': _showInspector, 'canvas_first': _canvasFirst, 'inspector_dock': _inspectorDock.name});
   }
 
-  Future<void> _persistWorkspace() => WorkspacePreferences(inspectorVisible: _showInspector, canvasFirst: _canvasFirst).save();
+  Future<void> _persistWorkspace() => WorkspacePreferences(inspectorVisible: _showInspector, canvasFirst: _canvasFirst, inspectorDock: _inspectorDock.name).save();
 
   void _setImmersive(bool value) {
     setState(() => _immersive = value);
@@ -159,13 +163,19 @@ class _StudioShellState extends State<StudioShell> {
                   builder: (context) {
                     if (MediaQuery.sizeOf(context).width < 900) return const SizedBox.shrink();
                     return IconButton(
-                      tooltip: 'Toggle inspector',
+                      tooltip: 'Dock inspector left or right',
                       onPressed: () {
-                        setState(() => _showInspector = !_showInspector);
+                        setState(() {
+                          if (_showInspector) {
+                            _inspectorDock = _inspectorDock == InspectorDock.left ? InspectorDock.right : InspectorDock.left;
+                          } else {
+                            _showInspector = true;
+                          }
+                        });
                         unawaited(_persistWorkspace());
-                        debugLog.info('panel_visibility', _showInspector ? 'Inspector shown' : 'Inspector hidden');
+                        debugLog.info('panel_dock', 'Inspector dock changed', {'dock': _inspectorDock.name});
                       },
-                      icon: Icon(_showInspector ? Icons.view_sidebar : Icons.view_sidebar_outlined),
+                      icon: Icon(_inspectorDock == InspectorDock.left ? Icons.keyboard_double_arrow_left : Icons.keyboard_double_arrow_right),
                     );
                   },
                 ),
@@ -206,8 +216,9 @@ class _StudioShellState extends State<StudioShell> {
               Row(
                 children: [
                   if (showPanels && !compact) const ToolRail(),
+                  if (showPanels && !compact && _showInspector && _inspectorDock == InspectorDock.left) inspector,
                   Expanded(child: CanvasArea(size: constraints.biggest)),
-                  if (showPanels) inspector,
+                  if (showPanels && !compact && _showInspector && _inspectorDock == InspectorDock.right) inspector,
                 ],
               ),
               if (_immersive)
@@ -245,6 +256,7 @@ class _StudioShellState extends State<StudioShell> {
                               setState(() {
                                 _showInspector = true;
                                 _canvasFirst = true;
+                                _inspectorDock = InspectorDock.right;
                               });
                               unawaited(WorkspacePreferences().clear());
                             },
