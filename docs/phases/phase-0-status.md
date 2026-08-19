@@ -40,7 +40,7 @@
 
 ## CI operational status
 
-The Phase 0 governance checks passed at the private-vault head; the fresh public repository adds independent licensing and public-safety checks. GitHub run `32250437292` did not start because the account reports failed payments or an insufficient spending limit. This is an account/billing failure, not a protected-asset or documentation test failure. Restore Actions billing and rerun the workflow before treating remote CI as green.
+The Phase 0 governance checks passed at the private-vault head; the fresh public repository adds independent licensing and public-safety checks. Historical GitHub run `32250437292` did not start because the account reported failed payments or an insufficient spending limit; that was an account/billing failure, not a protected-asset or documentation test failure. Public governance run `32258583134` for commit `d03cf01c6f60e7fcc43543ac6e9adc0e18b89026` completed successfully, including the reusable core test. Continue recording any future billing interruption separately from source results.
 
 ## Gate decision
 

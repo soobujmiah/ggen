@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-19 — Public governance workflow verified
+
+- Public governance run `32258583134` for commit `d03cf01c6f60e7fcc43543ac6e9adc0e18b89026` completed successfully; licensing/public-safety governance and the reusable core test were green.
+- Earlier billing/spending-limit rejection is retained as historical account evidence and is not classified as a source-code failure.
+
 ## 2026-08-19 — Phase 1 persistence, jobs and recovery contracts
 
 - Added project schema/version envelopes, path-free transactional storage interfaces and content-addressed store receipts.

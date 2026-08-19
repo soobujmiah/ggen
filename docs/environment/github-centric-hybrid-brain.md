@@ -45,9 +45,4 @@ Durable output must be committed and pushed. Never rely on an installed package,
 
 ## Current blocker
 
-GitHub Actions jobs are not starting because the account reports failed payments or an insufficient spending limit. Until fixed:
-
-- local governance checks can run;
-- architecture/docs may proceed;
-- no remote-green claim may be made;
-- application implementation remains Phase 0-blocked anyway.
+Historical GitHub Actions runs were rejected because the account reported failed payments or an insufficient spending limit. Public governance run `32258583134` for commit `d03cf01c6f60e7fcc43543ac6e9adc0e18b89026` later completed successfully, including the reusable core test. Record any future interruption as an account/infrastructure result rather than a source-code result; never infer a green or failed claim without the exact run output.

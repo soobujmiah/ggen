@@ -23,7 +23,7 @@ This slice deliberately contains no copied reference UI, no protected-asset muta
 - Local pinned-Dart verification on 2026-08-19: Dart SDK 3.13.0; format check passed, `dart analyze --fatal-infos` passed, and **22 unit tests passed**.
 - Dependency resolution: exact direct versions and generated `pubspec.lock` are committed; all 48 locked packages have provenance receipts with unresolved license status explicitly blocking distribution until review.
 - Public governance: legal files, provenance, documentation, public/private boundary, absent-pack state, build-security, full reachable-history safety scan and source receipt all pass locally.
-- GitHub Actions: workflows are committed and pushed; remote execution remains subject to the documented account billing/spending-limit blocker.
+- GitHub Actions: public governance run `32258583134` for commit `d03cf01c6f60e7fcc43543ac6e9adc0e18b89026` completed successfully; both governance and the reusable core test were green. Earlier billing failures remain historical operational evidence, not a current source-code result.
 - Flutter application/device verification: not claimed; no Flutter UI exists yet.
 
 ## Next after the green foundation
