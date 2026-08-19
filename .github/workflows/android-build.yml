@@ -1,14 +1,16 @@
-name: Android debug build
+name: Android debug build (manual mobile test)
 
 on:
-  pull_request:
-    paths:
-      - 'apps/ggen_app/**'
-      - '.github/workflows/android-build.yml'
   workflow_dispatch:
-
-permissions:
-  contents: read
+    inputs:
+      reason:
+        description: "Why is a mobile APK needed?"
+        required: true
+        default: "Physical-device validation"
+      device:
+        description: "Target device"
+        required: true
+        default: "Redmi Turbo 4 Pro"
 
 env:
   FLUTTER_VERSION: '3.47.0'
