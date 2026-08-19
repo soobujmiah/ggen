@@ -38,9 +38,13 @@ class DebugLogStore {
     if (_entries.length > maxEntries) _entries.removeAt(0);
   }
 
-  String _redact(String value) => value
-      .replaceAll(RegExp(r'(authorization|cookie|api[_-]?key|token|password)\s*[:=]\s*[^,;\s]+', caseSensitive: false), r'\$1=[REDACTED]')
-      .substring(0, value.length > 1000 ? 1000 : value.length);
+  String _redact(String value) {
+    final redacted = value.replaceAll(
+      RegExp(r'(authorization|cookie|api[_-]?key|token|password)\s*[:=]\s*[^,;\s]+', caseSensitive: false),
+      r'\$1=[REDACTED]',
+    );
+    return redacted.substring(0, redacted.length > 1000 ? 1000 : redacted.length);
+  }
 
   Map<String, Object?> _redactMap(Map<String, Object?> source) => source.map(
         (key, value) => MapEntry(
