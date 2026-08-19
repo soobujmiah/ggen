@@ -20,27 +20,29 @@ class _ProfileManagerSheetState extends State<ProfileManagerSheet> {
   void initState() { super.initState(); _profiles = _store.load(); }
 
   Future<void> _saveProfile() async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
+    String name = '';
+    final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Save workspace profile'),
-        content: TextField(controller: controller, autofocus: true, maxLength: 80, decoration: const InputDecoration(labelText: 'Profile name')),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Save'))],
+        content: TextField(autofocus: true, maxLength: 80, onChanged: (value) => name = value, decoration: const InputDecoration(labelText: 'Profile name')),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, name.trim()), child: const Text('Save'))],
       ),
     );
-    controller.dispose();
-    if (!mounted || name == null || name.isEmpty) return;
+    name = result ?? name;
+    if (!mounted || name.trim().isEmpty) return;
     final profiles = await _store.load();
-    final next = [...profiles.where((p) => p.name != name), widget.current.copyWith(name: name)];
+    final next = [...profiles.where((p) => p.name != name), widget.current.copyWith(name: name.trim())];
     await _store.save(next);
-    if (mounted) setState(() => _profiles = _store.load());
+    final refreshed = await _store.load();
+    if (mounted) setState(() { _profiles = Future.value(refreshed); });
   }
 
   Future<void> _delete(WorkspaceProfile profile) async {
     final profiles = await _store.load();
     await _store.save(profiles.where((p) => p.name != profile.name).toList());
-    if (mounted) setState(() => _profiles = _store.load());
+    final refreshed = await _store.load();
+    if (mounted) setState(() { _profiles = Future.value(refreshed); });
   }
 
   @override
