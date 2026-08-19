@@ -270,7 +270,7 @@ class _StudioShellState extends State<StudioShell> {
                               });
                               unawaited(WorkspacePreferences().clear());
                             },
-                          ).whenComplete(() => _workspaceSettingsOpen = false);
+                          ).whenComplete(() => _workspaceSettingsOpen = false));
                         }
                       },
                     )
