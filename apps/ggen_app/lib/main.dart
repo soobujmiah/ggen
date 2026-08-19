@@ -117,6 +117,7 @@ class StudioShell extends StatefulWidget {
 class _StudioShellState extends State<StudioShell> {
   bool _immersive = false;
   bool _showInspector = true;
+  bool _canvasFirst = true;
 
   @override
   void initState() {
@@ -127,11 +128,14 @@ class _StudioShellState extends State<StudioShell> {
   Future<void> _restoreWorkspace() async {
     final prefs = await WorkspacePreferences.load();
     if (!mounted) return;
-    setState(() => _showInspector = prefs.inspectorVisible);
-    debugLog.info('workspace_restore', 'Workspace preferences restored', {'inspector_visible': _showInspector});
+    setState(() {
+      _showInspector = prefs.inspectorVisible;
+      _canvasFirst = prefs.canvasFirst;
+    });
+    debugLog.info('workspace_restore', 'Workspace preferences restored', {'inspector_visible': _showInspector, 'canvas_first': _canvasFirst});
   }
 
-  Future<void> _persistWorkspace() => WorkspacePreferences(inspectorVisible: _showInspector).save();
+  Future<void> _persistWorkspace() => WorkspacePreferences(inspectorVisible: _showInspector, canvasFirst: _canvasFirst).save();
 
   void _setImmersive(bool value) {
     setState(() => _immersive = value);
@@ -231,8 +235,17 @@ class _StudioShellState extends State<StudioShell> {
                         if (index == 3) {
                           _showWorkspaceSettings(
                             context,
+                            canvasFirst: _canvasFirst,
+                            onCanvasFirstChanged: (value) {
+                              setState(() => _canvasFirst = value);
+                              unawaited(_persistWorkspace());
+                              debugLog.info('canvas_first', value ? 'Canvas-first enabled' : 'Canvas-first disabled');
+                            },
                             onReset: () {
-                              setState(() => _showInspector = true);
+                              setState(() {
+                                _showInspector = true;
+                                _canvasFirst = true;
+                              });
                               unawaited(WorkspacePreferences().clear());
                             },
                           );
@@ -323,7 +336,7 @@ class InspectorPanel extends StatelessWidget {
       );
 }
 
-Future<void> _showWorkspaceSettings(BuildContext context, {required VoidCallback onReset}) async {
+Future<void> _showWorkspaceSettings(BuildContext context, {required bool canvasFirst, required ValueChanged<bool> onCanvasFirstChanged, required VoidCallback onReset}) async {
   debugLog.info('workspace_settings', 'Workspace settings opened');
   await showModalBottomSheet<void>(
     context: context,
@@ -343,8 +356,8 @@ Future<void> _showWorkspaceSettings(BuildContext context, {required VoidCallback
           const Text('Move or dismiss this sheet at any time. The canvas remains unobstructed until settings are explicitly opened.'),
           const SizedBox(height: 16),
           SwitchListTile.adaptive(
-            value: true,
-            onChanged: (_) {},
+            value: canvasFirst,
+            onChanged: onCanvasFirstChanged,
             title: const Text('Canvas-first controls'),
             subtitle: const Text('Keep tool controls outside the active canvas'),
           ),
