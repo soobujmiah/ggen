@@ -4,11 +4,23 @@ import 'package:flutter/services.dart';
 import 'debug_log.dart';
 
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
+final Set<String> _loggedLayoutModes = <String>{};
+
+void _recordLayout(String mode, Size size) {
+  if (_loggedLayoutModes.add(mode)) {
+    debugLog.info('layout_mode', 'Workspace layout selected', {
+      'mode': mode,
+      'width': size.width.round(),
+      'height': size.height.round(),
+    });
+  }
+}
 
 void main() => runApp(const GgenApp());
 
 
 Future<void> _showDiagnostics(BuildContext context) async {
+  debugLog.info('diagnostics_export', 'Diagnostics JSON opened');
   final payload = debugLog.exportJson();
   await showDialog<void>(
     context: context,
@@ -86,6 +98,7 @@ class StudioShell extends StatelessWidget {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 700;
+          _recordLayout(compact ? 'compact_bottom_navigation' : 'wide_rail_navigation', constraints.biggest);
           final inspector = constraints.maxWidth >= 900
               ? const SizedBox(width: 280, child: InspectorPanel())
               : const SizedBox.shrink();
@@ -113,7 +126,9 @@ class ToolRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) => NavigationRail(
         selectedIndex: 0,
-        onDestinationSelected: (_) {},
+        onDestinationSelected: (index) {
+          debugLog.info('tool_select', 'Tool destination selected', {'index': index});
+        },
         labelType: NavigationRailLabelType.all,
         destinations: const [
           NavigationRailDestination(
@@ -184,7 +199,9 @@ class CompactNavigationBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => NavigationBar(
         selectedIndex: 0,
-        onDestinationSelected: (_) {},
+        onDestinationSelected: (index) {
+          debugLog.info('tool_select', 'Tool destination selected', {'index': index});
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.near_me_outlined), label: 'Select'),
           NavigationDestination(icon: Icon(Icons.brush_outlined), label: 'Draw'),
