@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -16,7 +18,21 @@ void _recordLayout(String mode, Size size) {
   }
 }
 
-void main() => runApp(const GgenApp());
+void main() {
+  FlutterError.onError = (details) {
+    debugLog.error('flutter_error', details.exceptionAsString(), {
+      'library': details.library ?? 'unknown',
+    });
+    FlutterError.presentError(details);
+  };
+  ui.PlatformDispatcher.instance.onError = (error, stack) {
+    debugLog.error('uncaught_error', error.toString(), {
+      'stack': stack.toString(),
+    });
+    return false;
+  };
+  runApp(const GgenApp());
+}
 
 
 Future<void> _showDiagnostics(BuildContext context) async {
