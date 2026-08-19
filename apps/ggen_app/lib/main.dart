@@ -194,7 +194,11 @@ class _StudioShellState extends State<StudioShell> {
           ? null
           : LayoutBuilder(
               builder: (context, constraints) => constraints.maxWidth < 700
-                  ? const CompactNavigationBar()
+                  ? CompactNavigationBar(
+                      onSelected: (index) {
+                        if (index == 3) _showWorkspaceSettings(context);
+                      },
+                    )
                   : const StatusBar(),
             ),
     );
@@ -279,14 +283,56 @@ class InspectorPanel extends StatelessWidget {
       );
 }
 
+Future<void> _showWorkspaceSettings(BuildContext context) async {
+  debugLog.info('workspace_settings', 'Workspace settings opened');
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.48,
+      minChildSize: 0.28,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) => ListView(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+        children: [
+          Text('Workspace', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          const Text('Move or dismiss this sheet at any time. The canvas remains unobstructed until settings are explicitly opened.'),
+          const SizedBox(height: 16),
+          SwitchListTile.adaptive(
+            value: true,
+            onChanged: (_) {},
+            title: const Text('Canvas-first controls'),
+            subtitle: const Text('Keep tool controls outside the active canvas'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.refresh),
+            title: const Text('Reset workspace'),
+            subtitle: const Text('Restore the default compact layout'),
+            onTap: () {
+              debugLog.info('workspace_reset', 'Workspace reset requested');
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class CompactNavigationBar extends StatelessWidget {
-  const CompactNavigationBar({super.key});
+  const CompactNavigationBar({this.onSelected, super.key});
+  final ValueChanged<int>? onSelected;
 
   @override
   Widget build(BuildContext context) => NavigationBar(
         selectedIndex: 0,
         onDestinationSelected: (index) {
           debugLog.info('tool_select', 'Tool destination selected', {'index': index});
+          onSelected?.call(index);
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.near_me_outlined), label: 'Select'),
