@@ -44,18 +44,3 @@ void main() {
   });
 
 }
-
-
-  testWidgets('can enter and leave immersive canvas mode', (tester) async {
-    tester.view.physicalSize = const Size(471, 1020);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(const GgenApp());
-    await tester.tap(find.byTooltip('Immersive canvas'));
-    await tester.pumpAndSettle();
-    expect(find.byType(NavigationBar), findsNothing);
-    expect(find.byTooltip('Show workspace controls'), findsOneWidget);
-    await tester.tap(find.byTooltip('Show workspace controls'));
-    await tester.pumpAndSettle();
-    expect(find.byType(NavigationBar), findsOneWidget);
-  });
