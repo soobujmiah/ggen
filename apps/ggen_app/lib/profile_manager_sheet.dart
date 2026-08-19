@@ -26,7 +26,7 @@ class _ProfileManagerSheetState extends State<ProfileManagerSheet> {
       builder: (context) => AlertDialog(
         title: const Text('Save workspace profile'),
         content: TextField(autofocus: true, maxLength: 80, onChanged: (value) => name = value, decoration: const InputDecoration(labelText: 'Profile name')),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Save'))],
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, name.trim()), child: const Text('Save'))],
       ),
     );
     name = result ?? name;
