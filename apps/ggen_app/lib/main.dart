@@ -1,6 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'debug_log.dart';
+
+final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 
 void main() => runApp(const GgenApp());
+
+
+Future<void> _showDiagnostics(BuildContext context) async {
+  final payload = debugLog.exportJson();
+  await showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Diagnostics export'),
+      content: SizedBox(
+        width: 640,
+        child: SingleChildScrollView(
+          child: SelectableText(payload),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: payload));
+            if (context.mounted) Navigator.pop(context);
+          },
+          child: const Text('Copy JSON'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
 
 class GgenApp extends StatelessWidget {
   const GgenApp({super.key});
@@ -35,6 +70,11 @@ class StudioShell extends StatelessWidget {
             tooltip: 'Save project',
             onPressed: () {},
             icon: const Icon(Icons.save_outlined),
+          ),
+          IconButton(
+            tooltip: 'Export diagnostics',
+            onPressed: () => _showDiagnostics(context),
+            icon: const Icon(Icons.bug_report_outlined),
           ),
           IconButton(
             tooltip: 'More actions',
