@@ -35,7 +35,16 @@ def safe_child(root: Path, relative: str) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pack-root", type=Path, help="Explicit private pack root containing the registry pack paths")
+    parser.add_argument(
+        "--pack-root",
+        type=Path,
+        help="Explicit private pack root containing the registry pack paths",
+    )
+    parser.add_argument(
+        "--allow-vault-metadata",
+        action="store_true",
+        help="Allow the known private-vault README/manifests beside the asset paths",
+    )
     args = parser.parse_args()
     registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
     assets = registry["assets"]
@@ -49,6 +58,12 @@ def main() -> int:
 
     failures: list[str] = []
     expected_paths = {item["pack_path"] for item in assets}
+    allowed_vault_metadata = {
+        "rgen/README.md",
+        "rgen/manifests/protected-assets-v1.csv",
+        "rgen/manifests/protected-assets-v1.json",
+        "rgen/manifests/protected-assets-v1.md",
+    }
     actual_paths: set[str] = set()
     for path in root.rglob("*"):
         if not path.is_file():
@@ -56,7 +71,10 @@ def main() -> int:
         if path.is_symlink():
             failures.append(f"SYMLINK {path.relative_to(root)}")
             continue
-        actual_paths.add(path.relative_to(root).as_posix())
+        relative = path.relative_to(root).as_posix()
+        if args.allow_vault_metadata and relative in allowed_vault_metadata:
+            continue
+        actual_paths.add(relative)
     for relative in sorted(expected_paths - actual_paths):
         failures.append(f"MISSING {relative}")
     for relative in sorted(actual_paths - expected_paths):

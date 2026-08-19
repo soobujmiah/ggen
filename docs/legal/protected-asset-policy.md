@@ -14,4 +14,4 @@ The public repository contains only [`config/protected-asset-registry.json`](../
 
 The general application and tests must work in `UNAVAILABLE_NO_PACK`. A protected feature must fail closed and visibly when verification is missing. It must never silently substitute a different asset, auto-download restricted files, serialize them into projects/logs, or upload them to AI providers.
 
-The verifier accepts an explicit pack root, rejects missing/extra entries, canonical-path violations, size mismatches and SHA-256 mismatches, and performs no writes. It does not grant a license. The pack is never modified, optimized, re-encoded, migrated or used as a public sample.
+The verifier accepts an explicit pack root, rejects missing/extra asset entries, canonical-path violations, size mismatches and SHA-256 mismatches, and performs no writes. A private-vault verification may explicitly allow only the vault's known README and versioned manifest files beside the asset paths; unknown extra files still fail. It does not grant a license. The pack is never modified, optimized, re-encoded, migrated or used as a public sample.
