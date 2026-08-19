@@ -1,6 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'debug_log.dart';
+
+final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 
 void main() => runApp(const GgenApp());
+
+
+Future<void> _showDiagnostics(BuildContext context) async {
+  final payload = debugLog.exportJson();
+  await showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Diagnostics export'),
+      content: SizedBox(
+        width: 640,
+        child: SingleChildScrollView(
+          child: SelectableText(payload),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: payload));
+            if (context.mounted) Navigator.pop(context);
+          },
+          child: const Text('Copy JSON'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
 
 class GgenApp extends StatelessWidget {
   const GgenApp({super.key});
@@ -37,6 +72,11 @@ class StudioShell extends StatelessWidget {
             icon: const Icon(Icons.save_outlined),
           ),
           IconButton(
+            tooltip: 'Export diagnostics',
+            onPressed: () => _showDiagnostics(context),
+            icon: const Icon(Icons.bug_report_outlined),
+          ),
+          IconButton(
             tooltip: 'More actions',
             onPressed: () {},
             icon: const Icon(Icons.more_horiz),
@@ -45,19 +85,24 @@ class StudioShell extends StatelessWidget {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
+          final compact = constraints.maxWidth < 700;
           final inspector = constraints.maxWidth >= 900
               ? const SizedBox(width: 280, child: InspectorPanel())
               : const SizedBox.shrink();
           return Row(
             children: [
-              const ToolRail(),
+              if (!compact) const ToolRail(),
               Expanded(child: CanvasArea(size: constraints.biggest)),
-              inspector,
+              if (!compact) inspector,
             ],
           );
         },
       ),
-      bottomNavigationBar: const StatusBar(),
+      bottomNavigationBar: LayoutBuilder(
+        builder: (context, constraints) => constraints.maxWidth < 700
+            ? const CompactNavigationBar()
+            : const StatusBar(),
+      ),
     );
   }
 }
@@ -130,6 +175,22 @@ class InspectorPanel extends StatelessWidget {
             ],
           ),
         ),
+      );
+}
+
+class CompactNavigationBar extends StatelessWidget {
+  const CompactNavigationBar({super.key});
+
+  @override
+  Widget build(BuildContext context) => NavigationBar(
+        selectedIndex: 0,
+        onDestinationSelected: (_) {},
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.near_me_outlined), label: 'Select'),
+          NavigationDestination(icon: Icon(Icons.brush_outlined), label: 'Draw'),
+          NavigationDestination(icon: Icon(Icons.text_fields), label: 'Text'),
+          NavigationDestination(icon: Icon(Icons.tune), label: 'Settings'),
+        ],
       );
 }
 
