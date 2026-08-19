@@ -228,7 +228,15 @@ class _StudioShellState extends State<StudioShell> {
               builder: (context, constraints) => constraints.maxWidth < 700
                   ? CompactNavigationBar(
                       onSelected: (index) {
-                        if (index == 3) _showWorkspaceSettings(context);
+                        if (index == 3) {
+                          _showWorkspaceSettings(
+                            context,
+                            onReset: () {
+                              setState(() => _showInspector = true);
+                              unawaited(WorkspacePreferences().clear());
+                            },
+                          );
+                        }
                       },
                     )
                   : const StatusBar(),
@@ -315,7 +323,7 @@ class InspectorPanel extends StatelessWidget {
       );
 }
 
-Future<void> _showWorkspaceSettings(BuildContext context) async {
+Future<void> _showWorkspaceSettings(BuildContext context, {required VoidCallback onReset}) async {
   debugLog.info('workspace_settings', 'Workspace settings opened');
   await showModalBottomSheet<void>(
     context: context,
@@ -346,6 +354,7 @@ Future<void> _showWorkspaceSettings(BuildContext context) async {
             subtitle: const Text('Restore the default compact layout'),
             onTap: () {
               debugLog.info('workspace_reset', 'Workspace reset requested');
+              onReset();
               Navigator.pop(context);
             },
           ),
