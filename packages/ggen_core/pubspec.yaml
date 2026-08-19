@@ -1,0 +1,11 @@
+name: ggen_core
+description: Platform-neutral core contracts for the GGEN professional creative studio.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ">=3.13.0 <4.0.0"
+
+dev_dependencies:
+  lints: 6.1.0
+  test: 1.31.2

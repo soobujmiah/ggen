@@ -1,0 +1,42 @@
+name: Core contracts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/ggen_core/**"
+      - ".github/workflows/core.yml"
+      - "config/toolchain.yaml"
+      - "config/tool-quality-standard.yaml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/ggen_core/**"
+      - ".github/workflows/core.yml"
+      - "config/toolchain.yaml"
+      - "config/tool-quality-standard.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/ggen_core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.13.0"
+      - name: Resolve locked dependencies
+        run: dart pub get --enforce-lockfile
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed lib test
+      - name: Static analysis
+        run: dart analyze --fatal-infos
+      - name: Unit tests
+        run: dart test --reporter expanded

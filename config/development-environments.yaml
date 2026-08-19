@@ -1,0 +1,199 @@
+schema_version: 1
+updated_at: "2026-08-19"
+project:
+  repository: soobujmiah/ggen
+  canonical_remote: https://github.com/soobujmiah/ggen
+  default_branch: main
+  repository_visibility: public
+  protected_asset_vault: soobujmiah/ggen-protected-assets
+  protected_asset_vault_visibility: private
+  development_model: github_centric_hybrid_brain
+  initial_platform: android_flutter
+
+principles:
+  github_is_source_of_truth: true
+  local_workspaces_are_disposable: true
+  no_unpushed_authoritative_state: true
+  protected_assets_are_immutable: true
+  reference_repositories_are_read_only: true
+  heavy_work_never_runs_on_ui_thread: true
+  claims_require_evidence: true
+
+brains:
+  arena_agent:
+    role: orchestration_brain
+    persistence: ephemeral_except_workspace_snapshot
+    observed_environment:
+      observed_at: "2026-08-19"
+      os: Debian GNU/Linux 13 (trixie)
+      kernel: 6.1.158+
+      architecture: x86_64
+      virtualization: KVM
+      cpu_threads: 2
+      memory_gib: 1.9
+      swap_gib: 0
+      workspace_disk_gib: 25
+      workspace_available_gib: 20
+      persistent_root: /home/user
+    available_tools:
+      git: "2.47.3"
+      python: "3.13.14"
+      node: "20.20.2"
+      npm: "10.8.2"
+      java: "11"
+      gcc: "14.2.0"
+      gxx: "14.2.0"
+    missing_tools:
+      - gh
+      - flutter
+      - dart
+      - gradle
+      - cmake
+      - ninja
+      - clang
+      - rust
+      - docker
+      - podman
+      - adb
+    allowed_work:
+      - architecture_and_product_planning
+      - repository_audits
+      - documentation_and_adrs
+      - source_generation_and_review
+      - dependency_free_or_small_tests
+      - manifests_hashes_and_static_checks
+      - github_api_orchestration
+    prohibited_or_unsuitable_work:
+      - authoritative_long_lived_state_outside_git
+      - full_flutter_android_builds
+      - android_emulators
+      - large_native_compiles
+      - gpu_rendering_benchmarks
+      - model_training_or_large_inference
+      - long_running_services
+    rule: Commit and push every durable result to GitHub; treat installed packages and non-workspace state as disposable.
+
+  github:
+    role: canonical_memory_control_plane_and_build_farm
+    components:
+      repository:
+        purpose: versioned source documentation decisions manifests and review
+      actions:
+        purpose: reproducible CI builds tests security scans artifacts and releases
+      codespaces:
+        purpose: interactive pinned Flutter Android and native development
+      issues_projects:
+        purpose: requirements risks milestones decisions and traceability
+      releases:
+        purpose: signed immutable distributable artifacts and provenance
+    current_blocker: Account billing or spending limit prevents Actions jobs from starting.
+
+  redmi_turbo_4_pro:
+    role: physical_android_validation_and_optional_phone_workstation
+    identity:
+      model: Xiaomi 25053RT47C
+      soc: QTI SM8735 Snapdragon 8s Gen 4
+      gpu: Adreno 825
+      abi: arm64-v8a
+      physical_ram_gib: 12
+      observed_android_api: 36
+    responsibilities:
+      - touch_stylus_and_mobile_ux_validation
+      - memory_thermal_battery_tests
+      - local_ai_backend_evidence
+      - android_storage_permissions_and_process_death
+      - real_canvas_and_3d_viewport_frame_measurements
+    restrictions:
+      - one_device_does_not_prove_general_android_compatibility
+      - vendor_vulkan_compute_is_not_assumed_working
+      - no_claim_without_exact_build_artifact_and_log
+
+  github_codespace:
+    role: primary_interactive_build_environment
+    required_profile: ggen-android-native
+    desired_toolchain:
+      java: "17"
+      flutter: pinned_in_future_toolchain_lock
+      dart: pinned_with_flutter
+      android_compile_sdk: 36
+      android_target_sdk: 36
+      android_ndk: pinned_in_future_toolchain_lock
+      cmake: pinned_in_future_toolchain_lock
+      ninja: pinned_in_future_toolchain_lock
+      rust: optional_pinned_if_engine_selected
+    status: specification_only_not_provisioned
+
+  heavy_worker:
+    role: optional_self_hosted_or_github_runner_for_large_3d_ai_and_render_jobs
+    status: future
+    requirements:
+      - isolated_job_queue
+      - signed_worker_identity
+      - no_implicit_user_content_upload
+      - encrypted_transport
+      - resource_quotas
+      - deterministic_artifact_receipts
+      - explicit_local_or_remote_policy
+
+task_routing:
+  planning_docs_audits: arena_agent
+  canonical_storage_review: github.repository
+  flutter_android_builds: github.actions_or_codespace
+  native_engine_builds: github.actions_or_codespace
+  security_fuzzing: github.actions_or_isolated_worker
+  physical_android_tests: redmi_turbo_4_pro
+  large_3d_rendering: heavy_worker_or_explicit_local_backend
+  production_release: github.actions_with_production_signing
+
+branch_and_review:
+  protected_default_branch: true
+  pull_requests_for_major_changes: true
+  required_owner_review_paths:
+    - /MASTER_SPEC.md
+    - /config/protected-asset-registry.json
+    - /docs/audit/licensing-register.md
+    - /docs/legal/
+    - /config/development-environments.yaml
+  required_checks:
+    - protected_assets
+    - documentation
+    - environment_contract
+    - licensing_and_public_safety
+  note: Branch protection and required checks cannot become effective until GitHub plan/billing permits the jobs to run.
+
+artifact_policy:
+  source_and_docs: git
+  ci_outputs: github_actions_artifacts
+  release_outputs: github_releases
+  user_documents: never_commit
+  credentials: never_commit
+  protected_assets: private_vault_with_public_hash_registry
+  large_models: external_reviewed_store_with_digest_receipts
+  caches: disposable
+
+evidence_policy:
+  required_fields:
+    - source_commit
+    - build_artifact_sha256
+    - environment_profile
+    - device_and_os_build
+    - backend_provider_and_model
+    - input_contract
+    - raw_result_or_log_reference
+    - measured_scope
+    - limitations
+  forbidden:
+    - fabricated_timing
+    - backend_inference_from_api_availability
+    - marketing_claim_from_compile_success
+
+public_private_boundary:
+  public_repository: soobujmiah/ggen
+  public_repository_visibility: public
+  private_asset_vault: soobujmiah/ggen-protected-assets
+  private_asset_vault_visibility: private
+  public_registry: config/protected-asset-registry.json
+  public_pack_bytes: forbidden
+  automatic_restricted_asset_download: forbidden
+  absent_private_pack_general_build: supported
+  rights_unresolved_distribution: blocked

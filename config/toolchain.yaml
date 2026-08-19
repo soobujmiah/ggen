@@ -1,0 +1,28 @@
+schema_version: 1
+verified_at: "2026-08-19"
+flutter:
+  channel: stable
+  version: 3.47.0
+  git_hash: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+  dart_sdk: 3.13.0
+  linux_x64_archive: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.0-stable.tar.xz
+  linux_x64_sha256: 26cd99d3d94b1367e6b50535a18aeef0282c10a535bbe3ec493534dcdab75296
+android:
+  compile_sdk: 36
+  target_sdk: 36
+  min_sdk: 26
+  java: 17
+  ndk: pending_native_engine_decision
+  cmake: pending_native_engine_decision
+native_engines:
+  font_shaping: pending_feasibility_adr
+  three_d: pending_feasibility_adr
+  raster_vector: pending_feasibility_adr
+policy:
+  exact_flutter_pin_required: true
+  lockfiles_required: true
+  no_floating_stable_channel_in_ci: true
+  generated_android_wrapper_must_be_committed: true
+  dependency_updates_require_tests_and_provenance_review: true
+source:
+  flutter_release_manifest: https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json

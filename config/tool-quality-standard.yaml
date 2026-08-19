@@ -1,0 +1,73 @@
+schema_version: 1
+updated_at: "2026-08-19"
+policy:
+  computer_quality_mandatory: true
+  mobile_friendly_ui_mandatory: true
+  ai_optional: true
+  manual_operation_required: true
+  reference_ui_copying_forbidden: true
+  fewer_complete_tools_over_many_demo_tools: true
+
+release_states:
+  - DESIGNED
+  - IMPLEMENTED
+  - BUILD_VERIFIED
+  - DEVICE_VERIFIED
+  - PRODUCTION_READY
+
+required_gates:
+  - manual_without_ai
+  - exact_numeric_control
+  - non_destructive_or_explicit_destructive_mode
+  - undo_redo_transaction
+  - cancellation_and_safe_cleanup
+  - progressive_non_blocking_preview
+  - autosave_and_crash_recovery
+  - typed_parameters_and_presets
+  - keyboard_mouse_touch_stylus_specification
+  - accessible_alternative_for_every_gesture
+  - import_export_fidelity_report
+  - resource_limits_and_admission
+  - tests_documentation_and_evidence
+  - original_ggen_ui_and_brand
+
+workspace_classes:
+  compact_phone:
+    mandatory:
+      - full_screen_canvas
+      - thumb_reachable_context_controls
+      - searchable_inspector_sheet
+      - command_palette
+      - numeric_precision_controls
+      - gesture_command_alternatives
+  tablet_foldable:
+    mandatory:
+      - dockable_panels
+      - stylus_support_when_available
+      - keyboard_mouse_shortcuts
+      - split_views
+  desktop_future:
+    mandatory:
+      - multi_panel_workspace
+      - complete_shortcuts_and_context_menus
+      - same_domain_commands_and_project_format
+
+studio_quality_references:
+  three_d:
+    category_reference: Blender-class DCC depth and reliability
+    copy_ui: false
+  font:
+    category_reference: FontForge/professional type-editor standards
+    copy_ui: false
+  raster_photo:
+    category_reference: Photoshop/PicsArt-class editing depth and usability
+    copy_ui: false
+  vector:
+    category_reference: Illustrator/Infinite Design-class vector precision
+    copy_ui: false
+  painting:
+    category_reference: Infinite Painter-class brush and canvas interaction
+    copy_ui: false
+  document_pdf:
+    category_reference: professional layout and PDF editing class
+    copy_ui: false
