@@ -8,6 +8,7 @@ Current implementation includes:
 - immutable minimal document project/artboard/node model;
 - bounded revision-based undo/redo transactions;
 - professional tool descriptors that reject non-manual, non-mobile-friendly or incomplete quality gates;
+- SPDX/license review, source receipts, asset provenance, distribution eligibility and protected-pack availability states;
 - pure Dart unit tests.
 
 This package intentionally imports no Flutter, Android, filesystem, network, AI provider, BG/RGEN implementation or protected asset. It is not yet a graphics engine or application.
