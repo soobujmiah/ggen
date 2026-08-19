@@ -122,6 +122,7 @@ class _StudioShellState extends State<StudioShell> {
   bool _immersive = false;
   bool _showInspector = true;
   bool _canvasFirst = true;
+  bool _workspaceSettingsOpen = false;
   InspectorDock _inspectorDock = InspectorDock.right;
 
   @override
@@ -245,8 +246,9 @@ class _StudioShellState extends State<StudioShell> {
               builder: (context, constraints) => constraints.maxWidth < 700
                   ? CompactNavigationBar(
                       onSelected: (index) {
-                        if (index == 3) {
-                          _showWorkspaceSettings(
+                        if (index == 3 && !_workspaceSettingsOpen) {
+                          _workspaceSettingsOpen = true;
+                          unawaited(_showWorkspaceSettings(
                             context,
                             canvasFirst: _canvasFirst,
                             currentProfile: WorkspaceProfile(name: 'Current', inspectorVisible: _showInspector, canvasFirst: _canvasFirst, inspectorDock: _inspectorDock.name),
@@ -268,7 +270,7 @@ class _StudioShellState extends State<StudioShell> {
                               });
                               unawaited(WorkspacePreferences().clear());
                             },
-                          );
+                          ).whenComplete(() => _workspaceSettingsOpen = false);
                         }
                       },
                     )
