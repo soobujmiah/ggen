@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 
 import 'debug_log.dart';
 import 'workspace_preferences.dart';
+import 'workspace_profile.dart';
+import 'profile_manager_sheet.dart';
 
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 final Set<String> _loggedLayoutModes = <String>{};
@@ -247,6 +249,12 @@ class _StudioShellState extends State<StudioShell> {
                           _showWorkspaceSettings(
                             context,
                             canvasFirst: _canvasFirst,
+                            currentProfile: WorkspaceProfile(name: 'Current', inspectorVisible: _showInspector, canvasFirst: _canvasFirst, inspectorDock: _inspectorDock.name),
+                            onProfileApplied: (profile) {
+                              setState(() { _showInspector = profile.inspectorVisible; _canvasFirst = profile.canvasFirst; _inspectorDock = profile.inspectorDock == 'left' ? InspectorDock.left : InspectorDock.right; });
+                              unawaited(_persistWorkspace());
+                              debugLog.info('profile_apply', 'Workspace profile applied', {'name': profile.name});
+                            },
                             onCanvasFirstChanged: (value) {
                               setState(() => _canvasFirst = value);
                               unawaited(_persistWorkspace());
@@ -348,7 +356,7 @@ class InspectorPanel extends StatelessWidget {
       );
 }
 
-Future<void> _showWorkspaceSettings(BuildContext context, {required bool canvasFirst, required ValueChanged<bool> onCanvasFirstChanged, required VoidCallback onReset}) async {
+Future<void> _showWorkspaceSettings(BuildContext context, {required bool canvasFirst, required WorkspaceProfile currentProfile, required ValueChanged<WorkspaceProfile> onProfileApplied, required ValueChanged<bool> onCanvasFirstChanged, required VoidCallback onReset}) async {
   debugLog.info('workspace_settings', 'Workspace settings opened');
   await showModalBottomSheet<void>(
     context: context,
@@ -372,6 +380,19 @@ Future<void> _showWorkspaceSettings(BuildContext context, {required bool canvasF
             onChanged: onCanvasFirstChanged,
             title: const Text('Canvas-first controls'),
             subtitle: const Text('Keep tool controls outside the active canvas'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.dashboard_customize_outlined),
+            title: const Text('Manage profiles'),
+            subtitle: const Text('Save or restore workspace arrangements'),
+            onTap: () {
+              showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                showDragHandle: true,
+                builder: (context) => ProfileManagerSheet(current: currentProfile, onApply: onProfileApplied),
+              );
+            },
           ),
           ListTile(
             leading: const Icon(Icons.refresh),
