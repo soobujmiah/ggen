@@ -85,19 +85,24 @@ class StudioShell extends StatelessWidget {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
+          final compact = constraints.maxWidth < 700;
           final inspector = constraints.maxWidth >= 900
               ? const SizedBox(width: 280, child: InspectorPanel())
               : const SizedBox.shrink();
           return Row(
             children: [
-              const ToolRail(),
+              if (!compact) const ToolRail(),
               Expanded(child: CanvasArea(size: constraints.biggest)),
-              inspector,
+              if (!compact) inspector,
             ],
           );
         },
       ),
-      bottomNavigationBar: const StatusBar(),
+      bottomNavigationBar: LayoutBuilder(
+        builder: (context, constraints) => constraints.maxWidth < 700
+            ? const CompactNavigationBar()
+            : const StatusBar(),
+      ),
     );
   }
 }
@@ -170,6 +175,22 @@ class InspectorPanel extends StatelessWidget {
             ],
           ),
         ),
+      );
+}
+
+class CompactNavigationBar extends StatelessWidget {
+  const CompactNavigationBar({super.key});
+
+  @override
+  Widget build(BuildContext context) => NavigationBar(
+        selectedIndex: 0,
+        onDestinationSelected: (_) {},
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.near_me_outlined), label: 'Select'),
+          NavigationDestination(icon: Icon(Icons.brush_outlined), label: 'Draw'),
+          NavigationDestination(icon: Icon(Icons.text_fields), label: 'Text'),
+          NavigationDestination(icon: Icon(Icons.tune), label: 'Settings'),
+        ],
       );
 }
 
