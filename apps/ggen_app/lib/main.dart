@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'debug_log.dart';
+import 'workspace_preferences.dart';
 
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 final Set<String> _loggedLayoutModes = <String>{};
@@ -116,6 +118,21 @@ class _StudioShellState extends State<StudioShell> {
   bool _immersive = false;
   bool _showInspector = true;
 
+  @override
+  void initState() {
+    super.initState();
+    _restoreWorkspace();
+  }
+
+  Future<void> _restoreWorkspace() async {
+    final prefs = await WorkspacePreferences.load();
+    if (!mounted) return;
+    setState(() => _showInspector = prefs.inspectorVisible);
+    debugLog.info('workspace_restore', 'Workspace preferences restored', {'inspector_visible': _showInspector});
+  }
+
+  Future<void> _persistWorkspace() => WorkspacePreferences(inspectorVisible: _showInspector).save();
+
   void _setImmersive(bool value) {
     setState(() => _immersive = value);
     debugLog.info('immersive_mode', value ? 'Canvas chrome hidden' : 'Canvas chrome restored');
@@ -138,6 +155,7 @@ class _StudioShellState extends State<StudioShell> {
                   tooltip: 'Toggle inspector',
                   onPressed: () {
                     setState(() => _showInspector = !_showInspector);
+                    unawaited(_persistWorkspace());
                     debugLog.info('panel_visibility', _showInspector ? 'Inspector shown' : 'Inspector hidden');
                   },
                   icon: Icon(_showInspector ? Icons.view_sidebar : Icons.view_sidebar_outlined),
