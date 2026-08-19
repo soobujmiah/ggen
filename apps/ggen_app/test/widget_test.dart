@@ -12,7 +12,7 @@ void main() {
     await tester.pumpWidget(const GgenApp());
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byType(NavigationRail), findsNothing);
-    expect(find.byTooltip('Toggle inspector'), findsNothing);
+    expect(find.byTooltip('Dock inspector left or right'), findsNothing);
   });
 
   testWidgets('uses rail without inspector at tablet width', (tester) async {
@@ -22,7 +22,7 @@ void main() {
     await tester.pumpWidget(const GgenApp());
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(find.text('Inspector'), findsNothing);
-    expect(find.byTooltip('Toggle inspector'), findsNothing);
+    expect(find.byTooltip('Dock inspector left or right'), findsNothing);
   });
 
   testWidgets('uses the rail and inspector when space allows', (tester) async {
@@ -32,10 +32,7 @@ void main() {
     await tester.pumpWidget(const GgenApp());
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(find.text('Inspector'), findsOneWidget);
-    await tester.tap(find.byTooltip('Toggle inspector'));
-    await tester.pumpAndSettle();
-    expect(find.text('Inspector'), findsNothing);
-    await tester.tap(find.byTooltip('Toggle inspector'));
+    await tester.tap(find.byTooltip('Dock inspector left or right'));
     await tester.pumpAndSettle();
     expect(find.text('Inspector'), findsOneWidget);
   });
