@@ -114,6 +114,7 @@ class StudioShell extends StatefulWidget {
 
 class _StudioShellState extends State<StudioShell> {
   bool _immersive = false;
+  bool _showInspector = true;
 
   void _setImmersive(bool value) {
     setState(() => _immersive = value);
@@ -132,6 +133,14 @@ class _StudioShellState extends State<StudioShell> {
                   tooltip: 'Immersive canvas',
                   onPressed: () => _setImmersive(true),
                   icon: const Icon(Icons.fullscreen),
+                ),
+                IconButton(
+                  tooltip: 'Toggle inspector',
+                  onPressed: () {
+                    setState(() => _showInspector = !_showInspector);
+                    debugLog.info('panel_visibility', _showInspector ? 'Inspector shown' : 'Inspector hidden');
+                  },
+                  icon: Icon(_showInspector ? Icons.view_sidebar : Icons.view_sidebar_outlined),
                 ),
                 IconButton(
                   tooltip: 'Export diagnostics',
@@ -162,7 +171,7 @@ class _StudioShellState extends State<StudioShell> {
             MediaQuery.sizeOf(context),
           );
           final showPanels = !_immersive;
-          final inspector = showPanels && constraints.maxWidth >= 900
+          final inspector = showPanels && _showInspector && constraints.maxWidth >= 900
               ? const SizedBox(width: 280, child: InspectorPanel())
               : const SizedBox.shrink();
           return Stack(

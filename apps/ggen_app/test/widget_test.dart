@@ -21,6 +21,12 @@ void main() {
     await tester.pumpWidget(const GgenApp());
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(find.text('Inspector'), findsOneWidget);
+    await tester.tap(find.byTooltip('Toggle inspector'));
+    await tester.pumpAndSettle();
+    expect(find.text('Inspector'), findsNothing);
+    await tester.tap(find.byTooltip('Toggle inspector'));
+    await tester.pumpAndSettle();
+    expect(find.text('Inspector'), findsOneWidget);
   });
 
   testWidgets('renders the original studio shell', (tester) async {
