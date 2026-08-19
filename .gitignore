@@ -29,3 +29,7 @@ protected-pack/
 reports/
 artifacts/
 .tmp/
+
+# Python caches
+__pycache__/
+*.py[cod]
