@@ -11,7 +11,9 @@
 - project schema/version envelope contracts;
 - path-free transactional project storage interfaces and content-addressed store receipts;
 - finite resource budgets, explicit bounded job states/transitions and progress/failure contracts;
-- bounded autosave policy and append/replay recovery journal interfaces.
+- bounded autosave policy and append/replay recovery journal interfaces;
+- reversible tool-session preview/commit/cancel semantics;
+- adaptive touch, stylus, mouse and keyboard capability/event contracts that reject unsupported pressure or tilt claims.
 
 This slice deliberately contains no copied reference UI, no protected-asset mutation or bytes, no AI/provider call, no platform path, no Flutter widget and no graphics implementation.
 
@@ -26,10 +28,9 @@ This slice deliberately contains no copied reference UI, no protected-asset muta
 
 ## Next after the green foundation
 
-1. Add transactional tool-session preview/commit/cancel semantics.
-2. Add adaptive pointer/stylus/mouse/keyboard capability event contracts.
-3. Pin/provision the Codespaces Flutter/Android toolchain.
-4. Prototype an original compact-phone canvas shell using the same contracts.
-5. Add tablet/desktop adaptive tests before adding creative surface breadth.
+1. Pin/provision the Codespaces Flutter/Android toolchain.
+2. Prototype an original compact-phone canvas shell using the same contracts.
+3. Add tablet/desktop adaptive tests before adding creative surface breadth.
+4. Define the first measured UDM serialization adapter and migration fixtures.
 
 Redmi Turbo 4 Pro physical testing becomes mandatory when Android builds, UI, storage, performance or backend claims begin. No physical-device claim is made by this package verification.

@@ -8,6 +8,11 @@
 - Local Dart 3.13.0 verification passed: formatting, fatal-info analysis and 17 unit tests.
 
 
+## 2026-08-19 — Tool sessions and adaptive input contracts
+
+- Added preview/commit/cancel tool sessions that create one reversible transaction and restore exact input on cancellation.
+- Added adaptive touch, stylus, mouse and keyboard capability contracts, reported-axis validation and normalized input events without synthetic pressure or tilt.
+
 ## 2026-08-19 — Hybrid brain, Font Studio and 3D DCC scope
 
 - Inspected the current Arena orchestration machine and recorded its capabilities/limits.
