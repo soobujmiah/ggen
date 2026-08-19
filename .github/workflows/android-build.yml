@@ -1,0 +1,37 @@
+name: Android debug build
+
+on:
+  pull_request:
+    paths:
+      - 'apps/ggen_app/**'
+      - '.github/workflows/android-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.47.0'
+
+jobs:
+  debug-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+      - name: Generate temporary Android wrapper
+        working-directory: apps/ggen_app
+        run: flutter create --platforms=android --project-name=ggen_app .
+      - name: Build debug APK
+        working-directory: apps/ggen_app
+        run: flutter build apk --debug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggen-app-debug-apk
+          path: apps/ggen_app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
