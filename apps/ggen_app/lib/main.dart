@@ -151,14 +151,19 @@ class _StudioShellState extends State<StudioShell> {
                   onPressed: () => _setImmersive(true),
                   icon: const Icon(Icons.fullscreen),
                 ),
-                IconButton(
-                  tooltip: 'Toggle inspector',
-                  onPressed: () {
-                    setState(() => _showInspector = !_showInspector);
-                    unawaited(_persistWorkspace());
-                    debugLog.info('panel_visibility', _showInspector ? 'Inspector shown' : 'Inspector hidden');
+                Builder(
+                  builder: (context) {
+                    if (MediaQuery.sizeOf(context).width < 900) return const SizedBox.shrink();
+                    return IconButton(
+                      tooltip: 'Toggle inspector',
+                      onPressed: () {
+                        setState(() => _showInspector = !_showInspector);
+                        unawaited(_persistWorkspace());
+                        debugLog.info('panel_visibility', _showInspector ? 'Inspector shown' : 'Inspector hidden');
+                      },
+                      icon: Icon(_showInspector ? Icons.view_sidebar : Icons.view_sidebar_outlined),
+                    );
                   },
-                  icon: Icon(_showInspector ? Icons.view_sidebar : Icons.view_sidebar_outlined),
                 ),
                 IconButton(
                   tooltip: 'Export diagnostics',
