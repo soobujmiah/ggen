@@ -1,0 +1,31 @@
+# Dart/Flutter and generated output
+.dart_tool/
+.packages
+.pub-cache/
+build/
+coverage/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Local IDE and OS state
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Local secrets, credentials and private packs
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+*.keystore
+private-pack/
+protected-pack/
+
+# Disposable reports and caches
+*.log
+reports/
+artifacts/
+.tmp/

@@ -1,0 +1,26 @@
+schema_version: 1
+policy_id: ggen-public-licensing-v1
+source_license:
+  spdx: Apache-2.0
+  applies_to: GGEN-owned source and documentation intentionally distributed in this repository
+  license_file: LICENSE
+  notice_file: NOTICE
+  trademark_file: TRADEMARKS.md
+  grants_trademarks: false
+third_party:
+  separate_licenses_required: true
+  unknown_license_distribution: blocked
+  provenance_register: config/provenance/dependencies.json
+protected_assets:
+  apache_licensed: false
+  registry: config/protected-asset-registry.json
+  private_vault: soobujmiah/ggen-protected-assets
+  auto_download: false
+  absent_pack_is_supported_state: true
+contributions:
+  policy: docs/legal/contributor-ip-policy.md
+  dco_signoff_required: true
+release:
+  commercial_policy: docs/legal/commercial-release-policy.md
+  google_play_policy: docs/legal/google-play-release-policy.md
+  sbom_policy: docs/legal/sbom-and-provenance.md
