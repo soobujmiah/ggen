@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-20 — On-device persistence verified; clean-install diagnostics
+
+- Device export (2026-08-20 09:01:17Z) confirmed the storage-init fix on the Redmi Turbo 4 Pro: `storage_init` logged info "File-backed storage initialized" at `/data/user/0/com.example.ggen/app_flutter` (the path also confirms the `com.example.ggen` applicationId on-device). Saves persist through the file store with idempotent digests; the canvas-first switch alternated across six toggles; profiles, reset, immersive and project_new/save ran with no errors.
+- `_restoreLastProject` now logs an info `project_restore` event when no prior project is stored, so future exports distinguish a clean install from a restore failure (the 09:01 export had no restore event precisely because prefs were empty after a clean install).
+
 ## 2026-08-20 — Fix file-storage init crash on device
 
 - Device diagnostics (Redmi Turbo 4 Pro, 2026-08-20 08:06:57Z) exposed `LateInitializationError: Field '_studio' has already been initialized` in `storage_init`: the shell's `_studio` was `late final` but the storage-init path reassigns it when swapping onto the file-backed store. On-device the plugin resolves and the swap runs (throwing); in CI it never ran because `path_provider` throws `MissingPluginException` before the assignment.

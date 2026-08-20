@@ -307,6 +307,18 @@ void main() {
         reason: 'unavailable storage must log a warning and fall back',
       );
       expect(find.text('Untitled project'), findsOneWidget);
+      // With no stored key, restore must report the clean-install state so
+      // exports distinguish it from a restore failure.
+      expect(
+        debugLog.entries.any(
+          (entry) =>
+              entry.event == 'project_restore' &&
+              entry.level == 'info' &&
+              entry.message == 'No prior project stored',
+        ),
+        isTrue,
+        reason: 'no prior project should be recorded in diagnostics',
+      );
     });
   });
 
