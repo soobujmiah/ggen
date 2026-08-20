@@ -500,6 +500,8 @@ class _StudioShellState extends State<StudioShell> {
                           projectName: _studio.project.name,
                           controller: _studio,
                           drawEnabled: _selectedTool == 1,
+                          selectMode: _selectedTool == 0,
+                          selectedNodeId: _studio.selectedNodeId,
                           onNodeAdded: () {
                             debugLog.info(
                               'node_add',
@@ -507,6 +509,18 @@ class _StudioShellState extends State<StudioShell> {
                               {
                                 'object_count': _studio.objectCount,
                                 'revision': _studio.revision,
+                              },
+                            );
+                          },
+                          onNodeSelected: (nodeId) {
+                            _studio.selectNode(nodeId);
+                            debugLog.info(
+                              nodeId != null ? 'node_select' : 'node_deselect',
+                              nodeId != null
+                                  ? 'Node selected by Select tool'
+                                  : 'Selection cleared',
+                              {
+                                if (nodeId != null) 'node_id': nodeId.value,
                               },
                             );
                           },
@@ -694,7 +708,10 @@ class CanvasArea extends StatelessWidget {
     required this.controller,
     required this.drawEnabled,
     required this.onNodeAdded,
+    this.selectMode = false,
+    this.selectedNodeId,
     this.onTextRequest,
+    this.onNodeSelected,
     this.onTwoFingerTap,
     this.onThreeFingerTap,
     super.key,
@@ -705,7 +722,10 @@ class CanvasArea extends StatelessWidget {
   final StudioController controller;
   final bool drawEnabled;
   final VoidCallback onNodeAdded;
+  final bool selectMode;
+  final GgenId? selectedNodeId;
   final void Function(Offset artboardPoint)? onTextRequest;
+  final void Function(GgenId? nodeId)? onNodeSelected;
   final VoidCallback? onTwoFingerTap;
   final VoidCallback? onThreeFingerTap;
 
@@ -722,7 +742,10 @@ class CanvasArea extends StatelessWidget {
               controller: controller,
               drawEnabled: drawEnabled,
               onNodeAdded: onNodeAdded,
+              selectMode: selectMode,
+              selectedNodeId: selectedNodeId,
               onTextRequest: onTextRequest,
+              onNodeSelected: onNodeSelected,
               onTwoFingerTap: onTwoFingerTap,
               onThreeFingerTap: onThreeFingerTap,
             );
