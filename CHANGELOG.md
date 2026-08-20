@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-20 — App-core backbone
+
+- Added `ggen_app` dependency on `ggen_core` and a widget-free app-layer `StudioController` (project lifecycle, tool sessions, bounded undo/redo, canonical envelope serialization) built on the core contracts.
+- Wired the shell to the controller: functional New project and Save (canonical JSON) actions, an undo/redo history bar over the canvas, and live object count and revision in the status bar.
+- Added controller unit tests (lifecycle, session commit/cancel, stale-session rejection, history bounds, canonical round trip) and shell widget tests for the wiring.
+- File persistence remains deferred until a platform storage decision is accepted; the core storage contracts already exist and the controller keeps the canonical bytes for diagnostics and tests.
+
 ## 2026-08-19 — Deterministic project serialization contract
 
 - Added canonical bounded JSON serialization for the current project envelope.

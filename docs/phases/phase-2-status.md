@@ -18,7 +18,9 @@
 - profile manager UI for save, apply and delete;
 - bounded redacted diagnostics export;
 - Flutter framework and uncaught-error capture;
-- viewport, canvas geometry, safe-area and keyboard-inset diagnostics.
+- viewport, canvas geometry, safe-area and keyboard-inset diagnostics;
+- app-layer `StudioController` wired to `ggen_core` (project lifecycle, tool sessions, bounded undo/redo, canonical project serialization), with the shell observing it;
+- functional New project and Save (canonical JSON) actions, canvas undo/redo history bar, and live object count and revision status.
 
 ## Verification
 
@@ -50,5 +52,6 @@ Earlier diagnostics exposed profile-manager lifecycle defects. They were fixed i
 
 1. Generate a manual APK only when another device validation cycle is needed.
 2. Exercise profile save, apply, delete and reset flows on the Redmi Turbo 4 Pro.
-3. Export diagnostics containing `profile_save`, `profile_apply` and `profile_delete`.
-4. Continue dockable panel and creative-surface implementation after the workspace foundation remains stable.
+3. Exercise the New project, Save, undo and redo flows on the Redmi Turbo 4 Pro and export diagnostics containing `project_new`, `project_save`, `history_undo` and `history_redo`.
+4. Persist projects through the core storage contracts once a platform storage decision is accepted.
+5. Continue dockable panel and creative-surface implementation after the workspace foundation remains stable.

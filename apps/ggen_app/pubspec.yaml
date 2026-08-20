@@ -11,6 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
   shared_preferences: ^2.5.3
+  ggen_core:
+    path: ../../packages/ggen_core
 
 dev_dependencies:
   flutter_test:
