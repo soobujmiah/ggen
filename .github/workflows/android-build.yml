@@ -28,12 +28,14 @@ jobs:
       - name: Generate temporary Android wrapper
         working-directory: apps/ggen_app
         run: flutter create --platforms=android --project-name=ggen_app .
+      - name: Set Android app identity to ggen
+        run: python3 scripts/prepare_android_identity.py apps/ggen_app/android
       - name: Build debug APK
         working-directory: apps/ggen_app
         run: flutter build apk --debug
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ggen-app-debug-apk
+          name: ggen-debug-apk
           path: apps/ggen_app/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error

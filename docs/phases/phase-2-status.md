@@ -24,6 +24,10 @@
 - in-memory persistence through the core storage contracts: transactional `MemoryProjectStore` with SHA-256 content receipts and a bounded `MemoryRecoveryJournal` with checkpoint cadence and ordered replay; Save now commits through a store transaction and `restore()` reloads a committed project;
 - undo/redo journal records (forward deltas and state markers) and shell restore of the last saved project on startup via a persisted storage key; stale or malformed keys fail closed.
 
+## App identity
+
+- The device-facing Android app identity is exactly **ggen**: launcher label `ggen` and process name (`applicationId`) `com.example.ggen`, applied by `scripts/prepare_android_identity.py` in the manual APK workflow after the wrapper is generated. The tagline and the internal Dart package identifier (`ggen_app`) are unchanged. `com.example` is provisional until a real application domain is selected.
+
 ## Verification
 
 GitHub Actions validates core contracts, governance and Flutter shell tests on code changes. Android debug APK generation is manual-only through `Android debug build (manual mobile test)`.
