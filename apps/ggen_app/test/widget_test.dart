@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ggen_app/main.dart';
 import 'package:ggen_app/src/controller/studio_controller.dart';
 import 'package:ggen_core/ggen_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Adds one shape node to every artboard of [project] without changing its
 /// identity or revision (valid tool-session preview semantics).
@@ -138,6 +139,30 @@ void main() {
 
     expect(find.text('Brand Studio'), findsOneWidget);
     expect(find.textContaining('0 objects'), findsOneWidget);
+    expect(find.textContaining('r0'), findsOneWidget);
+  });
+
+  testWidgets('shell starts fresh with a stale stored project key', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'workspace.last_project_key': 'project-nonexistent',
+    });
+    await tester.pumpWidget(const GgenApp());
+    await tester.pumpAndSettle();
+    expect(find.text('Untitled project'), findsOneWidget);
+    expect(find.textContaining('r0'), findsOneWidget);
+  });
+
+  testWidgets('shell starts fresh with a malformed stored project key', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'workspace.last_project_key': 'NOT A VALID KEY!',
+    });
+    await tester.pumpWidget(const GgenApp());
+    await tester.pumpAndSettle();
+    expect(find.text('Untitled project'), findsOneWidget);
     expect(find.textContaining('r0'), findsOneWidget);
   });
 }

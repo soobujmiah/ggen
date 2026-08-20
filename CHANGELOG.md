@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-20 — Persistence completion: restore and journaling
+
+- Undo and redo now append recovery-journal records: forward deltas for redo, state markers (base == target) for undo, so replay can reconstruct every reachable revision.
+- The shell restores the most recently saved project on startup via a persisted last-project storage key; stale or malformed keys fail closed with a diagnostics event.
+- Save persists the last-project key alongside the existing workspace preferences.
+- Added preferences round-trip tests, controller undo/redo journaling tests and fail-closed startup widget tests.
+
 ## 2026-08-20 — Persistence backbone (in-memory)
 
 - Implemented the core storage contracts in the app layer: `MemoryProjectStore` (atomic stage/commit/cancel transactions, stale-revision rejection, SHA-256 content receipts) and `MemoryRecoveryJournal` (bounded entry/byte budgets, ordered replay stream, replay markers, in-memory payload reconstruction).
