@@ -644,13 +644,9 @@ Future<void> _showWorkspaceSettings(
             'Move or dismiss this sheet at any time. The canvas remains unobstructed until settings are explicitly opened.',
           ),
           const SizedBox(height: 16),
-          SwitchListTile.adaptive(
-            value: canvasFirst,
+          _CanvasFirstSwitch(
+            initial: canvasFirst,
             onChanged: onCanvasFirstChanged,
-            title: const Text('Canvas-first controls'),
-            subtitle: const Text(
-              'Keep tool controls outside the active canvas',
-            ),
           ),
           ListTile(
             leading: const Icon(Icons.dashboard_customize_outlined),
@@ -683,6 +679,40 @@ Future<void> _showWorkspaceSettings(
         ],
       ),
     ),
+  );
+}
+
+class _CanvasFirstSwitch extends StatefulWidget {
+  const _CanvasFirstSwitch({required this.initial, required this.onChanged});
+
+  final bool initial;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  State<_CanvasFirstSwitch> createState() => _CanvasFirstSwitchState();
+}
+
+class _CanvasFirstSwitchState extends State<_CanvasFirstSwitch> {
+  late bool _value;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.initial;
+  }
+
+  @override
+  Widget build(BuildContext context) => SwitchListTile.adaptive(
+    value: _value,
+    onChanged: (value) {
+      // The sheet is a captured snapshot of the shell state; keep the
+      // switch's own state so taps reflect immediately (device diagnostics
+      // exposed a frozen switch when this was driven by the captured param).
+      setState(() => _value = value);
+      widget.onChanged(value);
+    },
+    title: const Text('Canvas-first controls'),
+    subtitle: const Text('Keep tool controls outside the active canvas'),
   );
 }
 

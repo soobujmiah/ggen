@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-20 — Canvas-first switch fix from device diagnostics
+
+- Device diagnostics (Redmi Turbo 4 Pro, 2026-08-20) showed six consecutive `canvas_first` "disabled" events: the settings-sheet switch used the sheet-open snapshot as its value, so taps never reflected visually. The switch now owns its state (`_CanvasFirstSwitch`) and a widget regression test toggles it off and on.
+- Recorded the device evidence and the defect in `docs/phases/phase-2-status.md`; persistence flows remain to be exercised on-device with a fresh APK from current `main`.
+
 ## 2026-08-20 — Threat model and plugin trust model
 
 - Added `docs/security/threat-model.md`: assets, trust boundaries, prioritized STRIDE-lite threats (malicious `.ggen` files, journal replay divergence, credential leakage, protected-asset boundary, traversal via storage keys, plugin abuse, diagnostics leakage) with current mitigations and residual risks.
