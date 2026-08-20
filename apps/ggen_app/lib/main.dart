@@ -11,6 +11,7 @@ import 'workspace_preferences.dart';
 import 'workspace_profile.dart';
 import 'profile_manager_sheet.dart';
 import 'src/controller/studio_controller.dart';
+import 'src/canvas/studio_canvas.dart';
 import 'src/storage/file_project_store.dart';
 import 'src/storage/file_recovery_journal.dart';
 
@@ -137,6 +138,17 @@ class _StudioShellState extends State<StudioShell> {
   bool _canvasFirst = true;
   bool _workspaceSettingsOpen = false;
   InspectorDock _inspectorDock = InspectorDock.right;
+  int _selectedTool = 0;
+
+  static const List<String> _toolNames = <String>['Select', 'Draw', 'Text'];
+
+  void _selectTool(int index) {
+    setState(() => _selectedTool = index);
+    debugLog.info('tool_select', 'Tool destination selected', {
+      'index': index,
+      'tool': _toolNames[index],
+    });
+  }
 
   @override
   void initState() {
@@ -407,7 +419,11 @@ class _StudioShellState extends State<StudioShell> {
                 children: [
                   Row(
                     children: [
-                      if (showPanels && !compact) const ToolRail(),
+                      if (showPanels && !compact)
+                        ToolRail(
+                          selectedIndex: _selectedTool,
+                          onSelected: _selectTool,
+                        ),
                       if (showPanels &&
                           !compact &&
                           _showInspector &&
@@ -417,6 +433,18 @@ class _StudioShellState extends State<StudioShell> {
                         child: CanvasArea(
                           size: constraints.biggest,
                           projectName: _studio.project.name,
+                          controller: _studio,
+                          drawEnabled: _selectedTool == 1,
+                          onNodeAdded: () {
+                            debugLog.info(
+                              'node_add',
+                              'Shape added by Draw tool',
+                              {
+                                'object_count': _studio.objectCount,
+                                'revision': _studio.revision,
+                              },
+                            );
+                          },
                         ),
                       ),
                       if (showPanels &&
@@ -470,8 +498,10 @@ class _StudioShellState extends State<StudioShell> {
               : LayoutBuilder(
                   builder: (context, constraints) => constraints.maxWidth < 700
                       ? CompactNavigationBar(
+                          selectedIndex: _selectedTool,
                           onSelected: (index) {
-                            if (index == 3 && !_workspaceSettingsOpen) {
+                            if (index == 3) {
+                              if (_workspaceSettingsOpen) return;
                               _workspaceSettingsOpen = true;
                               unawaited(
                                 _showWorkspaceSettings(
@@ -521,6 +551,8 @@ class _StudioShellState extends State<StudioShell> {
                                   () => _workspaceSettingsOpen = false,
                                 ),
                               );
+                            } else {
+                              _selectTool(index);
                             }
                           },
                         )
@@ -536,16 +568,19 @@ class _StudioShellState extends State<StudioShell> {
 }
 
 class ToolRail extends StatelessWidget {
-  const ToolRail({super.key});
+  const ToolRail({
+    required this.selectedIndex,
+    required this.onSelected,
+    super.key,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
 
   @override
   Widget build(BuildContext context) => NavigationRail(
-    selectedIndex: 0,
-    onDestinationSelected: (index) {
-      debugLog.info('tool_select', 'Tool destination selected', {
-        'index': index,
-      });
-    },
+    selectedIndex: selectedIndex,
+    onDestinationSelected: onSelected,
     labelType: NavigationRailLabelType.all,
     destinations: const [
       NavigationRailDestination(
@@ -567,34 +602,56 @@ class ToolRail extends StatelessWidget {
 }
 
 class CanvasArea extends StatelessWidget {
-  const CanvasArea({required this.size, required this.projectName, super.key});
+  const CanvasArea({
+    required this.size,
+    required this.projectName,
+    required this.controller,
+    required this.drawEnabled,
+    required this.onNodeAdded,
+    super.key,
+  });
+
   final Size size;
   final String projectName;
+  final StudioController controller;
+  final bool drawEnabled;
+  final VoidCallback onNodeAdded;
 
   @override
   Widget build(BuildContext context) => Container(
     color: const Color(0xff101217),
-    alignment: Alignment.center,
-    child: AspectRatio(
-      aspectRatio: 4 / 3,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(4),
-          boxShadow: const [BoxShadow(blurRadius: 24, color: Colors.black54)],
-        ),
-        child: LayoutBuilder(
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        LayoutBuilder(
           builder: (context, constraints) {
             _recordCanvasGeometry(context, constraints.biggest);
-            return Center(
-              child: Text(
-                projectName,
-                style: const TextStyle(color: Colors.black54),
-              ),
+            return StudioCanvas(
+              controller: controller,
+              drawEnabled: drawEnabled,
+              onNodeAdded: onNodeAdded,
             );
           },
         ),
-      ),
+        // Project name chip stays out of the gesture surface.
+        Positioned(
+          top: 12,
+          left: 12,
+          child: IgnorePointer(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                projectName,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -720,18 +777,18 @@ class _CanvasFirstSwitchState extends State<_CanvasFirstSwitch> {
 }
 
 class CompactNavigationBar extends StatelessWidget {
-  const CompactNavigationBar({this.onSelected, super.key});
-  final ValueChanged<int>? onSelected;
+  const CompactNavigationBar({
+    required this.selectedIndex,
+    required this.onSelected,
+    super.key,
+  });
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
 
   @override
   Widget build(BuildContext context) => NavigationBar(
-    selectedIndex: 0,
-    onDestinationSelected: (index) {
-      debugLog.info('tool_select', 'Tool destination selected', {
-        'index': index,
-      });
-      onSelected?.call(index);
-    },
+    selectedIndex: selectedIndex,
+    onDestinationSelected: onSelected,
     destinations: const [
       NavigationDestination(
         icon: Icon(Icons.near_me_outlined),

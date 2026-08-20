@@ -360,4 +360,92 @@ void main() {
       expect(latest.project.artboards.single.nodes, hasLength(1));
     });
   });
+
+  group('draw tool', () {
+    test('addShapeNode adds one undoable shape node with geometry', () {
+      final controller = StudioController();
+      controller.addShapeNode(300, 200);
+
+      expect(controller.revision, 1);
+      expect(controller.objectCount, 1);
+      expect(controller.canUndo, isTrue);
+
+      final node = controller.project.artboards.first.nodes.single;
+      expect(node.kind, DocumentNodeKind.shape);
+      expect(node.name, 'Shape 1');
+      final geometry = nodeGeometryForTest(node);
+      expect(geometry!['x'], 300);
+      expect(geometry['y'], 200);
+      expect(geometry['w'], 64);
+      expect(geometry['h'], 64);
+      expect(geometry['color'], isA<int>());
+    });
+
+    test('taps outside the artboard are clamped inside it', () {
+      final controller = StudioController();
+      controller.addShapeNode(-500, 10000);
+
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = nodeGeometryForTest(node)!;
+      expect(geometry['x'], 0);
+      expect(geometry['y'], 800 - 64);
+      expect(geometry['x'] + geometry['w'], lessThanOrEqualTo(1200));
+      expect(geometry['y'] + geometry['h'], lessThanOrEqualTo(800));
+    });
+
+    test('undo removes the shape and redo restores it', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+
+      controller.undo();
+      expect(controller.revision, 0);
+      expect(controller.objectCount, 0);
+      expect(controller.canUndo, isFalse);
+      expect(controller.canRedo, isTrue);
+
+      controller.redo();
+      expect(controller.revision, 1);
+      expect(controller.objectCount, 1);
+      expect(controller.project.artboards.first.nodes.single.id, nodeId);
+    });
+
+    test('invalid geometry is rejected', () {
+      final controller = StudioController();
+      expect(() => controller.addShapeNode(double.nan, 0), throwsArgumentError);
+      expect(
+        () => controller.addShapeNode(0, 0, size: -10),
+        throwsArgumentError,
+      );
+      expect(controller.revision, 0);
+    });
+
+    test('new project resets the shape sequence', () {
+      final controller = StudioController();
+      controller.addShapeNode(10, 10);
+      controller.newProject('Fresh');
+      controller.addShapeNode(20, 20);
+      expect(controller.project.artboards.first.nodes.single.name, 'Shape 1');
+    });
+  });
+}
+
+/// Reads node geometry for controller tests (kept local to avoid coupling
+/// the controller tests to the canvas widget file).
+Map<String, Object?>? nodeGeometryForTest(DocumentNode node) {
+  final x = node.extensions['x'];
+  final y = node.extensions['y'];
+  final w = node.extensions['w'];
+  final h = node.extensions['h'];
+  final color = node.extensions['color'];
+  if (x is! num || y is! num || w is! num || h is! num || color is! int) {
+    return null;
+  }
+  return <String, Object?>{
+    'x': x.toDouble(),
+    'y': y.toDouble(),
+    'w': w.toDouble(),
+    'h': h.toDouble(),
+    'color': color,
+  };
 }
