@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-20 — Zoom controls, delete shortcut and canvas-geometry log suppression
+
+- **Zoom controls overlay** (`studio_canvas.dart`): bottom-right material card with zoom-in (+25%), zoom-out (−20%), fit-to-screen buttons and a tappable zoom percentage label. Buttons disable at the viewport min/max scale limits.
+- **Delete keyboard shortcut**: Delete and Backspace keys remove the selected node through an undoable tool session (`controller.deleteNode()`), logged as `key_delete`.
+- **Canvas-geometry log suppression**: `recordCanvasGeometry` now accepts a `suppress` flag; the shell passes `_workspaceSettingsOpen` so the settings-sheet animation no longer generates diagnostic noise. `CanvasArea` gains a `suppressGeometryLog` parameter.
+- Tests: zoom controls render with scale percentage, zoom-in increases scale, zoom-out decreases scale.
+- Deferred: keyboard zoom shortcuts (Ctrl+/Ctrl-), numeric zoom input, zoom presets (50%, 100%, 200%).
+
 ## 2026-08-20 — Layer list panel with visibility, lock, delete and reorder
 
 - Added `LayerList` and `LayerPanel` widgets (`lib/src/layers/layer_list.dart`): displays all nodes in reverse z-order with kind icon, visibility toggle (eye), lock toggle (lock), delete button, drag-to-reorder handle, selection highlight and z-index badge.
