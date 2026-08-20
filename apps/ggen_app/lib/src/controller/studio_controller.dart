@@ -30,12 +30,16 @@ class StudioController extends ChangeNotifier {
        _journal =
            journal ??
            MemoryRecoveryJournal(
-             const AutosavePolicy(
+             AutosavePolicy(
                maxJournalEntries: 200,
                maxJournalBytes: 1 << 20,
                checkpointEveryTransactions: 16,
              ),
-           );
+           ),
+       _history = ProjectHistory.start(
+         _newProject(projectName),
+         maxEntries: historyLimit,
+       );
 
   static const double defaultArtboardWidth = 1200;
   static const double defaultArtboardHeight = 800;

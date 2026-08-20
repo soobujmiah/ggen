@@ -189,7 +189,7 @@ void main() {
     test('save then restore reconstructs the project from the store', () async {
       final store = MemoryProjectStore();
       final journal = MemoryRecoveryJournal(
-        const AutosavePolicy(
+        AutosavePolicy(
           maxJournalEntries: 200,
           maxJournalBytes: 1 << 20,
           checkpointEveryTransactions: 8,
@@ -223,7 +223,7 @@ void main() {
 
     test('committed edits append bounded journal transactions', () async {
       final journal = MemoryRecoveryJournal(
-        const AutosavePolicy(
+        AutosavePolicy(
           maxJournalEntries: 200,
           maxJournalBytes: 1 << 20,
           checkpointEveryTransactions: 8,
@@ -256,7 +256,7 @@ void main() {
 
     test('save appends a checkpoint once the cadence is reached', () async {
       final journal = MemoryRecoveryJournal(
-        const AutosavePolicy(
+        AutosavePolicy(
           maxJournalEntries: 200,
           maxJournalBytes: 1 << 20,
           checkpointEveryTransactions: 4,
