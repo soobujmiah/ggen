@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-20 — Select tool: node selection, hit-testing and drag-to-move
+
+- Implemented the Select tool on the canvas: selecting the Select tool (index 0) enables hit-testing on tap, with visual selection border (blue `#4E6BFF`) on the selected node.
+- `StudioController` gains `selectedNodeId`, `selectNode()`, `deselectNode()` and `moveNode()`: select is transient workspace state (no history transaction); move is one undoable tool session that clamps the resulting position into the artboard bounds.
+- `StudioCanvas` gains `selectMode`, `selectedNodeId` and `onNodeSelected` parameters. Hit-testing iterates nodes in reverse z-order (last drawn = topmost); shapes use their exact `x/y/w/h` rect, text frames use an approximate `x/y/width×height` rect from text length and font size.
+- Node drag: when a selected node is dragged, the canvas tracks the cumulative artboard-space delta and renders a live preview offset; on release, `controller.moveNode()` commits one undoable transaction (only if the delta exceeds 1 artboard unit, so a tap doesn't create a spurious move).
+- `hitTestNode()` is exposed as a public utility for tests and future consumers.
+- `newProject` clears the selection.
+- Tests: controller (select/deselect, move with clamping, move text nodes, undo/redo restores position, no-op rejection, finite-delta validation); canvas widget (selection border renders/absent, hitTestNode utility); integration with shell via diagnostics logging (`node_select`, `node_deselect`).
+- Deferred: multi-select, resize handles, rotation, z-order change, snap-to-grid, arrow-key nudge, keyboard shortcuts for delete/duplicate, layer list integration.
+
 ## 2026-08-20 — Device evidence: Text tool and content persistence verified
 
 - Redmi export (12:07:38Z, text-tool build): `node_add_text` ×2 (`fyug`, `dttd7`) confirmed the Text tool on-device; `project_save` at revision 1 / 432 bytes confirmed a project **containing content** persisted through the file store.

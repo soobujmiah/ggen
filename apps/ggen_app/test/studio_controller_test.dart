@@ -488,3 +488,133 @@ void main() {
     });
   });
 }
+
+  group('select tool', () {
+    test('selectNode sets selectedNodeId and notifies', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+
+      var notified = 0;
+      controller.addListener(() => notified++);
+
+      controller.selectNode(nodeId);
+      expect(controller.selectedNodeId, nodeId);
+      expect(notified, 1);
+
+      // Selecting the same node again is a no-op.
+      controller.selectNode(nodeId);
+      expect(notified, 1);
+    });
+
+    test('deselectNode clears the selection', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      controller.selectNode(nodeId);
+      expect(controller.selectedNodeId, nodeId);
+
+      controller.deselectNode();
+      expect(controller.selectedNodeId, isNull);
+    });
+
+    test('newProject clears the selection', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      controller.selectNode(controller.project.artboards.first.nodes.single.id);
+      controller.newProject('Fresh');
+      expect(controller.selectedNodeId, isNull);
+    });
+  });
+
+  group('node move', () {
+    test('moveNode shifts a shape node through one undoable transaction', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(controller.revision, 1);
+
+      final moved = controller.moveNode(nodeId, 50, 30);
+      expect(moved, isTrue);
+      expect(controller.revision, 2);
+      expect(controller.canUndo, isTrue);
+
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = nodeGeometry(node)!;
+      expect(geometry.x, 150);
+      expect(geometry.y, 130);
+    });
+
+    test('moveNode clamps to artboard bounds', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+
+      controller.moveNode(nodeId, -500, 9999);
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = nodeGeometry(node)!;
+      expect(geometry.x, 0);
+      expect(geometry.y, 800); // clamped to artboard height
+    });
+
+    test('moveNode returns false for nonexistent node', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      expect(controller.moveNode(GgenId('no.such.node'), 10, 10), isFalse);
+      expect(controller.revision, 1); // No extra transaction.
+    });
+
+    test('moveNode returns false for zero effective delta', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(controller.moveNode(nodeId, 0, 0), isFalse);
+      expect(controller.revision, 1); // No extra transaction.
+    });
+
+    test('moveNode rejects non-finite delta', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(() => controller.moveNode(nodeId, double.nan, 0), throwsArgumentError);
+    });
+
+    test('undo restores the original position', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      controller.moveNode(nodeId, 200, 150);
+
+      controller.undo();
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = nodeGeometry(node)!;
+      expect(geometry.x, 100);
+      expect(geometry.y, 100);
+    });
+
+    test('redo re-applies the move', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      controller.moveNode(nodeId, 200, 150);
+      controller.undo();
+      controller.redo();
+
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = nodeGeometry(node)!;
+      expect(geometry.x, 300);
+      expect(geometry.y, 250);
+    });
+
+    test('moveNode works for text nodes', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 100, 'Hello');
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+
+      controller.moveNode(nodeId, 50, 50);
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = textNodeGeometry(node)!;
+      expect(geometry.x, 150);
+      expect(geometry.y, 150);
+    });
+  });

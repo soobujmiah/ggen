@@ -62,6 +62,7 @@ class StudioController extends ChangeNotifier {
   int _shapeCount = 0;
   int _textCount = 0;
   ProjectStoreReceipt? _lastReceipt;
+  GgenId? _selectedNodeId;
 
   DocumentProject get project => _history.current;
   int get revision => project.revision;
@@ -87,6 +88,81 @@ class StudioController extends ChangeNotifier {
     (sum, artboard) => sum + artboard.nodes.length,
   );
 
+  /// Currently selected node ID, or null when nothing is selected.
+  GgenId? get selectedNodeId => _selectedNodeId;
+
+  /// Selects or deselects a node. Does not create a history transaction;
+  /// selection is transient workspace state.
+  void selectNode(GgenId? nodeId) {
+    if (_selectedNodeId == nodeId) return;
+    _selectedNodeId = nodeId;
+    notifyListeners();
+  }
+
+  /// Clears the current node selection.
+  void deselectNode() => selectNode(null);
+
+  /// Moves a node by the given artboard-space delta through one undoable
+  /// tool session. The node's `x` and `y` extensions are updated; the
+  /// resulting position is clamped into the artboard bounds.
+  ///
+  /// Returns false when no node with [nodeId] exists in the first artboard.
+  bool moveNode(GgenId nodeId, double dx, double dy) {
+    if (!dx.isFinite || !dy.isFinite) {
+      throw ArgumentError('Move delta must be finite.');
+    }
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
+    if (nodeIndex < 0) return false;
+    final node = artboard.nodes[nodeIndex];
+
+    // Read current geometry; move is a no-op for nodes without position.
+    final currentX = node.extensions['x'];
+    final currentY = node.extensions['y'];
+    if (currentX is! num || currentY is! num) return false;
+
+    final newX = (currentX.toDouble() + dx).clamp(0, artboard.width).toDouble();
+    final newY = (currentY.toDouble() + dy).clamp(0, artboard.height).toDouble();
+    if (newX == currentX.toDouble() && newY == currentY.toDouble()) {
+      return false; // No effective movement.
+    }
+
+    final movedNode = DocumentNode(
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      visible: node.visible,
+      locked: node.locked,
+      opacity: node.opacity,
+      extensions: <String, Object?>{
+        ...node.extensions,
+        'x': newX,
+        'y': newY,
+      },
+    );
+    final nextNodes = <DocumentNode>[
+      ...artboard.nodes.sublist(0, nodeIndex),
+      movedNode,
+      ...artboard.nodes.sublist(nodeIndex + 1),
+    ];
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: nextNodes,
+      ),
+      ...artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, 'Move ${node.name}');
+    return true;
+  }
+
   /// Replaces the whole project (New Project). Not undoable by design: the
   /// previous project leaves the workspace entirely.
   void newProject(String name) {
@@ -96,6 +172,7 @@ class StudioController extends ChangeNotifier {
     );
     _shapeCount = 0;
     _textCount = 0;
+    _selectedNodeId = null;
     _clearSerialized();
     _lastReceipt = null;
     notifyListeners();
