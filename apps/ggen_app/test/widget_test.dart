@@ -166,6 +166,33 @@ void main() {
     expect(find.textContaining('r0'), findsOneWidget);
   });
 
+  testWidgets('canvas-first switch toggles and reflects taps', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(const GgenApp());
+    await tester.pumpAndSettle();
+
+    // Open the workspace settings sheet via the compact Settings tab.
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    final switchFinder = find.byType(SwitchListTile);
+    expect(switchFinder, findsOneWidget);
+    expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);
+
+    // Tap on -> off; the switch must reflect the new value immediately.
+    await tester.tap(switchFinder);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(switchFinder).value, isFalse);
+
+    // Tap off -> on again; it must come back (regression: a captured-value
+    // switch would stay frozen and every tap would report the same state).
+    await tester.tap(switchFinder);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);
+  });
+
   group('adaptive layouts', () {
     Future<void> pumpAt(WidgetTester tester, Size size) async {
       tester.view.physicalSize = size;

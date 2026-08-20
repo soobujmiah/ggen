@@ -49,6 +49,14 @@ The supplied device diagnostics confirmed:
 
 Earlier diagnostics exposed profile-manager lifecycle defects. They were fixed in PR #24 and the subsequent manual retest showed no recurrence. Profile save and delete events were added in PR #25 for future evidence.
 
+A further clean device run on 2026-08-20 (export `07:49:00Z`) re-confirmed on the Redmi Turbo 4 Pro:
+
+- compact viewport `471 x 1020`, canvas geometry `471 x 353`, zero safe-area/keyboard insets at measurement time;
+- workspace restore, tool navigation (Select/Draw/Text/Settings), settings sheet, immersive enter/restore, profile apply (`bb`, `cc`) and workspace reset all exercised;
+- no Flutter or uncaught errors.
+
+The same run exposed a **canvas-first switch defect**: six consecutive `canvas_first` "disabled" events showed the settings-sheet switch reporting the sheet-open snapshot instead of reacting to taps (a captured-value switch). Fixed by making the switch own its state (`_CanvasFirstSwitch`), with a widget regression test toggling it off and on. The run's build predates the persistence milestones, so `storage_init`, `project_new`, `project_save`, `history_undo`/`redo` and `project_restore` were not yet exercised on-device; a fresh APK from current `main` is required for that validation.
+
 ## Evidence boundaries
 
 - Responsive widget tests are not physical-device tests.
