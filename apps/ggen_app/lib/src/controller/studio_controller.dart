@@ -60,6 +60,7 @@ class StudioController extends ChangeNotifier {
   int _transactionsSinceCheckpoint = 0;
   Future<void> _journalTail = Future<void>.value();
   int _shapeCount = 0;
+  int _textCount = 0;
   ProjectStoreReceipt? _lastReceipt;
 
   DocumentProject get project => _history.current;
@@ -94,6 +95,7 @@ class StudioController extends ChangeNotifier {
       maxEntries: maxHistoryEntries,
     );
     _shapeCount = 0;
+    _textCount = 0;
     _clearSerialized();
     _lastReceipt = null;
     notifyListeners();
@@ -164,6 +166,60 @@ class StudioController extends ChangeNotifier {
     final session = beginSession();
     session.updatePreview(project.copyWith(artboards: nextArtboards));
     commitSession(session, 'Add shape $_shapeCount');
+  }
+
+  /// Text-tool action: adds one text frame to the first artboard through a
+  /// reversible tool session. Geometry and text live in the node's
+  /// extensions (`x`, `y`, `size`, `text`, `color`) until a later schema
+  /// introduces typed studio payloads.
+  void addTextNode(
+    double artboardX,
+    double artboardY,
+    String text, {
+    double size = 24,
+  }) {
+    if (!artboardX.isFinite ||
+        !artboardY.isFinite ||
+        !size.isFinite ||
+        size <= 0) {
+      throw ArgumentError('Text geometry must be finite and positive.');
+    }
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || trimmed.length > 256) {
+      throw ArgumentError('Text must contain 1..256 characters.');
+    }
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return;
+    final artboard = artboards.first;
+    final clampedX = artboardX.clamp(0, artboard.width).toDouble();
+    final clampedY = artboardY.clamp(0, artboard.height).toDouble();
+
+    _textCount++;
+    final node = DocumentNode(
+      id: GgenId('text-$_textCount'),
+      kind: DocumentNodeKind.textFrame,
+      name: 'Text $_textCount',
+      extensions: <String, Object?>{
+        'x': clampedX,
+        'y': clampedY,
+        'size': size,
+        'text': trimmed,
+        'color': 0xFF222222,
+      },
+    );
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: <DocumentNode>[...artboard.nodes, node],
+      ),
+      ...artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, 'Add text $_textCount');
   }
 
   /// Commits a session preview as exactly one undoable transaction and

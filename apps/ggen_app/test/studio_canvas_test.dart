@@ -9,6 +9,9 @@ Widget _wrap(
   StudioController controller, {
   required bool drawEnabled,
   ValueChanged<CanvasViewport>? onViewportChanged,
+  void Function(Offset artboardPoint)? onTextRequest,
+  VoidCallback? onTwoFingerTap,
+  VoidCallback? onThreeFingerTap,
 }) => MaterialApp(
   home: Scaffold(
     body: StudioCanvas(
@@ -16,6 +19,9 @@ Widget _wrap(
       drawEnabled: drawEnabled,
       onNodeAdded: () {},
       onViewportChanged: onViewportChanged,
+      onTextRequest: onTextRequest,
+      onTwoFingerTap: onTwoFingerTap,
+      onThreeFingerTap: onThreeFingerTap,
     ),
   ),
 );
@@ -122,5 +128,81 @@ void main() {
     expect(after.scale, closeTo(before.scale, 0.0001));
     expect(after.offsetX, isNot(closeTo(before.offsetX, 0.0001)));
     expect(after.offsetY, isNot(closeTo(before.offsetY, 0.0001)));
+  });
+
+  testWidgets('text tool tap reports the artboard point', (tester) async {
+    final controller = StudioController();
+    Offset? reported;
+    await tester.pumpWidget(
+      _wrap(
+        controller,
+        drawEnabled: false,
+        onTextRequest: (point) => reported = point,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(StudioCanvas));
+    await tester.pumpAndSettle();
+
+    expect(reported, isNotNull);
+    expect(controller.objectCount, 0); // Text is added by the shell, not the canvas.
+  });
+
+  testWidgets('two-finger tap reports undo intent', (tester) async {
+    final controller = StudioController();
+    var twoFingerTaps = 0;
+    await tester.pumpWidget(
+      _wrap(
+        controller,
+        drawEnabled: false,
+        onTwoFingerTap: () => twoFingerTaps++,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final center = tester.getCenter(find.byType(StudioCanvas));
+    final finger1 = await tester.startGesture(center - const Offset(20, 0));
+    final finger2 = await tester.startGesture(center + const Offset(20, 0));
+    await tester.pump(const Duration(milliseconds: 40));
+    await finger1.up();
+    await finger2.up();
+    await tester.pumpAndSettle();
+
+    expect(twoFingerTaps, 1);
+  });
+
+  testWidgets('three-finger tap reports redo intent', (tester) async {
+    final controller = StudioController();
+    var threeFingerTaps = 0;
+    await tester.pumpWidget(
+      _wrap(
+        controller,
+        drawEnabled: false,
+        onThreeFingerTap: () => threeFingerTaps++,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final center = tester.getCenter(find.byType(StudioCanvas));
+    final finger1 = await tester.startGesture(center - const Offset(30, 0));
+    final finger2 = await tester.startGesture(center);
+    final finger3 = await tester.startGesture(center + const Offset(30, 0));
+    await tester.pump(const Duration(milliseconds: 40));
+    await finger1.up();
+    await finger2.up();
+    await finger3.up();
+    await tester.pumpAndSettle();
+
+    expect(threeFingerTaps, 1);
+  });
+
+  testWidgets('text frames render on the artboard', (tester) async {
+    final controller = StudioController();
+    controller.addTextNode(100, 120, 'Hello');
+    await tester.pumpWidget(_wrap(controller, drawEnabled: false));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hello'), findsOneWidget);
   });
 }

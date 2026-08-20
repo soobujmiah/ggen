@@ -176,12 +176,57 @@ class _StudioShellState extends State<StudioShell> {
     _studio = widget.controller ?? StudioController();
     _restoreWorkspace();
     unawaited(_initStorage());
+    HardwareKeyboard.instance.addHandler(_handleVolumeKey);
   }
 
   @override
   void dispose() {
+    // Method tear-offs of the same method on the same instance compare
+    // equal, so this removes the handler added in initState.
+    HardwareKeyboard.instance.removeHandler(_handleVolumeKey);
     if (_ownsStudio) _studio.dispose();
     super.dispose();
+  }
+
+  /// Volume buttons act as undo (down) and redo (up) while editing. The
+  /// event is consumed so the system volume does not change.
+  bool _handleVolumeKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.audioVolumeDown) {
+      if (!_studio.canUndo) return true;
+      _studio.undo();
+      debugLog.info('volume_undo', 'Volume-down undo', {
+        'revision': _studio.revision,
+      });
+      return true;
+    }
+    if (key == LogicalKeyboardKey.audioVolumeUp) {
+      if (!_studio.canRedo) return true;
+      _studio.redo();
+      debugLog.info('volume_redo', 'Volume-up redo', {
+        'revision': _studio.revision,
+      });
+      return true;
+    }
+    return false;
+  }
+
+  /// Text tool: prompts for the text and commits a text frame node through a
+  /// core tool session at the tapped artboard point.
+  Future<void> _addTextAt(Offset artboardPoint) async {
+    final text = await showDialog<String>(
+      context: context,
+      builder: (context) => const _TextEntryDialog(),
+    );
+    final trimmed = (text ?? '').trim();
+    if (!mounted || trimmed.isEmpty) return;
+    _studio.addTextNode(artboardPoint.dx, artboardPoint.dy, trimmed);
+    debugLog.info('node_add_text', 'Text frame added by Text tool', {
+      'text': trimmed,
+      'object_count': _studio.objectCount,
+      'revision': _studio.revision,
+    });
   }
 
   /// Swaps the shell-owned controller onto the file-backed store and
@@ -465,6 +510,27 @@ class _StudioShellState extends State<StudioShell> {
                               },
                             );
                           },
+                          onTextRequest: (artboardPoint) {
+                            _addTextAt(artboardPoint);
+                          },
+                          onTwoFingerTap: () {
+                            if (!_studio.canUndo) return;
+                            _studio.undo();
+                            debugLog.info(
+                              'gesture_undo',
+                              'Two-finger tap undo',
+                              {'revision': _studio.revision},
+                            );
+                          },
+                          onThreeFingerTap: () {
+                            if (!_studio.canRedo) return;
+                            _studio.redo();
+                            debugLog.info(
+                              'gesture_redo',
+                              'Three-finger tap redo',
+                              {'revision': _studio.revision},
+                            );
+                          },
                         ),
                       ),
                       if (showPanels &&
@@ -476,7 +542,7 @@ class _StudioShellState extends State<StudioShell> {
                   ),
                   if (!_immersive)
                     Positioned(
-                      top: 12,
+                      bottom: 16,
                       left: 12,
                       child: SafeArea(
                         child: _HistoryBar(
@@ -628,6 +694,9 @@ class CanvasArea extends StatelessWidget {
     required this.controller,
     required this.drawEnabled,
     required this.onNodeAdded,
+    this.onTextRequest,
+    this.onTwoFingerTap,
+    this.onThreeFingerTap,
     super.key,
   });
 
@@ -636,6 +705,9 @@ class CanvasArea extends StatelessWidget {
   final StudioController controller;
   final bool drawEnabled;
   final VoidCallback onNodeAdded;
+  final void Function(Offset artboardPoint)? onTextRequest;
+  final VoidCallback? onTwoFingerTap;
+  final VoidCallback? onThreeFingerTap;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -650,13 +722,18 @@ class CanvasArea extends StatelessWidget {
               controller: controller,
               drawEnabled: drawEnabled,
               onNodeAdded: onNodeAdded,
+              onTextRequest: onTextRequest,
+              onTwoFingerTap: onTwoFingerTap,
+              onThreeFingerTap: onThreeFingerTap,
             );
           },
         ),
-        // Project name chip stays out of the gesture surface.
+        // Project name chip stays out of the gesture surface; long names
+        // scroll horizontally instead of being clipped by the canvas edge.
         Positioned(
           top: 12,
           left: 12,
+          right: 96,
           child: IgnorePointer(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -664,9 +741,13 @@ class CanvasArea extends StatelessWidget {
                 color: Colors.black.withValues(alpha: 0.45),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
-                projectName,
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Text(
+                  projectName,
+                  maxLines: 1,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
               ),
             ),
           ),
@@ -817,6 +898,48 @@ class CompactNavigationBar extends StatelessWidget {
       NavigationDestination(icon: Icon(Icons.brush_outlined), label: 'Draw'),
       NavigationDestination(icon: Icon(Icons.text_fields), label: 'Text'),
       NavigationDestination(icon: Icon(Icons.tune), label: 'Settings'),
+    ],
+  );
+}
+
+/// Owns its [TextEditingController] so the controller outlives the dialog's
+/// exit animation (disposing it in the caller while the TextField was still
+/// animating out crashed with "used after being disposed").
+class _TextEntryDialog extends StatefulWidget {
+  const _TextEntryDialog();
+
+  @override
+  State<_TextEntryDialog> createState() => _TextEntryDialogState();
+}
+
+class _TextEntryDialogState extends State<_TextEntryDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Add text'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      maxLength: 256,
+      decoration: const InputDecoration(labelText: 'Text'),
+      onSubmitted: (value) => Navigator.pop(context, value),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _controller.text),
+        child: const Text('Add'),
+      ),
     ],
   );
 }

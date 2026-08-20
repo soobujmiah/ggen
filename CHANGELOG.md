@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-20 — Text tool, volume-key and multi-touch undo/redo, canvas UX fixes
+
+- Text tool implemented: selecting Text and tapping the canvas prompts for text and commits a text frame node through a core tool session (undoable, journaled); text renders on the artboard.
+- Volume buttons now drive undo/redo while editing: volume-down undoes, volume-up redoes, and the event is consumed so the system volume does not change. The dialog now owns its text controller (disposing it in the caller crashed with "used after being disposed" during the exit animation — caught by a widget test).
+- Two-finger tap = undo and three-finger tap = redo on the canvas, detected from raw pointer bursts (all fingers up within 300ms with movement under 20px); pan/zoom gestures are unaffected.
+- History bar moved to the bottom-left of the canvas so it no longer covers the project-name chip; the chip now scrolls horizontally for long project names.
+- Integration tests pin the exact device-reported flow (select Draw in the bottom bar, tap the canvas, expect a node): it passes locally, so the on-device miss was environment-specific and needs a fresh APK to re-validate.
+
 ## 2026-08-20 — Bound canvas-geometry diagnostics (device flood)
 
 - Device export (2026-08-20 09:52Z) showed ~50 `canvas_geometry` entries in a few seconds while the settings sheet animated: the sheet resizes the canvas ~1px per frame and the per-pixel dedupe still logged each distinct size, flooding the bounded log and evicting meaningful events.
