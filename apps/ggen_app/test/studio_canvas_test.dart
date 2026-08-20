@@ -343,4 +343,80 @@ void main() {
     expect(hitTestNode(text, const Offset(210, 210)), isTrue);
     expect(hitTestNode(text, const Offset(50, 50)), isFalse);
   });
+
+  testWidgets('zoom controls render and display the current scale', (
+    tester,
+  ) async {
+    final controller = StudioController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StudioCanvas(
+            controller: controller,
+            drawEnabled: false,
+            onNodeAdded: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The zoom controls overlay is present with zoom in, zoom out, and fit
+    // buttons plus the percentage label.
+    expect(find.byIcon(Icons.add), findsOneWidget); // zoom in
+    expect(find.byIcon(Icons.remove), findsOneWidget); // zoom out
+    expect(find.byIcon(Icons.fit_screen_outlined), findsOneWidget); // fit
+    // The initial scale is displayed as a percentage.
+    expect(find.textContaining('%'), findsOneWidget);
+  });
+
+  testWidgets('zoom in button increases the viewport scale', (tester) async {
+    final controller = StudioController();
+    final scales = <double>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StudioCanvas(
+            controller: controller,
+            drawEnabled: false,
+            onNodeAdded: () {},
+            onViewportChanged: (v) => scales.add(v.scale),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final initial = scales.last;
+    // Tap the zoom-in button (+ icon).
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+
+    expect(scales.last, greaterThan(initial));
+  });
+
+  testWidgets('zoom out button decreases the viewport scale', (tester) async {
+    final controller = StudioController();
+    final scales = <double>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StudioCanvas(
+            controller: controller,
+            drawEnabled: false,
+            onNodeAdded: () {},
+            onViewportChanged: (v) => scales.add(v.scale),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final initial = scales.last;
+    // Tap the zoom-out button (- icon).
+    await tester.tap(find.byIcon(Icons.remove));
+    await tester.pumpAndSettle();
+
+    expect(scales.last, lessThan(initial));
+  });
 }

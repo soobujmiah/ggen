@@ -80,6 +80,50 @@ class _StudioCanvasState extends State<StudioCanvas> {
 
   void _reportViewport() => widget.onViewportChanged?.call(_viewport);
 
+  /// Zooms in by 25% around the canvas center.
+  void _zoomIn() {
+    setState(() {
+      final artboards = widget.controller.project.artboards;
+      if (artboards.isEmpty) return;
+      final artboard = artboards.first;
+      final centerX = _viewport.offsetX + artboard.width * _viewport.scale / 2;
+      final centerY = _viewport.offsetY + artboard.height * _viewport.scale / 2;
+      _viewport = _viewport.zoomAt(
+        focalX: centerX,
+        focalY: centerY,
+        targetScale: _viewport.scale * 1.25,
+      );
+    });
+    _reportViewport();
+  }
+
+  /// Zooms out by 20% (inverse of 1.25×) around the canvas center.
+  void _zoomOut() {
+    setState(() {
+      final artboards = widget.controller.project.artboards;
+      if (artboards.isEmpty) return;
+      final artboard = artboards.first;
+      final centerX = _viewport.offsetX + artboard.width * _viewport.scale / 2;
+      final centerY = _viewport.offsetY + artboard.height * _viewport.scale / 2;
+      _viewport = _viewport.zoomAt(
+        focalX: centerX,
+        focalY: centerY,
+        targetScale: _viewport.scale / 1.25,
+      );
+    });
+    _reportViewport();
+  }
+
+  /// Fits the artboard into the current canvas constraints.
+  void _fitToScreen() {
+    final artboards = widget.controller.project.artboards;
+    if (artboards.isEmpty) return;
+    // Use the last known fit key dimensions; reset forces a re-fit.
+    _fitKey = null;
+    setState(() {});
+    _reportViewport();
+  }
+
   /// Fits the artboard into the canvas only when the canvas or artboard size
   /// changes. Calling fit on every build would reset the user's zoom/pan on
   /// every rebuild (e.g. after a gesture's setState), which a device and
@@ -197,7 +241,10 @@ class _StudioCanvasState extends State<StudioCanvas> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _fitIfNeeded(constraints, Size(artboard.width, artboard.height));
-        return Listener(
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: Listener(
           onPointerDown: _handlePointerDown,
           onPointerUp: _handlePointerUp,
           child: GestureDetector(
@@ -331,6 +378,20 @@ class _StudioCanvasState extends State<StudioCanvas> {
               ),
             ),
           ),
+              ),
+            ),
+            // Zoom controls overlay — bottom-right of the canvas.
+            Positioned(
+              right: 12,
+              bottom: 12,
+              child: _ZoomControls(
+                scale: _viewport.scale,
+                onZoomIn: _zoomIn,
+                onZoomOut: _zoomOut,
+                onFit: _fitToScreen,
+              ),
+            ),
+          ],
         );
       },
     );
@@ -546,6 +607,97 @@ class _NodeDrag {
     startScreen: startScreen,
     deltaX: dx,
     deltaY: dy,
+  );
+}
+
+/// Compact zoom controls overlay: zoom in, zoom out, fit-to-screen buttons
+/// and a zoom percentage indicator.
+class _ZoomControls extends StatelessWidget {
+  const _ZoomControls({
+    required this.scale,
+    required this.onZoomIn,
+    required this.onZoomOut,
+    required this.onFit,
+  });
+
+  final double scale;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+  final VoidCallback onFit;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = (scale * 100).round();
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(20),
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ZoomButton(
+            tooltip: 'Zoom out',
+            icon: Icons.remove,
+            onPressed: scale > CanvasViewport.minScale ? onZoomOut : null,
+          ),
+          // Tap the percentage to fit to screen.
+          InkWell(
+            borderRadius: BorderRadius.circular(4),
+            onTap: onFit,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Text(
+                '$percent%',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+          _ZoomButton(
+            tooltip: 'Zoom in',
+            icon: Icons.add,
+            onPressed: scale < CanvasViewport.maxScale ? onZoomIn : null,
+          ),
+          _ZoomButton(
+            tooltip: 'Fit to screen',
+            icon: Icons.fit_screen_outlined,
+            onPressed: onFit,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ZoomButton extends StatelessWidget {
+  const _ZoomButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onPressed,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(
+          icon,
+          size: 18,
+          color: onPressed != null ? Colors.white70 : Colors.white24,
+        ),
+      ),
+    ),
   );
 }
 

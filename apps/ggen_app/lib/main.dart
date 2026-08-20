@@ -35,7 +35,8 @@ DateTime? _lastGeometryLogAt;
 /// often a *different* quantized size can be logged; the exact rounded size
 /// is recorded when a log does happen, so settled geometry evidence stays
 /// precise.
-void recordCanvasGeometry(BuildContext context, Size size) {
+void recordCanvasGeometry(BuildContext context, Size size, {bool suppress = false}) {
+  if (suppress) return;
   if (size.width <= 0 || size.height <= 0) return;
   const quantum = 8;
   final widthRounded = size.width.round();
@@ -191,7 +192,8 @@ class _StudioShellState extends State<StudioShell> {
   }
 
   /// Volume buttons act as undo (down) and redo (up) while editing. The
-  /// event is consumed so the system volume does not change.
+  /// event is consumed so the system volume does not change. Delete and
+  /// Backspace delete the selected node when the Select tool is active.
   bool _handleVolumeKey(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
     final key = event.logicalKey;
@@ -207,6 +209,18 @@ class _StudioShellState extends State<StudioShell> {
       if (!_studio.canRedo) return true;
       _studio.redo();
       debugLog.info('volume_redo', 'Volume-up redo', {
+        'revision': _studio.revision,
+      });
+      return true;
+    }
+    // Delete / Backspace removes the selected node.
+    if (key == LogicalKeyboardKey.delete ||
+        key == LogicalKeyboardKey.backspace) {
+      final selected = _studio.selectedNodeId;
+      if (selected == null) return false;
+      _studio.deleteNode(selected);
+      debugLog.info('key_delete', 'Node deleted via keyboard', {
+        'node_id': selected.value,
         'revision': _studio.revision,
       });
       return true;
@@ -532,6 +546,7 @@ class _StudioShellState extends State<StudioShell> {
                           drawEnabled: _selectedTool == 1,
                           selectMode: _selectedTool == 0,
                           selectedNodeId: _studio.selectedNodeId,
+                          suppressGeometryLog: _workspaceSettingsOpen,
                           onNodeAdded: () {
                             debugLog.info(
                               'node_add',
@@ -784,6 +799,7 @@ class CanvasArea extends StatelessWidget {
     required this.onNodeAdded,
     this.selectMode = false,
     this.selectedNodeId,
+    this.suppressGeometryLog = false,
     this.onTextRequest,
     this.onNodeSelected,
     this.onTwoFingerTap,
@@ -798,6 +814,11 @@ class CanvasArea extends StatelessWidget {
   final VoidCallback onNodeAdded;
   final bool selectMode;
   final GgenId? selectedNodeId;
+
+  /// Suppresses canvas_geometry logging (e.g. while the settings sheet is
+  /// open and the canvas is being resized by the sheet animation).
+  final bool suppressGeometryLog;
+
   final void Function(Offset artboardPoint)? onTextRequest;
   final void Function(GgenId? nodeId)? onNodeSelected;
   final VoidCallback? onTwoFingerTap;
@@ -811,7 +832,11 @@ class CanvasArea extends StatelessWidget {
       children: [
         LayoutBuilder(
           builder: (context, constraints) {
-            recordCanvasGeometry(context, constraints.biggest);
+            recordCanvasGeometry(
+              context,
+              constraints.biggest,
+              suppress: suppressGeometryLog,
+            );
             return StudioCanvas(
               controller: controller,
               drawEnabled: drawEnabled,
