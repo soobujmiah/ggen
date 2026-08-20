@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-20 — Fix file-storage init crash on device
+
+- Device diagnostics (Redmi Turbo 4 Pro, 2026-08-20 08:06:57Z) exposed `LateInitializationError: Field '_studio' has already been initialized` in `storage_init`: the shell's `_studio` was `late final` but the storage-init path reassigns it when swapping onto the file-backed store. On-device the plugin resolves and the swap runs (throwing); in CI it never ran because `path_provider` throws `MissingPluginException` before the assignment.
+- Fixed by making `_studio` reassignable; added a regression widget test with a fake `PathProviderPlatform` that exercises the swap and asserts a real `.ggen` file is written on Save, plus an unavailable-storage fallback test.
+- The affected device build ran entirely in-memory; a fresh APK is required to re-validate persistence on-device.
+
 ## 2026-08-20 — Canvas-first switch fix from device diagnostics
 
 - Device diagnostics (Redmi Turbo 4 Pro, 2026-08-20) showed six consecutive `canvas_first` "disabled" events: the settings-sheet switch used the sheet-open snapshot as its value, so taps never reflected visually. The switch now owns its state (`_CanvasFirstSwitch`) and a widget regression test toggles it off and on.

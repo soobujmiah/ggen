@@ -130,7 +130,7 @@ class StudioShell extends StatefulWidget {
 }
 
 class _StudioShellState extends State<StudioShell> {
-  late final StudioController _studio;
+  late StudioController _studio;
   late final bool _ownsStudio;
   bool _immersive = false;
   bool _showInspector = true;

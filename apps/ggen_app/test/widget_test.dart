@@ -1,11 +1,42 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ggen_app/debug_log.dart';
 import 'package:ggen_app/main.dart';
 import 'package:ggen_app/src/controller/studio_controller.dart';
 import 'package:ggen_core/ggen_core.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// Test double for the platform documents directory. The storage-init path
+/// (getApplicationDocumentsDirectory) reaches the plugin on real devices but
+/// throws MissingPluginException in the test environment; without this fake
+/// the file-backed swap code path is never exercised in CI — which is how
+/// the LateInitializationError from the late-final reassignment escaped.
+class _FakePathProvider extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  _FakePathProvider(this.documentsPath);
+
+  final String documentsPath;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => documentsPath;
+}
+
+/// Forces the unavailable-plugin fallback path deterministically. (Without
+/// it the test environment varies: flutter test loads the Dart plugin
+/// registrant, so path_provider_linux can make the documents directory
+/// succeed instead of throwing MissingPluginException.)
+class _ThrowingPathProvider extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  @override
+  Future<String?> getApplicationDocumentsPath() async =>
+      throw MissingPluginException('path_provider unavailable in test');
+}
 
 /// Adds one shape node to every artboard of [project] without changing its
 /// identity or revision (valid tool-session preview semantics).
@@ -191,6 +222,92 @@ void main() {
     await tester.tap(switchFinder);
     await tester.pumpAndSettle();
     expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);
+  });
+
+  group('file-backed storage wiring', () {
+    testWidgets(
+      'storage init swaps to the file store and save writes a real file',
+      (tester) async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        final originalPlatform = PathProviderPlatform.instance;
+        // Real file I/O (temp dir creation, the save write) never completes
+        // in the widget test fake-async zone, so it must run inside
+        // tester.runAsync.
+        late Directory documents;
+        await tester.runAsync(() async {
+          documents = await Directory.systemTemp.createTemp('ggen_docs_');
+        });
+        PathProviderPlatform.instance = _FakePathProvider(documents.path);
+        addTearDown(() {
+          PathProviderPlatform.instance = originalPlatform;
+          if (documents.existsSync()) documents.deleteSync(recursive: true);
+        });
+        debugLog.clear();
+
+        await tester.pumpWidget(const GgenApp());
+        await tester.pumpAndSettle();
+
+        // The swap must succeed without the LateInitializationError that the
+        // real device hit (regression: _studio is reassigned in storage init).
+        expect(tester.takeException(), isNull);
+        expect(
+          debugLog.entries.any(
+            (entry) =>
+                entry.event == 'storage_init' &&
+                entry.message == 'File-backed storage initialized',
+          ),
+          isTrue,
+          reason: 'file-backed storage should have initialized',
+        );
+
+        // Save must write the canonical .ggen project file into the real
+        // documents directory (not just an in-memory map). Trigger the save
+        // and let the real async file write complete inside runAsync, then
+        // settle the UI (snackbar).
+        await tester.runAsync(() async {
+          await tester.tap(find.byTooltip('Save project'));
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        });
+        await tester.pumpAndSettle();
+
+        final projectsDir = Directory('${documents.path}/projects');
+        expect(projectsDir.existsSync(), isTrue);
+        final projectFiles = projectsDir
+            .listSync()
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.ggen'))
+            .toList();
+        expect(
+          projectFiles,
+          isNotEmpty,
+          reason: 'save should persist a .ggen file to disk',
+        );
+        expect(projectFiles.first.readAsStringSync(), contains('"format"'));
+      },
+    );
+
+    testWidgets('app continues without crash when storage is unavailable', (
+      tester,
+    ) async {
+      // Force MissingPluginException: the in-memory fallback must keep the
+      // app fully functional and record a warning.
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final originalPlatform = PathProviderPlatform.instance;
+      PathProviderPlatform.instance = _ThrowingPathProvider();
+      addTearDown(() => PathProviderPlatform.instance = originalPlatform);
+      debugLog.clear();
+      await tester.pumpWidget(const GgenApp());
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        debugLog.entries.any(
+          (entry) => entry.event == 'storage_init' && entry.level == 'warning',
+        ),
+        isTrue,
+        reason: 'unavailable storage must log a warning and fall back',
+      );
+      expect(find.text('Untitled project'), findsOneWidget);
+    });
   });
 
   group('adaptive layouts', () {

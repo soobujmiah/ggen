@@ -49,6 +49,8 @@ The supplied device diagnostics confirmed:
 
 Earlier diagnostics exposed profile-manager lifecycle defects. They were fixed in PR #24 and the subsequent manual retest showed no recurrence. Profile save and delete events were added in PR #25 for future evidence.
 
+The persistence-milestone APK (2026-08-20 08:08:47Z export) confirmed the canvas-first switch fix on-device (`canvas_first` alternates enabled/disabled) and exercised `project_new`, `project_save` (idempotent re-save at the same key/revision/digest), profiles and immersive without crashes. It also exposed a **storage-init defect**: `LateInitializationError: Field '_studio' has already been initialized` — the shell's `_studio` was `late final` but `storage_init` reassigns it when swapping onto the file-backed store. The device run therefore fell back to in-memory storage (saves were not durable). Fixed by making the field reassignable, with a regression widget test using a fake `PathProviderPlatform` that exercises the swap and asserts a real `.ggen` file write on Save. A fresh APK is required to re-validate persistence on-device; the first launch after the fix may log a benign "no stored project" warning for the stale in-memory key from the affected build.
+
 A further clean device run on 2026-08-20 (export `07:49:00Z`) re-confirmed on the Redmi Turbo 4 Pro:
 
 - compact viewport `471 x 1020`, canvas geometry `471 x 353`, zero safe-area/keyboard insets at measurement time;
