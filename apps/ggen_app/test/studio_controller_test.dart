@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ggen_app/src/canvas/studio_canvas.dart';
 import 'package:ggen_app/src/controller/studio_controller.dart';
 import 'package:ggen_app/src/storage/file_project_store.dart';
 import 'package:ggen_app/src/storage/file_recovery_journal.dart';
@@ -373,12 +374,13 @@ void main() {
       final node = controller.project.artboards.first.nodes.single;
       expect(node.kind, DocumentNodeKind.shape);
       expect(node.name, 'Shape 1');
-      final geometry = nodeGeometryForTest(node);
-      expect(geometry!['x'], 300);
-      expect(geometry['y'], 200);
-      expect(geometry['w'], 64);
-      expect(geometry['h'], 64);
-      expect(geometry['color'], isA<int>());
+      final geometry = nodeGeometry(node);
+      expect(geometry, isNotNull);
+      expect(geometry!.x, 300);
+      expect(geometry.y, 200);
+      expect(geometry.width, 64);
+      expect(geometry.height, 64);
+      expect(geometry.color, isA<int>());
     });
 
     test('taps outside the artboard are clamped inside it', () {
@@ -386,11 +388,11 @@ void main() {
       controller.addShapeNode(-500, 10000);
 
       final node = controller.project.artboards.first.nodes.single;
-      final geometry = nodeGeometryForTest(node)!;
-      expect(geometry['x'], 0);
-      expect(geometry['y'], 800 - 64);
-      expect(geometry['x'] + geometry['w'], lessThanOrEqualTo(1200));
-      expect(geometry['y'] + geometry['h'], lessThanOrEqualTo(800));
+      final geometry = nodeGeometry(node)!;
+      expect(geometry.x, 0);
+      expect(geometry.y, 800 - 64);
+      expect(geometry.x + geometry.width, lessThanOrEqualTo(1200));
+      expect(geometry.y + geometry.height, lessThanOrEqualTo(800));
     });
 
     test('undo removes the shape and redo restores it', () {

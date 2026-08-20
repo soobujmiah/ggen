@@ -109,17 +109,11 @@ class _StudioCanvasState extends State<StudioCanvas> {
             widget.controller.addShapeNode(artboardPoint.dx, artboardPoint.dy);
             widget.onNodeAdded();
           },
-          onDoubleTapDown: (details) {
-            final focal = details.localPosition;
-            setState(() {
-              _viewport = _viewport.zoomAt(
-                focalX: focal.dx,
-                focalY: focal.dy,
-                targetScale: _viewport.scale * 2,
-              );
-            });
-            _reportViewport();
-          },
+          // NOTE: no onDoubleTap* here on purpose. A double-tap recognizer
+          // holds the gesture arena open for its 300ms window, which delays
+          // single-tap resolution and deadlocks widget tests (pumpAndSettle
+          // advances time only while frames are scheduled). Double-tap zoom
+          // is deferred until the shell has explicit zoom controls.
           child: ClipRect(
             child: Transform(
               transform: Matrix4.identity()
