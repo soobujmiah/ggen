@@ -262,7 +262,10 @@ void main() {
           checkpointEveryTransactions: 4,
         ),
       );
-      final controller = StudioController(journal: journal);
+      final controller = StudioController(
+        journal: journal,
+        checkpointEveryTransactions: 4,
+      );
       for (var i = 0; i < 4; i++) {
         final session = controller.beginSession();
         session.updatePreview(_withNode(session.preview, 'shape-$i'));

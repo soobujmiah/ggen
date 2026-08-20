@@ -26,7 +26,9 @@ class StudioController extends ChangeNotifier {
     int historyLimit = 500,
     TransactionalProjectStore? store,
     AutosaveRecoveryJournal? journal,
-  }) : _store = store ?? MemoryProjectStore(),
+    int checkpointEveryTransactions = 16,
+  }) : _checkpointEveryTransactions = checkpointEveryTransactions,
+       _store = store ?? MemoryProjectStore(),
        _journal =
            journal ??
            MemoryRecoveryJournal(
@@ -45,7 +47,7 @@ class StudioController extends ChangeNotifier {
   static const double defaultArtboardHeight = 800;
 
   /// Provisional checkpoint cadence until measured limits are approved.
-  static const int checkpointEveryTransactions = 16;
+  final int _checkpointEveryTransactions;
 
   final TransactionalProjectStore _store;
   final AutosaveRecoveryJournal _journal;
@@ -149,7 +151,7 @@ class StudioController extends ChangeNotifier {
     );
     final receipt = await transaction.commit();
     _lastReceipt = receipt;
-    if (_transactionsSinceCheckpoint >= checkpointEveryTransactions) {
+    if (_transactionsSinceCheckpoint >= _checkpointEveryTransactions) {
       await _journalCheckpoint(encoded);
     }
     notifyListeners();
