@@ -243,8 +243,13 @@ void main() {
         );
 
         // Save must write the canonical .ggen project file into the real
-        // documents directory (not just an in-memory map).
+        // documents directory (not just an in-memory map). File I/O is real
+        // async work, so it must run inside tester.runAsync; in the fake-async
+        // zone the write future never completes and pumpAndSettle would hang.
         await tester.tap(find.byTooltip('Save project'));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 300)),
+        );
         await tester.pumpAndSettle();
 
         final projectsDir = Directory('${documents.path}/projects');
