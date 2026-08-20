@@ -29,9 +29,9 @@ This slice deliberately contains no copied reference UI, no protected-asset muta
 
 ## Next after the green foundation
 
-1. Pin/provision the Codespaces Flutter/Android toolchain.
-2. Prototype an original compact-phone canvas shell using the same contracts.
-3. Add tablet/desktop adaptive tests before adding creative surface breadth.
+1. ~~Pin/provision the Codespaces Flutter/Android toolchain~~ (pinned in `config/toolchain.yaml`; CI uses the exact pin).
+2. ~~Prototype an original compact-phone canvas shell using the same contracts~~ (initial prototype: `StudioCanvas` with pan/zoom and a Draw-tool session action; see `docs/phases/phase-2-status.md`).
+3. ~~Add tablet/desktop adaptive tests before adding creative surface breadth~~ (adaptive layout widget tests added).
 4. Define measured product limits and explicit migration fixtures before accepting another schema version.
 
 Redmi Turbo 4 Pro physical testing becomes mandatory when Android builds, UI, storage, performance or backend claims begin. No physical-device claim is made by this package verification.

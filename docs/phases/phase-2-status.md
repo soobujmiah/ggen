@@ -24,7 +24,8 @@
 - in-memory persistence through the core storage contracts: transactional `MemoryProjectStore` with SHA-256 content receipts and a bounded `MemoryRecoveryJournal` with checkpoint cadence and ordered replay; Save now commits through a store transaction and `restore()` reloads a committed project;
 - undo/redo journal records (forward deltas and state markers) and shell restore of the last saved project on startup via a persisted storage key; stale or malformed keys fail closed;
 - file-backed storage (ADR-0004): `FileProjectStore` (atomic `.ggen` writes with SHA-256 receipts) and `FileRecoveryJournal` (bounded line-log with durable payloads) in the app documents directory, wired through `path_provider`; in-memory adapters remain the default/fallback;
-- security and governance docs: `docs/security/threat-model.md` and ADR-0005 (plugin trust model) drafted; adaptive layout widget tests (compact/tablet/wide/zero-size).
+- security and governance docs: `docs/security/threat-model.md` and ADR-0005 (plugin trust model) drafted; adaptive layout widget tests (compact/tablet/wide/zero-size);
+- original compact-phone canvas prototype: `StudioCanvas` with pinch-zoom, pan, double-tap zoom and draw-tap input on an immutable `CanvasViewport`; the Draw tool commits shape nodes through core tool sessions (undoable, journaled), so undo/redo and live object count are exercisable on-device for the first time. Real vector drawing, selection, layer list and stylus input are deferred.
 
 ## App identity
 

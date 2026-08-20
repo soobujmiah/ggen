@@ -7,7 +7,7 @@ import 'package:ggen_core/ggen_core.dart';
 /// File-backed [TransactionalProjectStore].
 ///
 /// Layout under [root]:
-///   <root>/projects/<key>.ggen
+///   `<root>/projects/<key>.ggen`
 ///
 /// Keys are validated stable identifiers (`[a-z][a-z0-9_.-]{0,127}`), so the
 /// file name cannot escape the projects directory. Writes are atomic: the

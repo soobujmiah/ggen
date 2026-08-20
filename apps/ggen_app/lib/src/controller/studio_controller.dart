@@ -59,6 +59,7 @@ class StudioController extends ChangeNotifier {
   int _journalSequence = 0;
   int _transactionsSinceCheckpoint = 0;
   Future<void> _journalTail = Future<void>.value();
+  int _shapeCount = 0;
   ProjectStoreReceipt? _lastReceipt;
 
   DocumentProject get project => _history.current;
@@ -92,6 +93,7 @@ class StudioController extends ChangeNotifier {
       _newProject(name),
       maxEntries: maxHistoryEntries,
     );
+    _shapeCount = 0;
     _clearSerialized();
     _lastReceipt = null;
     notifyListeners();
@@ -99,6 +101,70 @@ class StudioController extends ChangeNotifier {
 
   /// Opens a reversible tool session against the current project snapshot.
   ProjectToolSession beginSession() => ProjectToolSession(project);
+
+  /// Palette for the Draw tool's initial shapes (ARGB).
+  static const List<int> shapePalette = <int>[
+    0xFF4E6BFF,
+    0xFFFF6B6B,
+    0xFFFFD93D,
+    0xFF6BCB77,
+    0xFFB983FF,
+    0xFFFF9F68,
+    0xFF4ECDC4,
+    0xFFE056FD,
+  ];
+
+  /// Draw-tool action: adds one shape node to the first artboard through a
+  /// reversible tool session, so it is exactly one undoable transaction.
+  ///
+  /// The tap point is clamped into the artboard; node geometry lives in the
+  /// node's extensions (`x`, `y`, `w`, `h`, `color`) until a later schema
+  /// introduces typed studio payloads.
+  void addShapeNode(double artboardX, double artboardY, {double size = 64}) {
+    if (!artboardX.isFinite ||
+        !artboardY.isFinite ||
+        !size.isFinite ||
+        size <= 0) {
+      throw ArgumentError('Shape geometry must be finite and positive.');
+    }
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return;
+    final artboard = artboards.first;
+    final effectiveSize = size.clamp(1, artboard.width).toDouble();
+    final clampedX = artboardX
+        .clamp(0, artboard.width - effectiveSize)
+        .toDouble();
+    final clampedY = artboardY
+        .clamp(0, artboard.height - effectiveSize)
+        .toDouble();
+
+    _shapeCount++;
+    final node = DocumentNode(
+      id: GgenId('node-$_shapeCount'),
+      kind: DocumentNodeKind.shape,
+      name: 'Shape $_shapeCount',
+      extensions: <String, Object?>{
+        'x': clampedX,
+        'y': clampedY,
+        'w': effectiveSize,
+        'h': effectiveSize,
+        'color': shapePalette[_shapeCount % shapePalette.length],
+      },
+    );
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: <DocumentNode>[...artboard.nodes, node],
+      ),
+      ...artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, 'Add shape $_shapeCount');
+  }
 
   /// Commits a session preview as exactly one undoable transaction and
   /// appends a bounded recovery-journal transaction record.

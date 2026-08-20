@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-20 — Compact-phone canvas shell prototype
+
+- Original `StudioCanvas`: renders the first artboard with pinch-zoom, one-finger pan, double-tap zoom and draw-tap input, built on an immutable, widget-free `CanvasViewport` (fit, focal-anchored zoom, clamped scale 0.05–8, screen/artboard mapping).
+- The Draw tool is now functional: selecting Draw and tapping the canvas commits a shape node through a core tool session (`StudioController.addShapeNode`) — one undoable transaction, journaled, clamped into the artboard, with geometry in the node extensions (`x/y/w/h/color`).
+- Undo/redo become exercisable on-device for the first time (history bar was previously always disabled); the status bar object count updates live.
+- Tool rail and compact bottom navigation now track the selected tool (Select/Draw/Text; Settings stays on index 3).
+- Adaptive input contract deliberately not yet declared: the core contract fails closed without a command palette and numeric inspector, which do not exist yet; declared in the deferred list.
+- Tests: viewport math (fit, clamping, focal-anchored zoom, mapping round trip), controller draw tool (clamp, undo/redo, invalid args, sequence reset), canvas widget (render, draw-tap add, select-tap no-op, pinch zoom, pan without zoom).
+- Deferred: real vector drawing, node selection/move/resize, layer list, stylus pressure, adaptive-input declaration.
+
 ## 2026-08-20 — On-device persistence verified; clean-install diagnostics
 
 - Device export (2026-08-20 09:01:17Z) confirmed the storage-init fix on the Redmi Turbo 4 Pro: `storage_init` logged info "File-backed storage initialized" at `/data/user/0/com.example.ggen/app_flutter` (the path also confirms the `com.example.ggen` applicationId on-device). Saves persist through the file store with idempotent digests; the canvas-first switch alternated across six toggles; profiles, reset, immersive and project_new/save ran with no errors.
