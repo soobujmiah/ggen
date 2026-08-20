@@ -10,6 +10,8 @@ import 'workspace_profile.dart';
 import 'profile_manager_sheet.dart';
 import 'src/controller/studio_controller.dart';
 
+import 'package:ggen_core/ggen_core.dart';
+
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 final Set<String> _loggedLayoutModes = <String>{};
 
@@ -138,12 +140,40 @@ class _StudioShellState extends State<StudioShell> {
     _ownsStudio = widget.controller == null;
     _studio = widget.controller ?? StudioController();
     _restoreWorkspace();
+    _restoreLastProject();
   }
 
   @override
   void dispose() {
     if (_ownsStudio) _studio.dispose();
     super.dispose();
+  }
+
+  /// Restores the most recently saved project on startup, if any. A missing,
+  /// stale or malformed stored key is fail-closed: the workspace simply
+  /// starts fresh and the condition is recorded in diagnostics.
+  Future<void> _restoreLastProject() async {
+    final prefs = await WorkspacePreferences.load();
+    final key = prefs.lastProjectKey;
+    if (key == null) return;
+    try {
+      final restored = await _studio.restore(ProjectStorageKey(key));
+      if (restored && mounted) {
+        debugLog.info('project_restore', 'Last project restored', {
+          'key': key,
+          'revision': _studio.revision,
+          'name': _studio.project.name,
+        });
+      } else if (mounted) {
+        debugLog.warning('project_restore', 'No stored project for last key', {
+          'key': key,
+        });
+      }
+    } on ArgumentError {
+      debugLog.warning('project_restore', 'Stored project key is malformed', {
+        'key': key,
+      });
+    }
   }
 
   Future<void> _restoreWorkspace() async {
@@ -216,6 +246,12 @@ class _StudioShellState extends State<StudioShell> {
         'bytes': receipt.byteSize,
         'sha256': receipt.contentSha256,
       });
+      await WorkspacePreferences(
+        inspectorVisible: _showInspector,
+        canvasFirst: _canvasFirst,
+        inspectorDock: _inspectorDock.name,
+        lastProjectKey: receipt.key.value,
+      ).save();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

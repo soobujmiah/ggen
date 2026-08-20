@@ -285,5 +285,38 @@ void main() {
       expect(journal.records.last.baseRevision, 4);
       expect(journal.records.last.targetRevision, 4);
     });
+
+    test('undo and redo append journal state markers and deltas', () async {
+      final journal = MemoryRecoveryJournal(
+        AutosavePolicy(
+          maxJournalEntries: 200,
+          maxJournalBytes: 1 << 20,
+          checkpointEveryTransactions: 8,
+        ),
+      );
+      final controller = StudioController(journal: journal);
+
+      final session = controller.beginSession();
+      session.updatePreview(_withNode(session.preview, 'shape-1'));
+      controller.commitSession(session, 'add shape-1'); // delta 0 -> 1
+      controller.undo(); // state marker 0 == 0
+      controller.redo(); // delta 0 -> 1
+
+      expect(journal.recordCount, 3);
+      final records = journal.records;
+      expect(records[0].baseRevision, 0);
+      expect(records[0].targetRevision, 1);
+      expect(records[1].baseRevision, 0);
+      expect(records[1].targetRevision, 0);
+      expect(records[2].baseRevision, 0);
+      expect(records[2].targetRevision, 1);
+      expect(
+        records.every(
+          (record) => record.kind == RecoveryRecordKind.transaction,
+        ),
+        isTrue,
+      );
+      expect(records.last.projectId, controller.project.id);
+    });
   });
 }

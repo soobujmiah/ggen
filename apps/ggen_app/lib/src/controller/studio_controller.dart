@@ -103,10 +103,7 @@ class StudioController extends ChangeNotifier {
   void commitSession(ProjectToolSession session, String description) {
     final transaction = session.commit(description);
     _history = _history.commit(transaction);
-    _journalTransaction(
-      transaction.before.revision,
-      transaction.after.revision,
-    );
+    _journalRecord(transaction.before.revision, transaction.after.revision);
     _clearSerialized();
     notifyListeners();
   }
@@ -117,14 +114,20 @@ class StudioController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Undoes one transaction and records a journal state marker so replay can
+  /// reconstruct the resulting revision without a forward delta.
   void undo() {
     _history = _history.undo();
+    _journalRecord(revision, revision);
     _clearSerialized();
     notifyListeners();
   }
 
+  /// Redoes one transaction and records a forward journal delta.
   void redo() {
+    final revisionBefore = revision;
     _history = _history.redo();
+    _journalRecord(revisionBefore, revision);
     _clearSerialized();
     notifyListeners();
   }
@@ -196,7 +199,12 @@ class StudioController extends ChangeNotifier {
     );
   }
 
-  void _journalTransaction(int baseRevision, int targetRevision) {
+  /// Appends a recovery-journal transaction record for a history transition.
+  ///
+  /// Forward transitions (commit, redo) record a delta with base < target.
+  /// Non-forward transitions (undo) record a state marker with base == target
+  /// so replay can reconstruct the resulting revision directly.
+  void _journalRecord(int baseRevision, int targetRevision) {
     final encoded = _encodeProject(project);
     _journalSequence++;
     unawaited(
