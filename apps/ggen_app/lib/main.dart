@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'debug_log.dart';
 import 'workspace_preferences.dart';
 import 'workspace_profile.dart';
 import 'profile_manager_sheet.dart';
 import 'src/controller/studio_controller.dart';
+import 'src/storage/file_project_store.dart';
+import 'src/storage/file_recovery_journal.dart';
 
 import 'package:ggen_core/ggen_core.dart';
 
@@ -140,13 +144,56 @@ class _StudioShellState extends State<StudioShell> {
     _ownsStudio = widget.controller == null;
     _studio = widget.controller ?? StudioController();
     _restoreWorkspace();
-    _restoreLastProject();
+    unawaited(_initStorage());
   }
 
   @override
   void dispose() {
     if (_ownsStudio) _studio.dispose();
     super.dispose();
+  }
+
+  /// Swaps the shell-owned controller onto the file-backed store and
+  /// journal once the platform documents directory is known.
+  ///
+  /// The store/journal adapters are pure Dart and take the directory
+  /// explicitly; only this resolution needs the platform plugin. When the
+  /// plugin is unavailable (tests, unsupported platform) the controller
+  /// stays on the in-memory adapters, which is a fully functional fallback.
+  Future<void> _initStorage() async {
+    if (!_ownsStudio) return;
+    try {
+      final documents = await getApplicationDocumentsDirectory();
+      final next = StudioController(
+        store: FileProjectStore(documents),
+        journal: FileRecoveryJournal(
+          documents,
+          AutosavePolicy(
+            maxJournalEntries: 200,
+            maxJournalBytes: 1 << 20,
+            checkpointEveryTransactions: 16,
+          ),
+        ),
+      );
+      final previous = _studio;
+      _studio = next;
+      previous.dispose();
+      debugLog.info('storage_init', 'File-backed storage initialized', {
+        'path': documents.path,
+      });
+    } on MissingPluginException {
+      debugLog.warning(
+        'storage_init',
+        'File storage plugin unavailable; using in-memory storage',
+      );
+    } catch (error) {
+      debugLog.warning('storage_init', 'File storage unavailable', {
+        'error': error.toString(),
+      });
+    }
+    if (!mounted) return;
+    setState(() {});
+    await _restoreLastProject();
   }
 
   /// Restores the most recently saved project on startup, if any. A missing,

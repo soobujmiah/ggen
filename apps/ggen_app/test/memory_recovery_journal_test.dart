@@ -83,22 +83,23 @@ void main() {
     test('payload association reconstructs the latest project', () async {
       final journal = MemoryRecoveryJournal(_policy());
       await journal.append(_record(project, 0));
+      final codec = ProjectCodec(limits: ProjectCodecLimits.conservative());
       final envelope0 = ProjectEnvelope(
         project: DocumentProject(id: project, name: 'P', revision: 0),
         schemaVersion: ProjectSchemaVersion(ProjectSchemaVersion.current),
       );
-      journal.storePayload(GgenId('rec-0'), envelope0);
+      journal.storePayload(project, GgenId('rec-0'), codec.encode(envelope0));
 
       await journal.append(_record(project, 1));
       final envelope1 = ProjectEnvelope(
         project: DocumentProject(id: project, name: 'P', revision: 1),
         schemaVersion: ProjectSchemaVersion(ProjectSchemaVersion.current),
       );
-      journal.storePayload(GgenId('rec-1'), envelope1);
+      journal.storePayload(project, GgenId('rec-1'), codec.encode(envelope1));
 
       expect(journal.payloadFor(GgenId('rec-0'))!.project.revision, 0);
-      expect(journal.latestPayload(project)!.project.revision, 1);
-      expect(journal.latestPayload(GgenId('other')), isNull);
+      expect((await journal.latestPayload(project))!.project.revision, 1);
+      expect(await journal.latestPayload(GgenId('other')), isNull);
     });
 
     test('replay markers cannot move backwards', () async {

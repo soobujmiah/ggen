@@ -8,6 +8,7 @@ import 'package:ggen_core/ggen_core.dart';
 
 import '../storage/memory_project_store.dart';
 import '../storage/memory_recovery_journal.dart';
+import '../storage/payload_journal.dart';
 
 /// App-layer controller that owns the current document project through the
 /// platform-neutral `ggen_core` contracts.
@@ -57,6 +58,7 @@ class StudioController extends ChangeNotifier {
   int _lastSerializedBytes = 0;
   int _journalSequence = 0;
   int _transactionsSinceCheckpoint = 0;
+  Future<void> _journalTail = Future<void>.value();
   ProjectStoreReceipt? _lastReceipt;
 
   DocumentProject get project => _history.current;
@@ -206,39 +208,56 @@ class StudioController extends ChangeNotifier {
   /// so replay can reconstruct the resulting revision directly.
   void _journalRecord(int baseRevision, int targetRevision) {
     final encoded = _encodeProject(project);
-    _journalSequence++;
-    unawaited(
-      _journal.append(
-        RecoveryJournalRecord(
-          id: GgenId('txn-$_journalSequence'),
-          projectId: project.id,
-          kind: RecoveryRecordKind.transaction,
-          sequence: _journalSequence,
-          baseRevision: baseRevision,
-          targetRevision: targetRevision,
-          payloadSha256: _sha256Hex(encoded),
-          payloadBytes: utf8.encode(encoded).length,
-        ),
-      ),
+    final record = RecoveryJournalRecord(
+      id: GgenId('txn-$_journalSequence'),
+      projectId: project.id,
+      kind: RecoveryRecordKind.transaction,
+      sequence: _journalSequence,
+      baseRevision: baseRevision,
+      targetRevision: targetRevision,
+      payloadSha256: _sha256Hex(encoded),
+      payloadBytes: utf8.encode(encoded).length,
     );
+    _journalSequence++;
+    // Append then store the payload in order, so file-backed journals never
+    // see a payload before the record's journal exists. The append starts
+    // synchronously (in-memory journals update their records immediately);
+    // the chain exists only so flushJournal can await full quiescence.
+    final journalFuture = _appendAndStorePayload(record, encoded);
+    _journalTail = _journalTail.then((_) => journalFuture);
     _transactionsSinceCheckpoint++;
   }
 
   Future<void> _journalCheckpoint(String encoded) async {
-    _journalSequence++;
-    await _journal.append(
-      RecoveryJournalRecord(
-        id: GgenId('cp-$_journalSequence'),
-        projectId: project.id,
-        kind: RecoveryRecordKind.checkpoint,
-        sequence: _journalSequence,
-        baseRevision: project.revision,
-        targetRevision: project.revision,
-        payloadSha256: _sha256Hex(encoded),
-        payloadBytes: utf8.encode(encoded).length,
-      ),
+    final record = RecoveryJournalRecord(
+      id: GgenId('cp-$_journalSequence'),
+      projectId: project.id,
+      kind: RecoveryRecordKind.checkpoint,
+      sequence: _journalSequence,
+      baseRevision: project.revision,
+      targetRevision: project.revision,
+      payloadSha256: _sha256Hex(encoded),
+      payloadBytes: utf8.encode(encoded).length,
     );
+    _journalSequence++;
+    await _appendAndStorePayload(record, encoded);
     _transactionsSinceCheckpoint = 0;
+  }
+
+  Future<void> _appendAndStorePayload(
+    RecoveryJournalRecord record,
+    String encoded,
+  ) async {
+    await _journal.append(record);
+    if (_journal case PayloadJournal journal) {
+      journal.storePayload(record.projectId, record.id, encoded);
+    }
+  }
+
+  /// Waits for all chained journal appends and payload stores to complete.
+  /// Tests and save paths use this to observe a quiescent journal.
+  Future<void> flushJournal() async {
+    await _journalTail;
   }
 
   static String _sha256Hex(String value) =>
