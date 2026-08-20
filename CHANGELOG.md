@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-20 — Android app identity is ggen
+
+- Added `scripts/prepare_android_identity.py`: normalizes the CI-generated Android wrapper so the device-facing app identity is exactly "ggen" — launcher label `ggen` and process name (`applicationId`) `com.example.ggen` — instead of the `flutter create` default `ggen_app`/`com.example.ggen_app`.
+- The manual APK workflow applies the script after generating the wrapper; the artifact is now `ggen-debug-apk`.
+- Idempotent and fail-loud: CI refuses to ship an APK whose identity patterns are missing.
+- The tagline "AI Creative & Document Studio" is unchanged; the Dart package identifier (`ggen_app`) and namespace stay internal and are not user-visible. `com.example` remains provisional until a real application domain is selected.
+- The committed wrapper policy (`generated_android_wrapper_must_be_committed`) remains an open toolchain decision; the wrapper is still generated per manual build.
+
 ## 2026-08-20 — Persistence completion: restore and journaling
 
 - Undo and redo now append recovery-journal records: forward deltas for redo, state markers (base == target) for undo, so replay can reconstruct every reachable revision.
