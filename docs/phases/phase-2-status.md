@@ -22,7 +22,8 @@
 - app-layer `StudioController` wired to `ggen_core` (project lifecycle, tool sessions, bounded undo/redo, canonical project serialization), with the shell observing it;
 - functional New project and Save (canonical JSON) actions, canvas undo/redo history bar, and live object count and revision status;
 - in-memory persistence through the core storage contracts: transactional `MemoryProjectStore` with SHA-256 content receipts and a bounded `MemoryRecoveryJournal` with checkpoint cadence and ordered replay; Save now commits through a store transaction and `restore()` reloads a committed project;
-- undo/redo journal records (forward deltas and state markers) and shell restore of the last saved project on startup via a persisted storage key; stale or malformed keys fail closed.
+- undo/redo journal records (forward deltas and state markers) and shell restore of the last saved project on startup via a persisted storage key; stale or malformed keys fail closed;
+- file-backed storage (ADR-0004): `FileProjectStore` (atomic `.ggen` writes with SHA-256 receipts) and `FileRecoveryJournal` (bounded line-log with durable payloads) in the app documents directory, wired through `path_provider`; in-memory adapters remain the default/fallback.
 
 ## App identity
 
@@ -59,5 +60,5 @@ Earlier diagnostics exposed profile-manager lifecycle defects. They were fixed i
 1. Generate a manual APK only when another device validation cycle is needed.
 2. Exercise profile save, apply, delete and reset flows on the Redmi Turbo 4 Pro.
 3. Exercise the New project, Save, undo and redo flows on the Redmi Turbo 4 Pro and export diagnostics containing `project_new`, `project_save`, `history_undo` and `history_redo`.
-4. Persist projects through the core storage contracts once a platform storage decision is accepted (file-backed adapter; the in-memory chain is complete and tested).
+4. SAF/MediaStore user-facing Import/Export (ADR-0004 defers this): share-sheet/SAF picker flow for exporting `.ggen` project files to user-chosen locations and importing them back; progress, cancellation and tests.
 5. Continue dockable panel and creative-surface implementation after the workspace foundation remains stable.

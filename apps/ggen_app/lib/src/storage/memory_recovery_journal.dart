@@ -1,14 +1,17 @@
 import 'package:ggen_core/ggen_core.dart';
 
-/// Bounded in-memory [AutosaveRecoveryJournal] used until a platform storage
-/// decision is accepted.
+import 'payload_journal.dart';
+
+/// Bounded in-memory [AutosaveRecoveryJournal] used as the default and for
+/// tests.
 ///
 /// Records are appended in order, evicted oldest-first when the entry count
 /// or byte budget from [policy] is exceeded, and replayed in append order.
 /// Payload association is an in-memory extension so replay can reconstruct
-/// projects within this process; the file adapter milestone will define the
+/// projects within this process; the file-backed journal provides the
 /// durable payload layout.
-final class MemoryRecoveryJournal implements AutosaveRecoveryJournal {
+final class MemoryRecoveryJournal
+    implements AutosaveRecoveryJournal, PayloadJournal {
   MemoryRecoveryJournal(this.policy);
 
   /// Per-record in-memory overhead estimate used for the byte budget.
@@ -16,8 +19,11 @@ final class MemoryRecoveryJournal implements AutosaveRecoveryJournal {
 
   final AutosavePolicy policy;
   final List<RecoveryJournalRecord> _records = <RecoveryJournalRecord>[];
-  final Map<GgenId, ProjectEnvelope> _payloads = <GgenId, ProjectEnvelope>{};
+  final Map<GgenId, String> _payloads = <GgenId, String>{};
   final Map<GgenId, int> _replayedThrough = <GgenId, int>{};
+  final ProjectCodec _codec = ProjectCodec(
+    limits: ProjectCodecLimits.conservative(),
+  );
 
   List<RecoveryJournalRecord> get records => List.unmodifiable(_records);
   int get recordCount => _records.length;
@@ -34,25 +40,29 @@ final class MemoryRecoveryJournal implements AutosaveRecoveryJournal {
     _evict();
   }
 
-  /// Memory-only extension: associates the encoded payload with [recordId]
-  /// so replay can reconstruct the project in this process.
-  void storePayload(GgenId recordId, ProjectEnvelope envelope) {
-    _payloads[recordId] = envelope;
+  @override
+  void storePayload(GgenId projectId, GgenId recordId, String canonicalJson) {
+    _payloads[recordId] = canonicalJson;
   }
 
-  ProjectEnvelope? payloadFor(GgenId recordId) => _payloads[recordId];
-
-  /// Reconstructs the latest payload recorded for [projectId] in sequence
-  /// order — the in-memory replay result.
-  ProjectEnvelope? latestPayload(GgenId projectId) {
-    ProjectEnvelope? found;
-    for (final record in _records) {
-      if (record.projectId == projectId) {
-        final payload = _payloads[record.id];
-        if (payload != null) found = payload;
-      }
+  ProjectEnvelope? payloadFor(GgenId recordId) {
+    final payload = _payloads[recordId];
+    if (payload == null) return null;
+    try {
+      return _codec.decode(payload);
+    } on FormatException {
+      return null;
     }
-    return found;
+  }
+
+  @override
+  ProjectEnvelope? latestPayload(GgenId projectId) {
+    GgenId? latestRecord;
+    for (final record in _records) {
+      if (record.projectId == projectId) latestRecord = record.id;
+    }
+    if (latestRecord == null) return null;
+    return payloadFor(latestRecord);
   }
 
   @override

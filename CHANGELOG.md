@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-20 — File-backed storage (ADR-0004)
+
+- Accepted ADR-0004: app-private project store with deferred SAF export.
+- Added `FileProjectStore`: atomic (temp+rename) per-project `.ggen` writes of the canonical `ggen.project` JSON in the app documents directory; stale-revision and non-advancing-revision rejection; SHA-256 receipts; durable across instances.
+- Added `FileRecoveryJournal`: line-oriented JSON log per project under a journal subdirectory, bounded by the journal policy, with durable payload association (`PayloadJournal`) so replay can reconstruct the latest project state; replay markers remain session-scoped.
+- The shell resolves the documents directory via `path_provider` and swaps onto the file-backed adapters; the in-memory adapters remain the default and a fully functional fallback (tests, missing plugin).
+- `path_provider 2.1.6` added with provenance receipts for the full plugin family (11 records, BSD-3-Clause, review still pending per repo policy).
+- SAF/MediaStore import/export is the next storage milestone and is explicitly out of scope here.
+- Added file store, file journal, cross-restart controller durability tests.
+
 ## 2026-08-20 — Android app identity is ggen
 
 - Added `scripts/prepare_android_identity.py`: normalizes the CI-generated Android wrapper so the device-facing app identity is exactly "ggen" — launcher label `ggen` and process name (`applicationId`) `com.example.ggen` — instead of the `flutter create` default `ggen_app`/`com.example.ggen_app`.

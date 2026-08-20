@@ -8,6 +8,7 @@ import 'package:ggen_core/ggen_core.dart';
 
 import '../storage/memory_project_store.dart';
 import '../storage/memory_recovery_journal.dart';
+import '../storage/payload_journal.dart';
 
 /// App-layer controller that owns the current document project through the
 /// platform-neutral `ggen_core` contracts.
@@ -206,39 +207,44 @@ class StudioController extends ChangeNotifier {
   /// so replay can reconstruct the resulting revision directly.
   void _journalRecord(int baseRevision, int targetRevision) {
     final encoded = _encodeProject(project);
-    _journalSequence++;
-    unawaited(
-      _journal.append(
-        RecoveryJournalRecord(
-          id: GgenId('txn-$_journalSequence'),
-          projectId: project.id,
-          kind: RecoveryRecordKind.transaction,
-          sequence: _journalSequence,
-          baseRevision: baseRevision,
-          targetRevision: targetRevision,
-          payloadSha256: _sha256Hex(encoded),
-          payloadBytes: utf8.encode(encoded).length,
-        ),
-      ),
+    final record = RecoveryJournalRecord(
+      id: GgenId('txn-$_journalSequence'),
+      projectId: project.id,
+      kind: RecoveryRecordKind.transaction,
+      sequence: _journalSequence,
+      baseRevision: baseRevision,
+      targetRevision: targetRevision,
+      payloadSha256: _sha256Hex(encoded),
+      payloadBytes: utf8.encode(encoded).length,
     );
+    _journalSequence++;
+    unawaited(_journal.append(record));
+    _storeJournalPayload(record, encoded);
     _transactionsSinceCheckpoint++;
   }
 
   Future<void> _journalCheckpoint(String encoded) async {
-    _journalSequence++;
-    await _journal.append(
-      RecoveryJournalRecord(
-        id: GgenId('cp-$_journalSequence'),
-        projectId: project.id,
-        kind: RecoveryRecordKind.checkpoint,
-        sequence: _journalSequence,
-        baseRevision: project.revision,
-        targetRevision: project.revision,
-        payloadSha256: _sha256Hex(encoded),
-        payloadBytes: utf8.encode(encoded).length,
-      ),
+    final record = RecoveryJournalRecord(
+      id: GgenId('cp-$_journalSequence'),
+      projectId: project.id,
+      kind: RecoveryRecordKind.checkpoint,
+      sequence: _journalSequence,
+      baseRevision: project.revision,
+      targetRevision: project.revision,
+      payloadSha256: _sha256Hex(encoded),
+      payloadBytes: utf8.encode(encoded).length,
     );
+    _journalSequence++;
+    await _journal.append(record);
+    _storeJournalPayload(record, encoded);
     _transactionsSinceCheckpoint = 0;
+  }
+
+  void _storeJournalPayload(RecoveryJournalRecord record, String encoded) {
+    final journal = _journal;
+    if (journal is PayloadJournal) {
+      journal.storePayload(record.projectId, record.id, encoded);
+    }
   }
 
   static String _sha256Hex(String value) =>

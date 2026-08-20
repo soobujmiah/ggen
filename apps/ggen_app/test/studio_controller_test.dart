@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ggen_app/src/controller/studio_controller.dart';
+import 'package:ggen_app/src/storage/file_project_store.dart';
+import 'package:ggen_app/src/storage/file_recovery_journal.dart';
 import 'package:ggen_app/src/storage/memory_project_store.dart';
 import 'package:ggen_app/src/storage/memory_recovery_journal.dart';
 import 'package:ggen_core/ggen_core.dart';
@@ -317,6 +321,42 @@ void main() {
         isTrue,
       );
       expect(records.last.projectId, controller.project.id);
+    });
+
+    test('file-backed save survives a full controller restart', () async {
+      final root = await Directory.systemTemp.createTemp('ggen_restart_');
+      addTearDown(() => root.delete(recursive: true));
+
+      final store = FileProjectStore(root);
+      final journal = FileRecoveryJournal(
+        root,
+        AutosavePolicy(
+          maxJournalEntries: 200,
+          maxJournalBytes: 1 << 20,
+          checkpointEveryTransactions: 8,
+        ),
+      );
+      final first = StudioController(store: store, journal: journal);
+      final session = first.beginSession();
+      session.updatePreview(_withNode(session.preview, 'shape-1'));
+      first.commitSession(session, 'add shape-1');
+      final key = first.storageKey;
+      final receipt = await first.save();
+      expect(receipt.byteSize, greaterThan(0));
+
+      // A brand-new controller over the same root (fresh process) restores
+      // the project from the file store with the journal intact.
+      final restarted = StudioController(store: store, journal: journal);
+      expect(await restarted.restore(key), isTrue);
+      expect(restarted.project.id, first.project.id);
+      expect(restarted.revision, 1);
+      expect(restarted.objectCount, 1);
+
+      // The journal carries the durable payload for replay.
+      final latest = await journal.latestPayload(restarted.project.id);
+      expect(latest, isNotNull);
+      expect(latest!.project.revision, 1);
+      expect(latest.project.artboards.single.nodes, hasLength(1));
     });
   });
 }
