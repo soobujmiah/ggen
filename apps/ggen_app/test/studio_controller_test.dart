@@ -728,4 +728,106 @@ void main() {
       expect(controller.revision, 0);
     });
   });
+
+  group('resize node', () {
+    test('resizeNode updates shape geometry through an undoable session', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+
+      final result = controller.resizeNode(
+        nodeId,
+        x: 50,
+        y: 50,
+        width: 128,
+        height: 96,
+      );
+      expect(result, isTrue);
+      expect(controller.revision, 2);
+
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = nodeGeometry(node)!;
+      expect(geometry.x, 50);
+      expect(geometry.y, 50);
+      expect(geometry.width, 128);
+      expect(geometry.height, 96);
+    });
+
+    test('resizeNode undo restores original geometry', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      controller.resizeNode(
+        nodeId,
+        x: 200,
+        y: 200,
+        width: 32,
+        height: 32,
+      );
+
+      controller.undo();
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = nodeGeometry(node)!;
+      expect(geometry.x, 100);
+      expect(geometry.y, 100);
+      expect(geometry.width, 64);
+      expect(geometry.height, 64);
+    });
+
+    test('resizeNode rejects non-finite and non-positive geometry', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(
+        () => controller.resizeNode(
+          nodeId,
+          x: double.nan,
+          y: 0,
+          width: 10,
+          height: 10,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => controller.resizeNode(
+          nodeId,
+          x: 0,
+          y: 0,
+          width: -5,
+          height: 10,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('resizeNode returns false for nonexistent node', () {
+      final controller = StudioController();
+      expect(
+        controller.resizeNode(
+          GgenId('no.such'),
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+        ),
+        isFalse,
+      );
+    });
+
+    test('resizeNode returns false for text nodes (no w/h)', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 100, 'Hello');
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(
+        controller.resizeNode(
+          nodeId,
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 50,
+        ),
+        isFalse,
+      );
+    });
+  });
 }

@@ -235,6 +235,70 @@ class StudioController extends ChangeNotifier {
     return true;
   }
 
+  /// Resizes and repositions a shape node through one undoable tool session.
+  /// The new bounds replace the node's `x`, `y`, `w`, `h` extensions.
+  /// Returns false when the node is not found or has no shape geometry.
+  bool resizeNode(
+    GgenId nodeId, {
+    required double x,
+    required double y,
+    required double width,
+    required double height,
+  }) {
+    if (!x.isFinite || !y.isFinite || !width.isFinite || !height.isFinite) {
+      throw ArgumentError('Resize geometry must be finite.');
+    }
+    if (width < 1 || height < 1) {
+      throw ArgumentError('Resize dimensions must be positive.');
+    }
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
+    if (nodeIndex < 0) return false;
+    final node = artboard.nodes[nodeIndex];
+
+    // Only shape nodes with x/y/w/h geometry can be resized.
+    if (node.extensions['w'] is! num || node.extensions['h'] is! num) {
+      return false;
+    }
+
+    final resizedNode = DocumentNode(
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      visible: node.visible,
+      locked: node.locked,
+      opacity: node.opacity,
+      extensions: <String, Object?>{
+        ...node.extensions,
+        'x': x,
+        'y': y,
+        'w': width,
+        'h': height,
+      },
+    );
+    final nextNodes = <DocumentNode>[
+      ...artboard.nodes.sublist(0, nodeIndex),
+      resizedNode,
+      ...artboard.nodes.sublist(nodeIndex + 1),
+    ];
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: nextNodes,
+      ),
+      ...artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, 'Resize ${node.name}');
+    return true;
+  }
+
   /// Deletes [nodeId] from the first artboard through one undoable tool
   /// session. Clears the selection when the deleted node was selected.
   /// Returns false when the node is not found.

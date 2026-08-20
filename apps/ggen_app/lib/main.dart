@@ -11,6 +11,7 @@ import 'workspace_profile.dart';
 import 'profile_manager_sheet.dart';
 import 'src/controller/studio_controller.dart';
 import 'src/canvas/studio_canvas.dart';
+import 'src/canvas/canvas_zoom_controller.dart';
 import 'src/layers/layer_list.dart';
 import 'src/storage/file_project_store.dart';
 import 'src/storage/file_recovery_journal.dart';
@@ -157,6 +158,7 @@ class _StudioShellState extends State<StudioShell> {
   bool _immersive = false;
   bool _showInspector = true;
   bool _showLayers = false;
+  final CanvasZoomController _zoomController = CanvasZoomController();
   bool _canvasFirst = true;
   bool _workspaceSettingsOpen = false;
   InspectorDock _inspectorDock = InspectorDock.right;
@@ -188,6 +190,7 @@ class _StudioShellState extends State<StudioShell> {
     // equal, so this removes the handler added in initState.
     HardwareKeyboard.instance.removeHandler(_handleVolumeKey);
     if (_ownsStudio) _studio.dispose();
+    _zoomController.dispose();
     super.dispose();
   }
 
@@ -224,6 +227,31 @@ class _StudioShellState extends State<StudioShell> {
         'revision': _studio.revision,
       });
       return true;
+    }
+    // Ctrl+= / Ctrl++ zooms in, Ctrl+- zooms out, Ctrl+0 fits to screen.
+    final isCtrl = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    if (isCtrl) {
+      if (key == LogicalKeyboardKey.equal ||
+          key == LogicalKeyboardKey.add ||
+          key == LogicalKeyboardKey.numpadAdd) {
+        _zoomController.zoomIn();
+        debugLog.info('key_zoom_in', 'Ctrl+= zoom in');
+        return true;
+      }
+      if (key == LogicalKeyboardKey.minus ||
+          key == LogicalKeyboardKey.subtract ||
+          key == LogicalKeyboardKey.numpadSubtract) {
+        _zoomController.zoomOut();
+        debugLog.info('key_zoom_out', 'Ctrl+- zoom out');
+        return true;
+      }
+      if (key == LogicalKeyboardKey.digit0 ||
+          key == LogicalKeyboardKey.numpad0) {
+        _zoomController.fitToScreen();
+        debugLog.info('key_zoom_fit', 'Ctrl+0 fit to screen');
+        return true;
+      }
     }
     return false;
   }
@@ -547,6 +575,7 @@ class _StudioShellState extends State<StudioShell> {
                           selectMode: _selectedTool == 0,
                           selectedNodeId: _studio.selectedNodeId,
                           suppressGeometryLog: _workspaceSettingsOpen,
+                          zoomController: _zoomController,
                           onNodeAdded: () {
                             debugLog.info(
                               'node_add',
@@ -800,6 +829,7 @@ class CanvasArea extends StatelessWidget {
     this.selectMode = false,
     this.selectedNodeId,
     this.suppressGeometryLog = false,
+    this.zoomController,
     this.onTextRequest,
     this.onNodeSelected,
     this.onTwoFingerTap,
@@ -818,6 +848,9 @@ class CanvasArea extends StatelessWidget {
   /// Suppresses canvas_geometry logging (e.g. while the settings sheet is
   /// open and the canvas is being resized by the sheet animation).
   final bool suppressGeometryLog;
+
+  /// Optional zoom command channel from the shell.
+  final CanvasZoomController? zoomController;
 
   final void Function(Offset artboardPoint)? onTextRequest;
   final void Function(GgenId? nodeId)? onNodeSelected;
@@ -843,6 +876,7 @@ class CanvasArea extends StatelessWidget {
               onNodeAdded: onNodeAdded,
               selectMode: selectMode,
               selectedNodeId: selectedNodeId,
+              zoomController: zoomController,
               onTextRequest: onTextRequest,
               onNodeSelected: onNodeSelected,
               onTwoFingerTap: onTwoFingerTap,
