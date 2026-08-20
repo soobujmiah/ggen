@@ -81,7 +81,11 @@ final class _MemoryStoreTransaction implements ProjectStoreTransaction {
       throw StateError('Nothing staged for "${key.value}".');
     }
     final revision = envelope.project.revision;
-    if (revision != storedRevision && revision != storedRevision + 1) {
+    // First write to a key accepts any valid revision; later writes may
+    // only re-save the stored revision or advance it by exactly one.
+    if (storedRevision >= 0 &&
+        revision != storedRevision &&
+        revision != storedRevision + 1) {
       throw StateError(
         'Staged revision $revision does not advance stored revision '
         '$storedRevision for "${key.value}".',
