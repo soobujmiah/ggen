@@ -205,7 +205,6 @@ void main() {
 
     expect(find.text('Hello'), findsOneWidget);
   });
-}
 
   testWidgets('select mode tap on a shape selects it', (tester) async {
     final controller = StudioController();
@@ -344,3 +343,4 @@ void main() {
     expect(hitTestNode(text, const Offset(210, 210)), isTrue);
     expect(hitTestNode(text, const Offset(50, 50)), isFalse);
   });
+}

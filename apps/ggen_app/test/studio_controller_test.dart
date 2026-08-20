@@ -487,7 +487,6 @@ void main() {
       );
     });
   });
-}
 
   group('select tool', () {
     test('selectNode sets selectedNodeId and notifies', () {
@@ -618,3 +617,4 @@ void main() {
       expect(geometry.y, 150);
     });
   });
+}

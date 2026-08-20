@@ -212,7 +212,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
                 final hitId = _hitTest(artboardPoint);
                 if (hitId == widget.selectedNodeId) {
                   _nodeDrag = _NodeDrag(
-                    nodeId: hitId,
+                    nodeId: hitId!,
                     startScreen: details.localFocalPoint,
                   );
                 }
