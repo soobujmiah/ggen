@@ -219,11 +219,12 @@ class StudioController extends ChangeNotifier {
       payloadBytes: utf8.encode(encoded).length,
     );
     _journalSequence++;
-    // Append then store the payload in order, chained so file-backed
-    // journals never see a payload before the record's journal exists.
-    _journalTail = _journalTail.then(
-      (_) => _appendAndStorePayload(record, encoded),
-    );
+    // Append then store the payload in order, so file-backed journals never
+    // see a payload before the record's journal exists. The append starts
+    // synchronously (in-memory journals update their records immediately);
+    // the chain exists only so flushJournal can await full quiescence.
+    final journalFuture = _appendAndStorePayload(record, encoded);
+    _journalTail = _journalTail.then((_) => journalFuture);
     _transactionsSinceCheckpoint++;
   }
 
