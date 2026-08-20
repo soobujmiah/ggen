@@ -218,7 +218,13 @@ void main() {
       (tester) async {
         SharedPreferences.setMockInitialValues(<String, Object>{});
         final originalPlatform = PathProviderPlatform.instance;
-        final documents = await Directory.systemTemp.createTemp('ggen_docs_');
+        // Real file I/O (temp dir creation, the save write) never completes
+        // in the widget test fake-async zone, so it must run inside
+        // tester.runAsync.
+        late Directory documents;
+        await tester.runAsync(() async {
+          documents = await Directory.systemTemp.createTemp('ggen_docs_');
+        });
         PathProviderPlatform.instance = _FakePathProvider(documents.path);
         addTearDown(() {
           PathProviderPlatform.instance = originalPlatform;
@@ -243,13 +249,13 @@ void main() {
         );
 
         // Save must write the canonical .ggen project file into the real
-        // documents directory (not just an in-memory map). File I/O is real
-        // async work, so it must run inside tester.runAsync; in the fake-async
-        // zone the write future never completes and pumpAndSettle would hang.
-        await tester.tap(find.byTooltip('Save project'));
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 300)),
-        );
+        // documents directory (not just an in-memory map). Trigger the save
+        // and let the real async file write complete inside runAsync, then
+        // settle the UI (snackbar).
+        await tester.runAsync(() async {
+          await tester.tap(find.byTooltip('Save project'));
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        });
         await tester.pumpAndSettle();
 
         final projectsDir = Directory('${documents.path}/projects');
