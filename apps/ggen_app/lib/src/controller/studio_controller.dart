@@ -92,7 +92,7 @@ class StudioController extends ChangeNotifier {
     final encoded = codec.encode(
       ProjectEnvelope(
         project: project,
-        schemaVersion: ProjectSchemaVersion.current,
+        schemaVersion: ProjectSchemaVersion(ProjectSchemaVersion.current),
       ),
     );
     _lastSerialized = encoded;
