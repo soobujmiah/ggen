@@ -18,6 +18,8 @@ Protected features report `UNAVAILABLE_NO_PACK` until an owner-supplied pack is 
 
 **Phase 1 core foundation:** implemented in pure Dart under [`packages/ggen_core`](packages/ggen_core). It currently contains validated stable IDs, immutable document values, bounded revision history, professional tool descriptors, typed parameters, quality gates, licensing/provenance, project schema/storage, bounded jobs and recovery-journal contracts, tool sessions, adaptive input and deterministic bounded JSON serialization. It intentionally contains no Flutter UI, protected bytes, provider calls or graphics engine.
 
+**Phase 2 workspace foundation:** the original Flutter shell ([`apps/ggen_app`](apps/ggen_app)) now consumes the core through a widget-free app-layer controller (`apps/ggen_app/lib/src/controller/studio_controller.dart`) for project lifecycle, bounded undo/redo, tool sessions and canonical project serialization.
+
 **Phase 2 workspace foundation:** the original Flutter shell, responsive layouts, immersive canvas, persistent workspace settings, dockable inspector, named profiles and bounded diagnostics are implemented under [`apps/ggen_app`](apps/ggen_app). See [`docs/phases/phase-2-status.md`](docs/phases/phase-2-status.md) for scope and evidence boundaries.
 
 No Android build, physical-device run, GPU/NPU execution or production release claim is made here. The Redmi Turbo 4 Pro is the authoritative device for future Android evidence.

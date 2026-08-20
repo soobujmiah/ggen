@@ -3,6 +3,31 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ggen_app/main.dart';
+import 'package:ggen_app/src/controller/studio_controller.dart';
+import 'package:ggen_core/ggen_core.dart';
+
+/// Adds one shape node to every artboard of [project] without changing its
+/// identity or revision (valid tool-session preview semantics).
+DocumentProject _withNode(DocumentProject project, String name) {
+  final artboards = <Artboard>[
+    for (final artboard in project.artboards)
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: <DocumentNode>[
+          ...artboard.nodes,
+          DocumentNode(
+            id: GgenId('node-$name'),
+            kind: DocumentNodeKind.shape,
+            name: name,
+          ),
+        ],
+      ),
+  ];
+  return project.copyWith(artboards: artboards);
+}
 
 void main() {
   testWidgets('uses compact navigation without a side rail', (tester) async {
@@ -43,6 +68,7 @@ void main() {
     expect(find.text('Select'), findsOneWidget);
     expect(find.text('Manual mode'), findsOneWidget);
   });
+
   testWidgets('can enter and leave immersive canvas mode', (tester) async {
     tester.view.physicalSize = const Size(471, 1020);
     tester.view.devicePixelRatio = 1;
@@ -57,4 +83,61 @@ void main() {
     expect(find.byType(NavigationBar), findsOneWidget);
   });
 
+  testWidgets('undo and redo are disabled without history', (tester) async {
+    await tester.pumpWidget(const GgenApp());
+    final undo = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.undo),
+    );
+    final redo = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.redo),
+    );
+    expect(undo.onPressed, isNull);
+    expect(redo.onPressed, isNull);
+  });
+
+  testWidgets('shell reads project name and history from the controller', (
+    tester,
+  ) async {
+    final controller = StudioController();
+    final session = controller.beginSession();
+    session.updatePreview(_withNode(session.preview, 'shape-1'));
+    controller.commitSession(session, 'add shape-1');
+
+    await tester.pumpWidget(GgenApp(controller: controller));
+
+    // Canvas shows the project name; status bar shows one object at r1.
+    expect(find.text('Untitled project'), findsOneWidget);
+    expect(find.textContaining('1 object'), findsOneWidget);
+    expect(find.textContaining('r1'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Undo'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('0 objects'), findsOneWidget);
+    expect(find.textContaining('r0'), findsOneWidget);
+    expect(find.textContaining('r1'), findsNothing);
+
+    await tester.tap(find.byTooltip('Redo'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 object'), findsOneWidget);
+  });
+
+  testWidgets('new project flow resets the workspace', (tester) async {
+    final controller = StudioController();
+    final session = controller.beginSession();
+    session.updatePreview(_withNode(session.preview, 'shape-1'));
+    controller.commitSession(session, 'add shape-1');
+
+    await tester.pumpWidget(GgenApp(controller: controller));
+    expect(find.textContaining('1 object'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('New project'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Brand Studio');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Brand Studio'), findsOneWidget);
+    expect(find.textContaining('0 objects'), findsOneWidget);
+    expect(find.textContaining('r0'), findsOneWidget);
+  });
 }
