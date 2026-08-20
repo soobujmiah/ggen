@@ -23,7 +23,8 @@
 - functional New project and Save (canonical JSON) actions, canvas undo/redo history bar, and live object count and revision status;
 - in-memory persistence through the core storage contracts: transactional `MemoryProjectStore` with SHA-256 content receipts and a bounded `MemoryRecoveryJournal` with checkpoint cadence and ordered replay; Save now commits through a store transaction and `restore()` reloads a committed project;
 - undo/redo journal records (forward deltas and state markers) and shell restore of the last saved project on startup via a persisted storage key; stale or malformed keys fail closed;
-- file-backed storage (ADR-0004): `FileProjectStore` (atomic `.ggen` writes with SHA-256 receipts) and `FileRecoveryJournal` (bounded line-log with durable payloads) in the app documents directory, wired through `path_provider`; in-memory adapters remain the default/fallback.
+- file-backed storage (ADR-0004): `FileProjectStore` (atomic `.ggen` writes with SHA-256 receipts) and `FileRecoveryJournal` (bounded line-log with durable payloads) in the app documents directory, wired through `path_provider`; in-memory adapters remain the default/fallback;
+- security and governance docs: `docs/security/threat-model.md` and ADR-0005 (plugin trust model) drafted; adaptive layout widget tests (compact/tablet/wide/zero-size).
 
 ## App identity
 

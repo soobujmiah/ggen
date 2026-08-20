@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-20 — Threat model and plugin trust model
+
+- Added `docs/security/threat-model.md`: assets, trust boundaries, prioritized STRIDE-lite threats (malicious `.ggen` files, journal replay divergence, credential leakage, protected-asset boundary, traversal via storage keys, plugin abuse, diagnostics leakage) with current mitigations and residual risks.
+- Added ADR-0005 (plugin trust model, draft): capability-scoped, versioned, validated, tiered (trusted/verified/sandboxed) plugins with no silent execution and protected-asset immutability; no plugin runtime exists yet — this is the contract for the future loader.
+- Closed the Phase-0 open item "create threat model and plugin trust model ADR".
+- Added adaptive layout widget tests: compact phone (<700), small tablet (700–899), wide (≥900) with dockable inspector, and tiny/zero-size viewport robustness.
+
 ## 2026-08-20 — File-backed storage (ADR-0004)
 
 - Accepted ADR-0004: app-private project store with deferred SAF export.
