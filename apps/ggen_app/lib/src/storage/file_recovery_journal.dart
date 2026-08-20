@@ -55,22 +55,21 @@ final class FileRecoveryJournal
         'record': _recordToJson(record),
       }),
     );
-    await _enforceBounds(file);
+    _enforceBoundsSync(file);
   }
 
   @override
   void storePayload(GgenId projectId, GgenId recordId, String canonicalJson) {
     final file = _fileFor(projectId);
     if (!file.existsSync()) return;
-    _appendLine(
-      file,
-      jsonEncode(<String, Object?>{
-        'type': _payloadType,
-        'record_id': recordId.value,
-        'payload': canonicalJson,
-      }),
+    // Synchronous append: the interface is sync, so the payload must be
+    // visible to the next read without a pending async write.
+    file.writeAsStringSync(
+      '${jsonEncode(<String, Object?>{'type': _payloadType, 'record_id': recordId.value, 'payload': canonicalJson})}\n',
+      mode: FileMode.append,
+      flush: true,
     );
-    _enforceBounds(file);
+    _enforceBoundsSync(file);
   }
 
   @override
@@ -125,7 +124,7 @@ final class FileRecoveryJournal
     await sink.close();
   }
 
-  Future<void> _enforceBounds(File file) async {
+  void _enforceBoundsSync(File file) {
     if (!file.existsSync()) return;
     final lines = file.readAsLinesSync();
     if (lines.length <= policy.maxJournalEntries &&
@@ -142,8 +141,8 @@ final class FileRecoveryJournal
       return;
     }
     final tmpPath = '${file.path}.tmp';
-    await File(tmpPath).writeAsString('${lines.join('\n')}\n', flush: true);
-    await File(tmpPath).rename(file.path);
+    File(tmpPath).writeAsStringSync('${lines.join('\n')}\n', flush: true);
+    File(tmpPath).renameSync(file.path);
   }
 
   static int _bytes(List<String> lines) =>

@@ -54,12 +54,14 @@ void main() {
       await transaction.stage(_envelope(3));
       await transaction.commit();
 
+      // The committing instance exposes the session-scoped latest().
+      expect(first.latest()!.project.id.value, 'project-1');
+
       // A brand-new store over the same root sees the committed project.
       final second = FileProjectStore(root);
       final read = await second.read(key);
       expect(read, isNotNull);
       expect(read!.project.revision, 3);
-      expect(second.latest()!.project.id, read.project.id);
     });
 
     test('stale expected revisions are rejected', () async {
