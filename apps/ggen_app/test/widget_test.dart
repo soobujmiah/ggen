@@ -26,6 +26,17 @@ class _FakePathProvider extends PathProviderPlatform
   Future<String?> getApplicationDocumentsPath() async => documentsPath;
 }
 
+/// Forces the unavailable-plugin fallback path deterministically. (Without
+/// it the test environment varies: flutter test loads the Dart plugin
+/// registrant, so path_provider_linux can make the documents directory
+/// succeed instead of throwing MissingPluginException.)
+class _ThrowingPathProvider extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  @override
+  Future<String?> getApplicationDocumentsPath() async =>
+      throw MissingPluginException('path_provider unavailable in test');
+}
+
 /// Adds one shape node to every artboard of [project] without changing its
 /// identity or revision (valid tool-session preview semantics).
 DocumentProject _withNode(DocumentProject project, String name) {
@@ -277,10 +288,12 @@ void main() {
     testWidgets('app continues without crash when storage is unavailable', (
       tester,
     ) async {
-      // No fake provider: getApplicationDocumentsDirectory throws
-      // MissingPluginException, the in-memory fallback must keep the app
-      // fully functional.
+      // Force MissingPluginException: the in-memory fallback must keep the
+      // app fully functional and record a warning.
       SharedPreferences.setMockInitialValues(<String, Object>{});
+      final originalPlatform = PathProviderPlatform.instance;
+      PathProviderPlatform.instance = _ThrowingPathProvider();
+      addTearDown(() => PathProviderPlatform.instance = originalPlatform);
       debugLog.clear();
       await tester.pumpWidget(const GgenApp());
       await tester.pumpAndSettle();
@@ -290,6 +303,7 @@ void main() {
           (entry) => entry.event == 'storage_init' && entry.level == 'warning',
         ),
         isTrue,
+        reason: 'unavailable storage must log a warning and fall back',
       );
       expect(find.text('Untitled project'), findsOneWidget);
     });
