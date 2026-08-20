@@ -207,19 +207,33 @@ class _StudioShellState extends State<StudioShell> {
     debugLog.info('project_new', 'New project created', {'name': trimmed});
   }
 
-  void _saveProject(BuildContext context) {
-    _studio.serialize();
-    debugLog.info('project_save', 'Project serialized', {
-      'bytes': _studio.lastSerializedBytes,
-      'revision': _studio.revision,
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Project serialized — ${_studio.lastSerializedBytes} bytes canonical JSON',
+  Future<void> _saveProject(BuildContext context) async {
+    try {
+      final receipt = await _studio.save();
+      debugLog.info('project_save', 'Project persisted through store', {
+        'key': receipt.key.value,
+        'revision': receipt.committedRevision,
+        'bytes': receipt.byteSize,
+        'sha256': receipt.contentSha256,
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Saved r${receipt.committedRevision} — ${receipt.byteSize} bytes '
+            '(${receipt.contentSha256.substring(0, 12)}…)',
+          ),
         ),
-      ),
-    );
+      );
+    } on StateError catch (error) {
+      debugLog.error('project_save', 'Save rejected by the store', {
+        'error': error.toString(),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save rejected: ${error.message}')),
+      );
+    }
   }
 
   @override

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-20 — Persistence backbone (in-memory)
+
+- Implemented the core storage contracts in the app layer: `MemoryProjectStore` (atomic stage/commit/cancel transactions, stale-revision rejection, SHA-256 content receipts) and `MemoryRecoveryJournal` (bounded entry/byte budgets, ordered replay stream, replay markers, in-memory payload reconstruction).
+- `StudioController.save()` now persists through a transactional store write and returns a receipt; checkpoint records are appended to the recovery journal at a provisional cadence; `restore()` reloads a committed project from the store.
+- Shell Save action is now async and surfaces the receipt (revision, bytes, digest) or a store rejection.
+- Added store, journal and controller persistence tests (transaction semantics, eviction bounds, replay, save/restore round trip, checkpoint cadence).
+- `crypto 3.0.7` pinned in the app at the exact version already locked and receipted for this repository.
+- Deferred: file-backed adapter (platform storage decision), undo/redo journaling, shell restore wiring.
+
 ## 2026-08-20 — App-core backbone
 
 - Added `ggen_app` dependency on `ggen_core` and a widget-free app-layer `StudioController` (project lifecycle, tool sessions, bounded undo/redo, canonical envelope serialization) built on the core contracts.

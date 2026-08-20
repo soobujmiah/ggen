@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   shared_preferences: ^2.5.3
+  crypto: 3.0.7
   ggen_core:
     path: ../../packages/ggen_core
 
