@@ -20,7 +20,8 @@
 - Flutter framework and uncaught-error capture;
 - viewport, canvas geometry, safe-area and keyboard-inset diagnostics;
 - app-layer `StudioController` wired to `ggen_core` (project lifecycle, tool sessions, bounded undo/redo, canonical project serialization), with the shell observing it;
-- functional New project and Save (canonical JSON) actions, canvas undo/redo history bar, and live object count and revision status.
+- functional New project and Save (canonical JSON) actions, canvas undo/redo history bar, and live object count and revision status;
+- in-memory persistence through the core storage contracts: transactional `MemoryProjectStore` with SHA-256 content receipts and a bounded `MemoryRecoveryJournal` with checkpoint cadence and ordered replay; Save now commits through a store transaction and `restore()` reloads a committed project.
 
 ## Verification
 

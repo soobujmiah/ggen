@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ggen_app/src/controller/studio_controller.dart';
+import 'package:ggen_app/src/storage/memory_project_store.dart';
+import 'package:ggen_app/src/storage/memory_recovery_journal.dart';
 import 'package:ggen_core/ggen_core.dart';
 
 /// Adds one shape node to every artboard of [project] without changing its
@@ -163,6 +165,122 @@ void main() {
       controller.commitSession(session, 'add shape-1');
       expect(controller.lastSerializedBytes, 0);
       expect(controller.lastSerialized, isEmpty);
+    });
+  });
+
+  group('persistence', () {
+    test(
+      'save persists through the transactional store with a receipt',
+      () async {
+        final controller = StudioController();
+        final session = controller.beginSession();
+        session.updatePreview(_withNode(session.preview, 'shape-1'));
+        controller.commitSession(session, 'add shape-1');
+
+        final receipt = await controller.save();
+        expect(receipt.key, controller.storageKey);
+        expect(receipt.committedRevision, 1);
+        expect(receipt.contentSha256, hasLength(64));
+        expect(receipt.byteSize, greaterThan(0));
+        expect(controller.lastReceipt, same(receipt));
+      },
+    );
+
+    test('save then restore reconstructs the project from the store', () async {
+      final store = MemoryProjectStore();
+      final journal = MemoryRecoveryJournal(
+        const AutosavePolicy(
+          maxJournalEntries: 200,
+          maxJournalBytes: 1 << 20,
+          checkpointEveryTransactions: 8,
+        ),
+      );
+      final controller = StudioController(store: store, journal: journal);
+      final session = controller.beginSession();
+      session.updatePreview(_withNode(session.preview, 'shape-1'));
+      controller.commitSession(session, 'add shape-1');
+      final key = controller.storageKey;
+      await controller.save();
+
+      final restored = StudioController(store: store, journal: journal);
+      expect(await restored.restore(key), isTrue);
+      expect(restored.project.id, controller.project.id);
+      expect(restored.project.name, 'Untitled project');
+      expect(restored.revision, 1);
+      expect(restored.objectCount, 1);
+      // Restore is a snapshot: history starts fresh at the restored revision.
+      expect(restored.canUndo, isFalse);
+    });
+
+    test('restore returns false when the key is absent', () async {
+      final controller = StudioController();
+      expect(
+        await controller.restore(ProjectStorageKey('project-missing')),
+        isFalse,
+      );
+      expect(controller.revision, 0);
+    });
+
+    test('committed edits append bounded journal transactions', () async {
+      final journal = MemoryRecoveryJournal(
+        const AutosavePolicy(
+          maxJournalEntries: 200,
+          maxJournalBytes: 1 << 20,
+          checkpointEveryTransactions: 8,
+        ),
+      );
+      final controller = StudioController(journal: journal);
+
+      final first = controller.beginSession();
+      first.updatePreview(_withNode(first.preview, 'shape-1'));
+      controller.commitSession(first, 'add shape-1');
+
+      final second = controller.beginSession();
+      second.updatePreview(_withNode(second.preview, 'shape-2'));
+      controller.commitSession(second, 'add shape-2');
+
+      expect(journal.recordCount, 2);
+      expect(
+        journal.records.every(
+          (record) => record.kind == RecoveryRecordKind.transaction,
+        ),
+        isTrue,
+      );
+      expect(journal.records.first.baseRevision, 0);
+      expect(journal.records.first.targetRevision, 1);
+      expect(journal.records.last.baseRevision, 1);
+      expect(journal.records.last.targetRevision, 2);
+      expect(journal.records.last.projectId, controller.project.id);
+      expect(journal.records.last.payloadSha256, hasLength(64));
+    });
+
+    test('save appends a checkpoint once the cadence is reached', () async {
+      final journal = MemoryRecoveryJournal(
+        const AutosavePolicy(
+          maxJournalEntries: 200,
+          maxJournalBytes: 1 << 20,
+          checkpointEveryTransactions: 4,
+        ),
+      );
+      final controller = StudioController(journal: journal);
+      for (var i = 0; i < 4; i++) {
+        final session = controller.beginSession();
+        session.updatePreview(_withNode(session.preview, 'shape-$i'));
+        controller.commitSession(session, 'add shape-$i');
+      }
+      expect(journal.recordCount, 4);
+      expect(
+        journal.records.any(
+          (record) => record.kind == RecoveryRecordKind.checkpoint,
+        ),
+        isFalse,
+      );
+
+      await controller.save();
+      expect(journal.recordCount, 5);
+      expect(journal.records.last.kind, RecoveryRecordKind.checkpoint);
+      expect(journal.records.last.baseRevision, 4);
+      expect(journal.records.last.targetRevision, 4);
     });
   });
 }
