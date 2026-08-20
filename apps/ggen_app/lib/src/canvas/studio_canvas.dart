@@ -5,9 +5,9 @@ import 'package:ggen_core/ggen_core.dart';
 import '../controller/studio_controller.dart';
 import 'canvas_viewport.dart';
 
-/// Original compact-phone canvas: shows the first artboard with pinch-zoom,
-/// pan and double-tap zoom, and reports artboard-space taps so the shell can
-/// route them to the active tool.
+/// Original compact-phone canvas: shows the first artboard with pinch-zoom
+/// and pan, routes taps to the active tool (draw or text), and detects
+/// multi-touch taps (2 fingers = undo, 3 fingers = redo).
 ///
 /// The widget stays presentation-only: all project changes happen through
 /// the injected [StudioController] (tool sessions, history, journal), so the
@@ -17,6 +17,9 @@ class StudioCanvas extends StatefulWidget {
     required this.controller,
     required this.drawEnabled,
     required this.onNodeAdded,
+    this.onTextRequest,
+    this.onTwoFingerTap,
+    this.onThreeFingerTap,
     this.onViewportChanged,
     super.key,
   });
@@ -24,6 +27,15 @@ class StudioCanvas extends StatefulWidget {
   final StudioController controller;
   final bool drawEnabled;
   final VoidCallback onNodeAdded;
+
+  /// Called with the artboard-space tap point when the Text tool is active.
+  final void Function(Offset artboardPoint)? onTextRequest;
+
+  /// Called on a clean two-finger tap (undo by convention).
+  final VoidCallback? onTwoFingerTap;
+
+  /// Called on a clean three-finger tap (redo by convention).
+  final VoidCallback? onThreeFingerTap;
 
   /// Test/telemetry hook: called with every viewport change (fit, zoom, pan).
   final ValueChanged<CanvasViewport>? onViewportChanged;
@@ -33,6 +45,9 @@ class StudioCanvas extends StatefulWidget {
 }
 
 class _StudioCanvasState extends State<StudioCanvas> {
+  static const int _multiTapMaxDurationMs = 300;
+  static const double _multiTapMaxMovement = 20;
+
   CanvasViewport _viewport = const CanvasViewport(
     scale: 1,
     offsetX: 0,
@@ -40,6 +55,11 @@ class _StudioCanvasState extends State<StudioCanvas> {
   );
   double? _gestureStartScale;
   (double, double, double, double)? _fitKey;
+
+  // Raw multi-touch tap tracking.
+  final Map<int, _PointerStamp> _downPointers = <int, _PointerStamp>{};
+  int _burstPointerCount = 0;
+  DateTime? _burstStart;
 
   void _reportViewport() => widget.onViewportChanged?.call(_viewport);
 
@@ -66,12 +86,59 @@ class _StudioCanvasState extends State<StudioCanvas> {
     _reportViewport();
   }
 
+  void _handlePointerDown(PointerDownEvent event) {
+    final now = DateTime.now();
+    if (_downPointers.isEmpty) {
+      _burstStart = now;
+      _burstPointerCount = 0;
+    }
+    _downPointers[event.pointer] = _PointerStamp(
+      position: event.localPosition,
+      at: now,
+    );
+    if (_burstStart != null &&
+        now.difference(_burstStart!) <
+            const Duration(milliseconds: _multiTapMaxDurationMs)) {
+      _burstPointerCount++;
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    final stamp = _downPointers.remove(event.pointer);
+    if (stamp == null) return;
+    if (_downPointers.isNotEmpty) return;
+
+    // All fingers are up: evaluate the burst.
+    final burst = _burstPointerCount;
+    final start = _burstStart;
+    _burstPointerCount = 0;
+    _burstStart = null;
+    if (start == null) return;
+
+    final duration = DateTime.now().difference(start);
+    final moved =
+        (event.localPosition - stamp.position).distance > _multiTapMaxMovement;
+    if (duration > const Duration(milliseconds: _multiTapMaxDurationMs) ||
+        moved) {
+      return; // A pan/zoom or slow gesture: let the regular recognizers act.
+    }
+    switch (burst) {
+      case 2:
+        widget.onTwoFingerTap?.call();
+      case 3:
+        widget.onThreeFingerTap?.call();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final artboards = widget.controller.project.artboards;
     if (artboards.isEmpty) {
       return const Center(
-        child: Text('No artboard', style: TextStyle(color: Colors.white54)),
+        child: Text(
+          'No artboard',
+          style: TextStyle(color: Colors.white54),
+        ),
       );
     }
     final artboard = artboards.first;
@@ -79,70 +146,87 @@ class _StudioCanvasState extends State<StudioCanvas> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _fitIfNeeded(constraints, Size(artboard.width, artboard.height));
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onScaleStart: (details) {
-            _gestureStartScale = _viewport.scale;
-          },
-          onScaleUpdate: (details) {
-            setState(() {
-              // details.scale is cumulative from gesture start, so the
-              // target scale derives from the scale captured at start;
-              // applying it to the current viewport each update would
-              // compound the zoom.
-              final start = _gestureStartScale ?? _viewport.scale;
-              final target = start * details.scale;
-              if (details.scale != 1.0) {
-                // Keep the artboard point under the gesture focal point
-                // stationary while the pinch changes scale.
-                final focal = details.localFocalPoint;
-                _viewport = _viewport.zoomAt(
-                  focalX: focal.dx,
-                  focalY: focal.dy,
-                  targetScale: target,
+        return Listener(
+          onPointerDown: _handlePointerDown,
+          onPointerUp: _handlePointerUp,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onScaleStart: (details) {
+              _gestureStartScale = _viewport.scale;
+            },
+            onScaleUpdate: (details) {
+              setState(() {
+                // details.scale is cumulative from gesture start, so the
+                // target scale derives from the scale captured at start;
+                // applying it to the current viewport each update would
+                // compound the zoom.
+                final start = _gestureStartScale ?? _viewport.scale;
+                final target = start * details.scale;
+                if (details.scale != 1.0) {
+                  // Keep the artboard point under the gesture focal point
+                  // stationary while the pinch changes scale.
+                  final focal = details.localFocalPoint;
+                  _viewport = _viewport.zoomAt(
+                    focalX: focal.dx,
+                    focalY: focal.dy,
+                    targetScale: target,
+                  );
+                } else {
+                  _viewport = _viewport.panBy(
+                    details.focalPointDelta.dx,
+                    details.focalPointDelta.dy,
+                  );
+                }
+              });
+              _reportViewport();
+            },
+            onScaleEnd: (_) {
+              _gestureStartScale = null;
+            },
+            onTapUp: (details) {
+              final artboardPoint = _viewport.toArtboard(
+                details.localPosition,
+              );
+              if (widget.drawEnabled) {
+                widget.controller.addShapeNode(
+                  artboardPoint.dx,
+                  artboardPoint.dy,
                 );
-              } else {
-                _viewport = _viewport.panBy(
-                  details.focalPointDelta.dx,
-                  details.focalPointDelta.dy,
-                );
+                widget.onNodeAdded();
+              } else if (widget.onTextRequest != null) {
+                widget.onTextRequest!(artboardPoint);
               }
-            });
-            _reportViewport();
-          },
-          onScaleEnd: (_) {
-            _gestureStartScale = null;
-          },
-          onTapUp: (details) {
-            if (!widget.drawEnabled) return;
-            final artboardPoint = _viewport.toArtboard(details.localPosition);
-            widget.controller.addShapeNode(artboardPoint.dx, artboardPoint.dy);
-            widget.onNodeAdded();
-          },
-          // NOTE: no onDoubleTap* here on purpose. A double-tap recognizer
-          // holds the gesture arena open for its 300ms window, which delays
-          // single-tap resolution and deadlocks widget tests (pumpAndSettle
-          // advances time only while frames are scheduled). Double-tap zoom
-          // is deferred until the shell has explicit zoom controls.
-          child: ClipRect(
-            child: Transform(
-              transform: Matrix4.identity()
-                ..translateByDouble(_viewport.offsetX, _viewport.offsetY, 0, 1)
-                ..scaleByDouble(_viewport.scale, _viewport.scale, 1, 1),
-              child: SizedBox(
-                width: artboard.width,
-                height: artboard.height,
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(blurRadius: 24, color: Colors.black54),
-                    ],
+            },
+            child: ClipRect(
+              child: Transform(
+                transform: Matrix4.identity()
+                  ..translateByDouble(
+                    _viewport.offsetX,
+                    _viewport.offsetY,
+                    0,
+                    1,
+                  )
+                  ..scaleByDouble(
+                    _viewport.scale,
+                    _viewport.scale,
+                    1,
+                    1,
                   ),
-                  child: Stack(
-                    children: [
-                      for (final node in artboard.nodes) ..._nodeWidgets(node),
-                    ],
+                child: SizedBox(
+                  width: artboard.width,
+                  height: artboard.height,
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(blurRadius: 24, color: Colors.black54),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        for (final node in artboard.nodes) ..._nodeWidgets(node),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -154,6 +238,24 @@ class _StudioCanvasState extends State<StudioCanvas> {
   }
 
   List<Widget> _nodeWidgets(DocumentNode node) {
+    if (node.kind == DocumentNodeKind.textFrame) {
+      final geometry = textNodeGeometry(node);
+      if (geometry == null) return const <Widget>[];
+      return <Widget>[
+        Positioned(
+          left: geometry.x,
+          top: geometry.y,
+          child: Text(
+            geometry.text,
+            style: TextStyle(
+              fontSize: geometry.size,
+              color: Color(geometry.color),
+              height: 1.2,
+            ),
+          ),
+        ),
+      ];
+    }
     final geometry = nodeGeometry(node);
     if (geometry == null) return const <Widget>[];
     return <Widget>[
@@ -182,7 +284,11 @@ NodeGeometry? nodeGeometry(DocumentNode node) {
   final w = node.extensions['w'];
   final h = node.extensions['h'];
   final color = node.extensions['color'];
-  if (x is! num || y is! num || w is! num || h is! num || color is! int) {
+  if (x is! num ||
+      y is! num ||
+      w is! num ||
+      h is! num ||
+      color is! int) {
     return null;
   }
   return NodeGeometry(
@@ -190,6 +296,25 @@ NodeGeometry? nodeGeometry(DocumentNode node) {
     y: y.toDouble(),
     width: w.toDouble(),
     height: h.toDouble(),
+    color: color,
+  );
+}
+
+/// Text-frame payload: `x`, `y`, `size`, `text`, `color`.
+TextNodeGeometry? textNodeGeometry(DocumentNode node) {
+  final x = node.extensions['x'];
+  final y = node.extensions['y'];
+  final size = node.extensions['size'];
+  final text = node.extensions['text'];
+  final color = node.extensions['color'];
+  if (x is! num || y is! num || size is! num || text is! String || color is! int) {
+    return null;
+  }
+  return TextNodeGeometry(
+    x: x.toDouble(),
+    y: y.toDouble(),
+    size: size.toDouble(),
+    text: text,
     color: color,
   );
 }
@@ -208,4 +333,27 @@ final class NodeGeometry {
   final double width;
   final double height;
   final int color;
+}
+
+final class TextNodeGeometry {
+  const TextNodeGeometry({
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.text,
+    required this.color,
+  });
+
+  final double x;
+  final double y;
+  final double size;
+  final String text;
+  final int color;
+}
+
+class _PointerStamp {
+  const _PointerStamp({required this.position, required this.at});
+
+  final Offset position;
+  final DateTime at;
 }

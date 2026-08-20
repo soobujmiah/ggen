@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ggen_app/main.dart';
+import 'package:ggen_app/src/canvas/studio_canvas.dart';
 import 'package:ggen_app/src/controller/studio_controller.dart';
 import 'package:ggen_core/ggen_core.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -219,6 +220,85 @@ void main() {
     await tester.tap(switchFinder);
     await tester.pumpAndSettle();
     expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);
+  });
+
+  testWidgets('draw tool works through the shell (nav then canvas tap)',
+      (tester) async {
+    // Reproduces the device flow: select Draw in the bottom bar, then tap
+    // the canvas. This failed to produce node_add events on-device, so it
+    // is pinned here as an integration test.
+    final controller = StudioController();
+    await tester.pumpWidget(GgenApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(controller.objectCount, 0);
+    await tester.tap(find.text('Draw'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(StudioCanvas));
+    await tester.pumpAndSettle();
+
+    expect(controller.objectCount, 1, reason: 'canvas tap must add a shape');
+    expect(controller.revision, 1);
+    expect(controller.canUndo, isTrue);
+  });
+
+  testWidgets('text tool adds a text frame through the shell dialog',
+      (tester) async {
+    final controller = StudioController();
+    await tester.pumpWidget(GgenApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Text'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(StudioCanvas));
+    await tester.pumpAndSettle();
+
+    // The text dialog appears; enter text and confirm.
+    expect(find.text('Add text'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'Hello GGEN');
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+
+    expect(controller.objectCount, 1);
+    expect(
+      controller.project.artboards.first.nodes.single.kind,
+      DocumentNodeKind.textFrame,
+    );
+  });
+
+  testWidgets('volume down undoes and volume up redoes', (tester) async {
+    final controller = StudioController();
+    controller.addShapeNode(10, 10);
+    await tester.pumpWidget(GgenApp(controller: controller));
+    await tester.pumpAndSettle();
+    expect(controller.canUndo, isTrue);
+    expect(controller.revision, 1);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.audioVolumeDown);
+    await tester.pumpAndSettle();
+    expect(controller.revision, 0);
+    expect(controller.canRedo, isTrue);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.audioVolumeUp);
+    await tester.pumpAndSettle();
+    expect(controller.revision, 1);
+  });
+
+  testWidgets('project name chip scrolls for long names', (tester) async {
+    final longName = 'A very long project name that keeps going and going';
+    final controller = StudioController(projectName: longName);
+    await tester.pumpWidget(GgenApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(find.text(longName), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(CanvasArea),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsWidgets,
+    );
   });
 
   group('canvas geometry diagnostics', () {

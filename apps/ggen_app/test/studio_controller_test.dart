@@ -430,24 +430,61 @@ void main() {
       expect(controller.project.artboards.first.nodes.single.name, 'Shape 1');
     });
   });
-}
 
-/// Reads node geometry for controller tests (kept local to avoid coupling
-/// the controller tests to the canvas widget file).
-Map<String, Object?>? nodeGeometryForTest(DocumentNode node) {
-  final x = node.extensions['x'];
-  final y = node.extensions['y'];
-  final w = node.extensions['w'];
-  final h = node.extensions['h'];
-  final color = node.extensions['color'];
-  if (x is! num || y is! num || w is! num || h is! num || color is! int) {
-    return null;
-  }
-  return <String, Object?>{
-    'x': x.toDouble(),
-    'y': y.toDouble(),
-    'w': w.toDouble(),
-    'h': h.toDouble(),
-    'color': color,
-  };
+  group('text tool', () {
+    test('addTextNode adds one undoable text frame with geometry', () {
+      final controller = StudioController();
+      controller.addTextNode(300, 200, 'Hello GGEN');
+
+      expect(controller.revision, 1);
+      expect(controller.objectCount, 1);
+      expect(controller.canUndo, isTrue);
+
+      final node = controller.project.artboards.first.nodes.single;
+      expect(node.kind, DocumentNodeKind.textFrame);
+      expect(node.name, 'Text 1');
+      final geometry = textNodeGeometry(node);
+      expect(geometry, isNotNull);
+      expect(geometry!.x, 300);
+      expect(geometry.y, 200);
+      expect(geometry.size, 24);
+      expect(geometry.text, 'Hello GGEN');
+    });
+
+    test('text is trimmed and clamped into the artboard', () {
+      final controller = StudioController();
+      controller.addTextNode(-500, 10000, '  padded  ');
+
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = textNodeGeometry(node)!;
+      expect(geometry.x, 0);
+      expect(geometry.y, 800);
+      expect(geometry.text, 'padded');
+    });
+
+    test('empty or oversized text is rejected', () {
+      final controller = StudioController();
+      expect(() => controller.addTextNode(0, 0, '   '), throwsArgumentError);
+      expect(
+        () => controller.addTextNode(0, 0, 'x' * 300),
+        throwsArgumentError,
+      );
+      expect(controller.revision, 0);
+    });
+
+    test('undo removes the text frame and redo restores it', () {
+      final controller = StudioController();
+      controller.addTextNode(10, 10, 'hi');
+      expect(controller.objectCount, 1);
+
+      controller.undo();
+      expect(controller.objectCount, 0);
+      controller.redo();
+      expect(controller.objectCount, 1);
+      expect(
+        controller.project.artboards.first.nodes.single.kind,
+        DocumentNodeKind.textFrame,
+      );
+    });
+  });
 }
