@@ -163,6 +163,147 @@ class StudioController extends ChangeNotifier {
     return true;
   }
 
+  // ── Layer operations ──────────────────────────────────────────────────
+
+  /// Toggles the visibility of [nodeId] in the first artboard through one
+  /// undoable tool session. Returns false when the node is not found.
+  bool toggleNodeVisibility(GgenId nodeId) {
+    final result = _replaceNode(
+      nodeId,
+      (node) => DocumentNode(
+        id: node.id,
+        kind: node.kind,
+        name: node.name,
+        visible: !node.visible,
+        locked: node.locked,
+        opacity: node.opacity,
+        extensions: node.extensions,
+      ),
+      'Toggle visibility of ',
+    );
+    return result;
+  }
+
+  /// Toggles the lock state of [nodeId] in the first artboard through one
+  /// undoable tool session. Returns false when the node is not found.
+  bool toggleNodeLock(GgenId nodeId) {
+    return _replaceNode(
+      nodeId,
+      (node) => DocumentNode(
+        id: node.id,
+        kind: node.kind,
+        name: node.name,
+        visible: node.visible,
+        locked: !node.locked,
+        opacity: node.opacity,
+        extensions: node.extensions,
+      ),
+      'Toggle lock of ',
+    );
+  }
+
+  /// Reorders nodes in the first artboard: moves the node at [fromIndex] to
+  /// [toIndex] through one undoable tool session. Indices are in artboard
+  /// node order (first = bottom of z-stack). Returns false when the indices
+  /// are out of range or identical.
+  bool reorderNodes(int fromIndex, int toIndex) {
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final count = artboard.nodes.length;
+    if (fromIndex < 0 || fromIndex >= count) return false;
+    if (toIndex < 0 || toIndex >= count) return false;
+    if (fromIndex == toIndex) return false;
+
+    final nodes = List<DocumentNode>.from(artboard.nodes);
+    final moved = nodes.removeAt(fromIndex);
+    nodes.insert(toIndex, moved);
+
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: nodes,
+      ),
+      ...artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, 'Reorder ${moved.name}');
+    return true;
+  }
+
+  /// Deletes [nodeId] from the first artboard through one undoable tool
+  /// session. Clears the selection when the deleted node was selected.
+  /// Returns false when the node is not found.
+  bool deleteNode(GgenId nodeId) {
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
+    if (nodeIndex < 0) return false;
+    final node = artboard.nodes[nodeIndex];
+
+    final nextNodes = <DocumentNode>[
+      ...artboard.nodes.sublist(0, nodeIndex),
+      ...artboard.nodes.sublist(nodeIndex + 1),
+    ];
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: nextNodes,
+      ),
+      ...artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, 'Delete ${node.name}');
+    if (_selectedNodeId == nodeId) _selectedNodeId = null;
+    return true;
+  }
+
+  /// Replaces a single node in the first artboard through one undoable tool
+  /// session. The [transform] receives the current node and returns the
+  /// replacement. Returns false when the node is not found.
+  bool _replaceNode(
+    GgenId nodeId,
+    DocumentNode Function(DocumentNode) transform,
+    String descriptionPrefix,
+  ) {
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
+    if (nodeIndex < 0) return false;
+    final node = artboard.nodes[nodeIndex];
+
+    final replaced = transform(node);
+    final nextNodes = <DocumentNode>[
+      ...artboard.nodes.sublist(0, nodeIndex),
+      replaced,
+      ...artboard.nodes.sublist(nodeIndex + 1),
+    ];
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: nextNodes,
+      ),
+      ...artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, '$descriptionPrefix${node.name}');
+    return true;
+  }
+
   /// Replaces the whole project (New Project). Not undoable by design: the
   /// previous project leaves the workspace entirely.
   void newProject(String name) {

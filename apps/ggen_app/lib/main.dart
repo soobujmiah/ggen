@@ -11,6 +11,7 @@ import 'workspace_profile.dart';
 import 'profile_manager_sheet.dart';
 import 'src/controller/studio_controller.dart';
 import 'src/canvas/studio_canvas.dart';
+import 'src/layers/layer_list.dart';
 import 'src/storage/file_project_store.dart';
 import 'src/storage/file_recovery_journal.dart';
 
@@ -154,6 +155,7 @@ class _StudioShellState extends State<StudioShell> {
   late final bool _ownsStudio;
   bool _immersive = false;
   bool _showInspector = true;
+  bool _showLayers = false;
   bool _canvasFirst = true;
   bool _workspaceSettingsOpen = false;
   InspectorDock _inspectorDock = InspectorDock.right;
@@ -330,6 +332,34 @@ class _StudioShellState extends State<StudioShell> {
     debugLog.info(
       'immersive_mode',
       value ? 'Canvas chrome hidden' : 'Canvas chrome restored',
+    );
+  }
+
+  /// Opens the layer list as a bottom sheet on compact phones. Selection
+  /// taps sync with the controller so the canvas highlights the chosen node.
+  void _showLayersSheet() {
+    debugLog.info('layers_sheet', 'Layers sheet opened');
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.45,
+        minChildSize: 0.25,
+        maxChildSize: 0.85,
+        builder: (context, scrollController) => LayerPanel(
+          controller: _studio,
+          onNodeSelected: (nodeId) {
+            _studio.selectNode(nodeId);
+            debugLog.info(
+              'layer_select',
+              'Node selected from layer sheet',
+              {'node_id': nodeId.value},
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -552,6 +582,24 @@ class _StudioShellState extends State<StudioShell> {
                           _showInspector &&
                           _inspectorDock == InspectorDock.right)
                         inspector,
+                      if (showPanels && !compact && _showLayers)
+                        SizedBox(
+                          width: 260,
+                          child: Card(
+                            margin: const EdgeInsets.all(8),
+                            child: LayerPanel(
+                              controller: _studio,
+                              onNodeSelected: (nodeId) {
+                                _studio.selectNode(nodeId);
+                                debugLog.info(
+                                  'layer_select',
+                                  'Node selected from layer list',
+                                  {'node_id': nodeId.value},
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                   if (!_immersive)
@@ -574,6 +622,32 @@ class _StudioShellState extends State<StudioShell> {
                               'revision': _studio.revision,
                             });
                           },
+                        ),
+                      ),
+                    ),
+                  if (!_immersive)
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: SafeArea(
+                        child: IconButton.filledTonal(
+                          tooltip: _showLayers ? 'Hide layers' : 'Show layers',
+                          onPressed: () {
+                            if (compact) {
+                              _showLayersSheet();
+                            } else {
+                              setState(() => _showLayers = !_showLayers);
+                              debugLog.info(
+                                'layers_toggle',
+                                _showLayers ? 'Layers panel opened' : 'Layers panel closed',
+                              );
+                            }
+                          },
+                          icon: Icon(
+                            _showLayers && !compact
+                                ? Icons.layers_clear_outlined
+                                : Icons.layers_outlined,
+                          ),
                         ),
                       ),
                     ),
