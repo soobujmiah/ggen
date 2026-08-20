@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-20 — Keyboard zoom shortcuts and node resize handles
+
+- **Keyboard zoom**: Ctrl+=/Ctrl++ zooms in, Ctrl+- zooms out, Ctrl+0 fits to screen. Uses a new `CanvasZoomController` command channel between the shell and the canvas (viewport state stays out of the project controller). Canvas zoom methods (`zoomIn()`, `zoomOut()`, `fitToScreen()`) are now public.
+- **Node resize handles**: when a shape node is selected in the Select tool, 8 resize handles (4 corners + 4 edges) render as screen-space white/blue squares. Dragging a handle shows a live preview and commits through one undoable tool session via `controller.resizeNode()`. Minimum size enforced at 8 artboard units. Text nodes are excluded (no w/h geometry).
+- `resizeHandleRects()` and `ResizeHandle` enum are public utilities for tests.
+- Tests: controller (resize with undo, non-finite/non-positive rejection, nonexistent node, text node exclusion).
+- Deferred: proportional resize (Shift), snap-to-grid resize, numeric resize input, zoom presets (50%, 100%, 200%).
+
 ## 2026-08-20 — Zoom controls, delete shortcut and canvas-geometry log suppression
 
 - **Zoom controls overlay** (`studio_canvas.dart`): bottom-right material card with zoom-in (+25%), zoom-out (−20%), fit-to-screen buttons and a tappable zoom percentage label. Buttons disable at the viewport min/max scale limits.

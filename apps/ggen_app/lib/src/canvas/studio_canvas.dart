@@ -4,6 +4,7 @@ import 'package:ggen_core/ggen_core.dart';
 
 import '../controller/studio_controller.dart';
 import 'canvas_viewport.dart';
+import 'canvas_zoom_controller.dart';
 
 /// Original compact-phone canvas: shows the first artboard with pinch-zoom
 /// and pan, routes taps to the active tool (draw, text, select), and detects
@@ -24,6 +25,7 @@ class StudioCanvas extends StatefulWidget {
     this.onTwoFingerTap,
     this.onThreeFingerTap,
     this.onViewportChanged,
+    this.zoomController,
     super.key,
   });
 
@@ -54,6 +56,9 @@ class StudioCanvas extends StatefulWidget {
   /// Test/telemetry hook: called with every viewport change (fit, zoom, pan).
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
+  /// Optional zoom command channel from the shell (keyboard shortcuts).
+  final CanvasZoomController? zoomController;
+
   @override
   State<StudioCanvas> createState() => _StudioCanvasState();
 }
@@ -73,15 +78,52 @@ class _StudioCanvasState extends State<StudioCanvas> {
   // Raw multi-touch tap tracking.
   final Map<int, _PointerStamp> _downPointers = <int, _PointerStamp>{};
   int _burstPointerCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.zoomController?.addListener(_onZoomCommand);
+  }
+
+  @override
+  void didUpdateWidget(covariant StudioCanvas oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.zoomController != widget.zoomController) {
+      oldWidget.zoomController?.removeListener(_onZoomCommand);
+      widget.zoomController?.addListener(_onZoomCommand);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.zoomController?.removeListener(_onZoomCommand);
+    super.dispose();
+  }
+
+  void _onZoomCommand() {
+    final cmd = widget.zoomController?.consumeCommand();
+    if (cmd == null) return;
+    switch (cmd) {
+      case CanvasZoomCommand.zoomIn:
+        zoomIn();
+      case CanvasZoomCommand.zoomOut:
+        zoomOut();
+      case CanvasZoomCommand.fitToScreen:
+        fitToScreen();
+    }
+  }
   DateTime? _burstStart;
 
   // Node drag tracking for the Select tool.
   _NodeDrag? _nodeDrag;
 
+  // Resize handle drag tracking.
+  _ResizeDrag? _resizeDrag;
+
   void _reportViewport() => widget.onViewportChanged?.call(_viewport);
 
   /// Zooms in by 25% around the canvas center.
-  void _zoomIn() {
+  void zoomIn() {
     setState(() {
       final artboards = widget.controller.project.artboards;
       if (artboards.isEmpty) return;
@@ -98,7 +140,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
   }
 
   /// Zooms out by 20% (inverse of 1.25×) around the canvas center.
-  void _zoomOut() {
+  void zoomOut() {
     setState(() {
       final artboards = widget.controller.project.artboards;
       if (artboards.isEmpty) return;
@@ -115,7 +157,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
   }
 
   /// Fits the artboard into the current canvas constraints.
-  void _fitToScreen() {
+  void fitToScreen() {
     final artboards = widget.controller.project.artboards;
     if (artboards.isEmpty) return;
     // Use the last known fit key dimensions; reset forces a re-fit.
@@ -251,8 +293,37 @@ class _StudioCanvasState extends State<StudioCanvas> {
             behavior: HitTestBehavior.opaque,
             onScaleStart: (details) {
               _gestureStartScale = _viewport.scale;
-              // In select mode, check if the gesture starts on a selected node.
+              // In select mode, check if the gesture starts on a resize
+              // handle of the selected node (checked first, before move).
               if (widget.selectMode && widget.selectedNodeId != null) {
+                final selectedId = widget.selectedNodeId!;
+                final artboards = widget.controller.project.artboards;
+                if (artboards.isNotEmpty) {
+                  final nodes = artboards.first.nodes;
+                  final idx = nodes.indexWhere((n) => n.id == selectedId);
+                  if (idx >= 0) {
+                    final geom = nodeGeometry(nodes[idx]);
+                    if (geom != null) {
+                      final handles = resizeHandleRects(geom, _viewport);
+                      for (final entry in handles.entries) {
+                        if (entry.value.contains(details.localFocalPoint)) {
+                          _resizeDrag = _ResizeDrag(
+                            nodeId: selectedId,
+                            handle: entry.key,
+                            startScreen: details.localFocalPoint,
+                            initialX: geom.x,
+                            initialY: geom.y,
+                            initialW: geom.width,
+                            initialH: geom.height,
+                          );
+                          return;
+                        }
+                      }
+                    }
+                  }
+                }
+                // Not a handle: check if the gesture starts on the node
+                // itself for a move.
                 final artboardPoint = _viewport.toArtboard(
                   details.localFocalPoint,
                 );
@@ -266,6 +337,21 @@ class _StudioCanvasState extends State<StudioCanvas> {
               }
             },
             onScaleUpdate: (details) {
+              // If we're resizing a node, update the resize preview.
+              if (_resizeDrag != null) {
+                final startArtboard = _viewport.toArtboard(
+                  _resizeDrag!.startScreen,
+                );
+                final currentArtboard = _viewport.toArtboard(
+                  details.localFocalPoint,
+                );
+                final dx = currentArtboard.dx - startArtboard.dx;
+                final dy = currentArtboard.dy - startArtboard.dy;
+                setState(() {
+                  _resizeDrag = _resizeDrag!.withDelta(dx, dy);
+                });
+                return;
+              }
               // If we're dragging a node, update the drag preview.
               if (_nodeDrag != null) {
                 final startArtboard = _viewport.toArtboard(
@@ -308,6 +394,26 @@ class _StudioCanvasState extends State<StudioCanvas> {
               _reportViewport();
             },
             onScaleEnd: (_) {
+              // Commit the resize if one was active.
+              if (_resizeDrag != null) {
+                final drag = _resizeDrag!;
+                _resizeDrag = null;
+                final (x, y, w, h) = drag.computeGeometry();
+                // Only commit if the geometry actually changed (>1 unit).
+                if ((x - drag.initialX).abs() > 1 ||
+                    (y - drag.initialY).abs() > 1 ||
+                    (w - drag.initialW).abs() > 1 ||
+                    (h - drag.initialH).abs() > 1) {
+                  widget.controller.resizeNode(
+                    drag.nodeId,
+                    x: x,
+                    y: y,
+                    width: w,
+                    height: h,
+                  );
+                }
+                return;
+              }
               // Commit the node drag if one was active.
               if (_nodeDrag != null) {
                 final drag = _nodeDrag!;
@@ -380,21 +486,84 @@ class _StudioCanvasState extends State<StudioCanvas> {
           ),
               ),
             ),
+            // Resize handles overlay for the selected shape node.
+            if (widget.selectMode && widget.selectedNodeId != null)
+              ..._resizeHandleWidgets(),
             // Zoom controls overlay — bottom-right of the canvas.
             Positioned(
               right: 12,
               bottom: 12,
               child: _ZoomControls(
                 scale: _viewport.scale,
-                onZoomIn: _zoomIn,
-                onZoomOut: _zoomOut,
-                onFit: _fitToScreen,
+                onZoomIn: zoomIn,
+                onZoomOut: zoomOut,
+                onFit: fitToScreen,
               ),
             ),
           ],
         );
       },
     );
+  }
+
+  /// Renders the 8 resize handles for the selected shape node in screen
+  /// space. Returns an empty list when no shape node is selected.
+  List<Widget> _resizeHandleWidgets() {
+    final selectedId = widget.selectedNodeId;
+    if (selectedId == null) return const <Widget>[];
+    final artboards = widget.controller.project.artboards;
+    if (artboards.isEmpty) return const <Widget>[];
+    final nodes = artboards.first.nodes;
+    final nodeIndex = nodes.indexWhere((n) => n.id == selectedId);
+    if (nodeIndex < 0) return const <Widget>[];
+    final geometry = nodeGeometry(nodes[nodeIndex]);
+    if (geometry == null) return const <Widget>[];
+
+    // Apply live drag offset if this node is being moved.
+    final drag = _nodeDrag;
+    final dragDx = (drag != null && drag.nodeId == selectedId) ? drag.deltaX : 0.0;
+    final dragDy = (drag != null && drag.nodeId == selectedId) ? drag.deltaY : 0.0;
+
+    // Apply live resize delta if this node is being resized.
+    final resizeDrag = _resizeDrag;
+    double x = geometry.x + dragDx;
+    double y = geometry.y + dragDy;
+    double w = geometry.width;
+    double h = geometry.height;
+    if (resizeDrag != null && resizeDrag.nodeId == selectedId) {
+      final (rx, ry, rw, rh) = resizeDrag.computeGeometry();
+      x = rx;
+      y = ry;
+      w = rw;
+      h = rh;
+    }
+
+    final handles = resizeHandleRects(
+      NodeGeometry(x: x, y: y, width: w, height: h, color: 0),
+      _viewport,
+    );
+    const hs = kHandleSize;
+    return <Widget>[
+      for (final entry in handles.entries)
+        Positioned(
+          left: entry.value.left,
+          top: entry.value.top,
+          width: hs,
+          height: hs,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(
+                  color: const Color(0xFF4E6BFF),
+                  width: 1.5,
+                ),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ),
+        ),
+    ];
   }
 
   List<Widget> _nodeWidgets(DocumentNode node) {
@@ -587,6 +756,52 @@ final class TextNodeGeometry {
   final int color;
 }
 
+/// Which resize handle is being dragged.
+enum ResizeHandle {
+  topLeft,
+  topCenter,
+  topRight,
+  middleLeft,
+  middleRight,
+  bottomLeft,
+  bottomCenter,
+  bottomRight,
+}
+
+/// Size of a resize handle hit area in screen pixels.
+const double kHandleSize = 10;
+
+/// Returns the screen-space rects for all 8 resize handles of a node with
+/// the given artboard-space geometry at the given viewport transform.
+Map<ResizeHandle, Rect> resizeHandleRects(
+  NodeGeometry geometry,
+  CanvasViewport viewport,
+) {
+  final topLeft = viewport.toScreen(Offset(geometry.x, geometry.y));
+  final bottomRight = viewport.toScreen(
+    Offset(geometry.x + geometry.width, geometry.y + geometry.height),
+  );
+  final left = topLeft.dx;
+  final top = topLeft.dy;
+  final right = bottomRight.dx;
+  final bottom = bottomRight.dy;
+  final midX = (left + right) / 2;
+  final midY = (top + bottom) / 2;
+  const hs = kHandleSize;
+  Rect handleAt(double cx, double cy) =>
+      Rect.fromCenter(center: Offset(cx, cy), width: hs, height: hs);
+  return <ResizeHandle, Rect>{
+    ResizeHandle.topLeft: handleAt(left, top),
+    ResizeHandle.topCenter: handleAt(midX, top),
+    ResizeHandle.topRight: handleAt(right, top),
+    ResizeHandle.middleLeft: handleAt(left, midY),
+    ResizeHandle.middleRight: handleAt(right, midY),
+    ResizeHandle.bottomLeft: handleAt(left, bottom),
+    ResizeHandle.bottomCenter: handleAt(midX, bottom),
+    ResizeHandle.bottomRight: handleAt(right, bottom),
+  };
+}
+
 /// Tracks an in-progress node drag: the node being moved, where the drag
 /// started in screen coordinates, and the cumulative artboard-space delta.
 class _NodeDrag {
@@ -608,6 +823,89 @@ class _NodeDrag {
     deltaX: dx,
     deltaY: dy,
   );
+}
+
+/// Tracks an in-progress resize handle drag.
+class _ResizeDrag {
+  const _ResizeDrag({
+    required this.nodeId,
+    required this.handle,
+    required this.startScreen,
+    required this.initialX,
+    required this.initialY,
+    required this.initialW,
+    required this.initialH,
+    this.deltaX = 0,
+    this.deltaY = 0,
+  });
+
+  final GgenId nodeId;
+  final ResizeHandle handle;
+  final Offset startScreen;
+  final double initialX;
+  final double initialY;
+  final double initialW;
+  final double initialH;
+  final double deltaX;
+  final double deltaY;
+
+  _ResizeDrag withDelta(double dx, double dy) => _ResizeDrag(
+    nodeId: nodeId,
+    handle: handle,
+    startScreen: startScreen,
+    deltaX: dx,
+    deltaY: dy,
+    initialX: initialX,
+    initialY: initialY,
+    initialW: initialW,
+    initialH: initialH,
+  );
+
+  /// Computes the new geometry after applying the artboard-space delta.
+  (double x, double y, double w, double h) computeGeometry() {
+    var x = initialX;
+    var y = initialY;
+    var w = initialW;
+    var h = initialH;
+    final dx = deltaX;
+    final dy = deltaY;
+    switch (handle) {
+      case ResizeHandle.topLeft:
+        x += dx; y += dy; w -= dx; h -= dy;
+      case ResizeHandle.topCenter:
+        y += dy; h -= dy;
+      case ResizeHandle.topRight:
+        y += dy; w += dx; h -= dy;
+      case ResizeHandle.middleLeft:
+        x += dx; w -= dx;
+      case ResizeHandle.middleRight:
+        w += dx;
+      case ResizeHandle.bottomLeft:
+        x += dx; w -= dx; h += dy;
+      case ResizeHandle.bottomCenter:
+        h += dy;
+      case ResizeHandle.bottomRight:
+        w += dx; h += dy;
+    }
+    // Enforce minimum size of 8 artboard units.
+    if (w < 8) {
+      if (handle == ResizeHandle.topLeft ||
+          handle == ResizeHandle.middleLeft ||
+          handle == ResizeHandle.bottomLeft) {
+        x -= (8 - w);
+      }
+      w = 8;
+    }
+    if (h < 8) {
+      if (handle == ResizeHandle.topLeft ||
+          handle == ResizeHandle.topCenter ||
+          handle == ResizeHandle.topRight) {
+        y -= (8 - h);
+      }
+      h = 8;
+    }
+    return (x, y, w, h);
+  }
 }
 
 /// Compact zoom controls overlay: zoom in, zoom out, fit-to-screen buttons
