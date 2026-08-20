@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-20 — Device evidence: Text tool and content persistence verified
+
+- Redmi export (12:07:38Z, text-tool build): `node_add_text` ×2 (`fyug`, `dttd7`) confirmed the Text tool on-device; `project_save` at revision 1 / 432 bytes confirmed a project **containing content** persisted through the file store.
+- Draw remains unexercised on-device (the run selected Draw then switched to Text without tapping the canvas); undo/redo shortcuts and restart-restore remain unexercised. Documented in `docs/phases/phase-2-status.md` with the remaining device checklist.
+- Noted that `canvas_geometry` still logs during active settings-sheet drags (fast drags move >8px per frame, defeating the quantum); suppression while the sheet is open is a candidate tightening.
+
 ## 2026-08-20 — Text tool, volume-key and multi-touch undo/redo, canvas UX fixes
 
 - Text tool implemented: selecting Text and tapping the canvas prompts for text and commits a text frame node through a core tool session (undoable, journaled); text renders on the artboard.

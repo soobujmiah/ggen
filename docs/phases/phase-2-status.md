@@ -65,6 +65,16 @@ A file-backed persistence run on 2026-08-20 (export `09:01:17Z`) confirmed on th
 
 No `project_restore` event appeared because the session started with empty preferences (clean install), so the last-project restore path still awaits an on-device restart test: save a project, fully close the app, reopen, and export diagnostics. `_restoreLastProject` now logs an info event for the clean-install case to make that distinction visible in exports. Undo/redo events are likewise still unexercised on-device because no editing tool creates history yet (the buttons are disabled until `commitSession` is wired to real edits).
 
+The text-tool build (2026-08-20, export `12:07:38Z`) confirmed on the Redmi Turbo 4 Pro:
+
+- **Text tool verified on-device**: two `node_add_text` events (`fyug` at 12:06:52Z, `dttd7` at 12:07:21Z), each at object count 1 / revision 1 — text frames are created through the shell dialog and committed as undoable sessions;
+- **Persistence with content verified on-device**: `project_save` for `project-1787227624472526` at **revision 1, 432 bytes** (vs 242 bytes for empty projects) — a project containing a text frame was written to the file store;
+- New project, profiles (save/apply), workspace reset, immersive enter/restore, canvas-first toggle and the canvas at `471 x 828` all clean; no Flutter or uncaught errors;
+- **Draw tool remains unexercised, not disproven**: the run selected Draw (12:07:10Z) and immediately switched to Text (12:07:13Z) without tapping the canvas while Draw was active, so no `node_add` event was expected; the Draw flow is pinned by a passing shell integration test (bottom-bar Draw → canvas tap → node) and needs an on-device tap to confirm;
+- **Undo/redo shortcuts unexercised on-device**: no `history_undo`, `history_redo`, `volume_undo`, `volume_redo`, `gesture_undo` or `gesture_redo` events in the export;
+- **Restart-restore still unproven**: `project_restore` logged "No prior project stored" (fresh install of the new build again); save → force-close → reopen is still required;
+- **Diagnostics noise reduced but not eliminated**: `canvas_geometry` still logged ~28 entries in ~90s while the settings sheet was actively dragged — the 8px quantum collapses smooth animation churn but fast manual sheet drags move the canvas height >8px per frame, so each quantized size is still distinct. Candidate tightening: suppress geometry logging while the settings sheet is open (its resize is expected, not evidence-worthy).
+
 A further clean device run on 2026-08-20 (export `07:49:00Z`) re-confirmed on the Redmi Turbo 4 Pro:
 
 - compact viewport `471 x 1020`, canvas geometry `471 x 353`, zero safe-area/keyboard insets at measurement time;
@@ -84,7 +94,8 @@ The same run exposed a **canvas-first switch defect**: six consecutive `canvas_f
 
 1. ~~Generate a manual APK only when another device validation cycle is needed~~ (canonical manual workflow; used for every device round).
 2. ~~Exercise profile save, apply, delete and reset flows on the Redmi Turbo 4 Pro~~ (verified in the 08:08Z and 09:01Z exports).
-3. Exercise the Draw-tool and undo/redo flows on the Redmi Turbo 4 Pro and export diagnostics containing `node_add`, `history_undo` and `history_redo` (undo/redo enable only after a Draw-tap creates history; still unexercised on-device).
-4. Exercise the restart-restore flow: save, fully close the app, reopen, export diagnostics containing `project_restore` (still unexercised on-device; last export logged the clean-install event).
-5. SAF/MediaStore user-facing Import/Export (ADR-0004 defers this): share-sheet/SAF picker flow for exporting `.ggen` project files to user-chosen locations and importing them back; progress, cancellation and tests.
-6. Creative surface next: Select-tool node selection and move through undoable sessions, then layer list and zoom controls.
+3. Exercise the Draw tool on the Redmi with the text-tool build: select Draw, tap the canvas several times, export diagnostics containing `node_add` (the shell integration test passes; on-device confirmation is the last step for this flow).
+4. Exercise the undo/redo shortcuts on the Redmi: history-bar buttons, volume down/up, two-finger undo and three-finger redo, exporting `history_undo`/`history_redo`/`volume_undo`/`volume_redo`/`gesture_undo`/`gesture_redo`.
+5. Exercise the restart-restore flow: save a project with content, fully close the app, reopen, export diagnostics containing `project_restore` (still unexercised on-device; last export logged the clean-install event).
+6. SAF/MediaStore user-facing Import/Export (ADR-0004 defers this): share-sheet/SAF picker flow for exporting `.ggen` project files to user-chosen locations and importing them back; progress, cancellation and tests.
+7. Creative surface next: Select-tool node selection and move through undoable sessions, then layer list and zoom controls; consider suppressing canvas-geometry logging while the settings sheet is open.
