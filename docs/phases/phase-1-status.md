@@ -1,6 +1,6 @@
 # Phase 1 — Core Foundation Status
 
-**Status:** Active; platform-neutral foundation is being expanded before any creative-surface implementation.
+**Status:** Core foundation complete and green; the original Flutter canvas shell now consumes the core contracts (see Phase 2).
 
 ## Implemented contracts
 
@@ -21,11 +21,11 @@ This slice deliberately contains no copied reference UI, no protected-asset muta
 ## Verification state
 
 - Source implementation: pure Dart under `packages/ggen_core`.
-- Local pinned-Dart verification on 2026-08-19: Dart SDK 3.13.0; format check passed, `dart analyze --fatal-infos` passed, and **22 unit tests passed**.
-- Dependency resolution: exact direct versions and generated `pubspec.lock` are committed; all 48 locked packages have provenance receipts with unresolved license status explicitly blocking distribution until review.
-- Public governance: legal files, provenance, documentation, public/private boundary, absent-pack state, build-security, full reachable-history safety scan and source receipt all pass locally.
-- GitHub Actions: public governance run `32258736289` for commit `1760880d8b65f93b8d677645e5619b35d074a0bc` completed successfully; both governance and the reusable core test were green. Earlier billing failures remain historical operational evidence, not a current source-code result.
-- Flutter application/device verification: not claimed; no Flutter UI exists yet.
+- Local pinned-Dart verification on 2026-08-20: Dart SDK 3.13.0; format check passed, `dart analyze --fatal-infos` passed, and **27 unit tests passed** (grown from 22 on 2026-08-19 as tool-session and input contracts gained coverage).
+- Dependency resolution: exact direct versions and generated `pubspec.lock` are committed; all 59 locked dependency receipts (48 core + 11 app plugin family) carry provenance with unresolved license status explicitly blocking distribution until review.
+- Public governance: legal files, provenance, documentation, public/private boundary, absent-pack state, build-security, full reachable-history safety scan and source receipt all pass locally and in CI.
+- GitHub Actions: governance, reusable core tests and Flutter shell tests are green on `main` (latest merged run set for commit `b1ff424`). Earlier billing failures remain historical operational evidence, not a current source-code result.
+- Flutter application verification: the Phase 2 shell is the creative surface built on these contracts; widget tests and user-provided Redmi Turbo 4 Pro diagnostics are recorded in `docs/phases/phase-2-status.md`. No GPU/NPU, performance or release claims are made.
 
 ## Next after the green foundation
 

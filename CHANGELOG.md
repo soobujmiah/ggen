@@ -8,7 +8,7 @@
 
 ## 2026-08-20 — Compact-phone canvas shell prototype
 
-- Original `StudioCanvas`: renders the first artboard with pinch-zoom, one-finger pan, double-tap zoom and draw-tap input, built on an immutable, widget-free `CanvasViewport` (fit, focal-anchored zoom, clamped scale 0.05–8, screen/artboard mapping).
+- Original `StudioCanvas`: renders the first artboard with pinch-zoom, one-finger pan and draw-tap input, built on an immutable, widget-free `CanvasViewport` (fit, focal-anchored zoom, clamped scale 0.05–8, screen/artboard mapping). Double-tap zoom was removed before merge: a double-tap recognizer holds the gesture arena open ~300ms, delaying single-tap resolution and deadlocking widget tests; it is deferred until explicit zoom controls exist.
 - The Draw tool is now functional: selecting Draw and tapping the canvas commits a shape node through a core tool session (`StudioController.addShapeNode`) — one undoable transaction, journaled, clamped into the artboard, with geometry in the node extensions (`x/y/w/h/color`).
 - Undo/redo become exercisable on-device for the first time (history bar was previously always disabled); the status bar object count updates live.
 - Tool rail and compact bottom navigation now track the selected tool (Select/Draw/Text; Settings stays on index 3).

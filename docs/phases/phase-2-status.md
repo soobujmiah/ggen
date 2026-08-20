@@ -25,7 +25,7 @@
 - undo/redo journal records (forward deltas and state markers) and shell restore of the last saved project on startup via a persisted storage key; stale or malformed keys fail closed;
 - file-backed storage (ADR-0004): `FileProjectStore` (atomic `.ggen` writes with SHA-256 receipts) and `FileRecoveryJournal` (bounded line-log with durable payloads) in the app documents directory, wired through `path_provider`; in-memory adapters remain the default/fallback;
 - security and governance docs: `docs/security/threat-model.md` and ADR-0005 (plugin trust model) drafted; adaptive layout widget tests (compact/tablet/wide/zero-size);
-- original compact-phone canvas prototype: `StudioCanvas` with pinch-zoom, pan, double-tap zoom and draw-tap input on an immutable `CanvasViewport`; the Draw tool commits shape nodes through core tool sessions (undoable, journaled), so undo/redo and live object count are exercisable on-device for the first time. Real vector drawing, selection, layer list and stylus input are deferred.
+- original compact-phone canvas prototype: `StudioCanvas` with pinch-zoom, pan and draw-tap input on an immutable `CanvasViewport`; the Draw tool commits shape nodes through core tool sessions (undoable, journaled), so undo/redo and live object count are exercisable on-device for the first time. Double-tap zoom is deliberately absent (the recognizer's 300ms arena hold delays single-tap resolution); real vector drawing, selection, layer list, zoom controls and stylus input are deferred.
 
 ## App identity
 
@@ -81,8 +81,9 @@ The same run exposed a **canvas-first switch defect**: six consecutive `canvas_f
 
 ## Next
 
-1. Generate a manual APK only when another device validation cycle is needed.
-2. Exercise profile save, apply, delete and reset flows on the Redmi Turbo 4 Pro.
-3. Exercise the New project, Save, undo and redo flows on the Redmi Turbo 4 Pro and export diagnostics containing `project_new`, `project_save`, `history_undo` and `history_redo`.
-4. SAF/MediaStore user-facing Import/Export (ADR-0004 defers this): share-sheet/SAF picker flow for exporting `.ggen` project files to user-chosen locations and importing them back; progress, cancellation and tests.
-5. Continue dockable panel and creative-surface implementation after the workspace foundation remains stable.
+1. ~~Generate a manual APK only when another device validation cycle is needed~~ (canonical manual workflow; used for every device round).
+2. ~~Exercise profile save, apply, delete and reset flows on the Redmi Turbo 4 Pro~~ (verified in the 08:08Z and 09:01Z exports).
+3. Exercise the Draw-tool and undo/redo flows on the Redmi Turbo 4 Pro and export diagnostics containing `node_add`, `history_undo` and `history_redo` (undo/redo enable only after a Draw-tap creates history; still unexercised on-device).
+4. Exercise the restart-restore flow: save, fully close the app, reopen, export diagnostics containing `project_restore` (still unexercised on-device; last export logged the clean-install event).
+5. SAF/MediaStore user-facing Import/Export (ADR-0004 defers this): share-sheet/SAF picker flow for exporting `.ggen` project files to user-chosen locations and importing them back; progress, cancellation and tests.
+6. Creative surface next: Select-tool node selection and move through undoable sessions, then layer list and zoom controls.

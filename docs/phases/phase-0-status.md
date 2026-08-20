@@ -33,7 +33,7 @@
 - [ ] Define initial Phase 1 vertical slice and explicit non-goals.
 - [x] Create threat model and plugin trust model ADR.
 - [ ] Define UDM schema v1 in sufficient detail for implementation.
-- [ ] Establish Flutter/Dart/Android SDK exact pins and provision Codespaces.
+- [x] Establish Flutter/Dart/Android SDK exact pins and provision Codespaces (pins in `config/toolchain.yaml`; `.devcontainer` present; CI uses the exact Flutter 3.47.0 / Dart 3.13.0 pin).
 - [ ] Select the native 3D engine language/render abstraction after a measured feasibility spike; do not lock from marketing claims.
 - [ ] Select and pin the typography/font shaping/compiler stack and independent validators.
 - [ ] Define GitHub issue/project/release templates and offline repository continuity backup.
