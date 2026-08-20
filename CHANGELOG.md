@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-20 — Bound canvas-geometry diagnostics (device flood)
+
+- Device export (2026-08-20 09:52Z) showed ~50 `canvas_geometry` entries in a few seconds while the settings sheet animated: the sheet resizes the canvas ~1px per frame and the per-pixel dedupe still logged each distinct size, flooding the bounded log and evicting meaningful events.
+- `recordCanvasGeometry` now quantizes the dedupe key to 8px and applies a 500ms cooldown; the exact rounded size is logged when a log happens, so settled geometry evidence stays precise. A widget test feeds 60 one-pixel steps and asserts ≤8 entries.
+- The same export confirmed the canvas shell on-device: canvas height now 471×828 (was 471×353), tool names logged, new project + save + immersive clean, no errors. `project_restore` and undo/redo remain to be exercised on-device (undo/redo buttons activate only after a Draw-tap creates history).
+
 ## 2026-08-20 — Compact-phone canvas shell prototype
 
 - Original `StudioCanvas`: renders the first artboard with pinch-zoom, one-finger pan, double-tap zoom and draw-tap input, built on an immutable, widget-free `CanvasViewport` (fit, focal-anchored zoom, clamped scale 0.05–8, screen/artboard mapping).

@@ -22,16 +22,36 @@ final Set<String> _loggedLayoutModes = <String>{};
 enum InspectorDock { left, right }
 
 final Set<String> _loggedCanvasGeometries = <String>{};
+DateTime? _lastGeometryLogAt;
 
-void _recordCanvasGeometry(BuildContext context, Size size) {
+/// Records the canvas bounds for diagnostics.
+///
+/// Sheet animations resize the canvas by ~1px per frame, so a per-pixel
+/// dedupe alone would still log dozens of entries per animation (observed on
+/// the Redmi: ~50 entries in a few seconds while the settings sheet opened),
+/// drowning out meaningful events and evicting them from the bounded log.
+/// The key is quantized to [geometryQuantum] pixels and a cooldown gates how
+/// often a *different* quantized size can be logged; the exact rounded size
+/// is recorded when a log does happen, so settled geometry evidence stays
+/// precise.
+void recordCanvasGeometry(BuildContext context, Size size) {
   if (size.width <= 0 || size.height <= 0) return;
-  final padding = MediaQuery.paddingOf(context);
-  final insets = MediaQuery.viewInsetsOf(context);
-  final key = '${size.width.round()}x${size.height.round()}';
-  if (_loggedCanvasGeometries.add(key)) {
+  const quantum = 8;
+  final widthRounded = size.width.round();
+  final heightRounded = size.height.round();
+  final key =
+      '${(widthRounded / quantum).round()}x${(heightRounded / quantum).round()}';
+  final now = DateTime.now();
+  final cooldownElapsed =
+      _lastGeometryLogAt == null ||
+      now.difference(_lastGeometryLogAt!) >= const Duration(milliseconds: 500);
+  if (cooldownElapsed && _loggedCanvasGeometries.add(key)) {
+    _lastGeometryLogAt = now;
+    final padding = MediaQuery.paddingOf(context);
+    final insets = MediaQuery.viewInsetsOf(context);
     debugLog.info('canvas_geometry', 'Canvas bounds measured', {
-      'width': size.width.round(),
-      'height': size.height.round(),
+      'width': widthRounded,
+      'height': heightRounded,
       'safe_top': padding.top.round(),
       'safe_bottom': padding.bottom.round(),
       'keyboard_bottom': insets.bottom.round(),
@@ -625,7 +645,7 @@ class CanvasArea extends StatelessWidget {
       children: [
         LayoutBuilder(
           builder: (context, constraints) {
-            _recordCanvasGeometry(context, constraints.biggest);
+            recordCanvasGeometry(context, constraints.biggest);
             return StudioCanvas(
               controller: controller,
               drawEnabled: drawEnabled,

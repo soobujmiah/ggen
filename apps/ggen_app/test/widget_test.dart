@@ -221,6 +221,41 @@ void main() {
     expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);
   });
 
+  group('canvas geometry diagnostics', () {
+    testWidgets('animation-size churn logs a bounded number of entries',
+        (tester) async {
+      debugLog.clear();
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: SizedBox())),
+      );
+      final context = tester.element(find.byType(SizedBox));
+
+      // Simulate a sheet animation: the canvas height changes by 1px per
+      // frame (the device export showed ~50 entries in a few seconds).
+      for (var i = 0; i < 60; i++) {
+        recordCanvasGeometry(context, Size(543, 400.0 + i));
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+
+      final geometryEntries = debugLog.entries
+          .where((entry) => entry.event == 'canvas_geometry')
+          .toList();
+      // The 8px quantum means 60 one-pixel steps collapse to ~8 quantized
+      // sizes; without the fix this would be 60 entries.
+      expect(
+        geometryEntries.length,
+        lessThanOrEqualTo(8),
+        reason: 'canvas geometry must be quantized, not logged per frame',
+      );
+      // Every logged height is a real measured height.
+      for (final entry in geometryEntries) {
+        final height = entry.details['height'];
+        expect(height, isA<int>());
+        expect((height as int), inInclusiveRange(400, 459));
+      }
+    });
+  });
+
   group('file-backed storage wiring', () {
     testWidgets(
       'storage init swaps to the file store and save writes a real file',
