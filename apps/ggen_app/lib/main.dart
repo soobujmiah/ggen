@@ -10,6 +10,8 @@ import 'workspace_profile.dart';
 import 'profile_manager_sheet.dart';
 import 'src/controller/studio_controller.dart';
 
+import 'package:ggen_core/ggen_core.dart';
+
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 final Set<String> _loggedLayoutModes = <String>{};
 

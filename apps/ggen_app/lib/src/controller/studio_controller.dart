@@ -117,9 +117,8 @@ class StudioController extends ChangeNotifier {
   /// Undoes one transaction and records a journal state marker so replay can
   /// reconstruct the resulting revision without a forward delta.
   void undo() {
-    final revisionBefore = revision;
     _history = _history.undo();
-    _journalRecord(revisionBefore, revision);
+    _journalRecord(revision, revision);
     _clearSerialized();
     notifyListeners();
   }
