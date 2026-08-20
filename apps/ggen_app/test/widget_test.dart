@@ -165,4 +165,55 @@ void main() {
     expect(find.text('Untitled project'), findsOneWidget);
     expect(find.textContaining('r0'), findsOneWidget);
   });
+
+  group('adaptive layouts', () {
+    Future<void> pumpAt(WidgetTester tester, Size size) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(const GgenApp());
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('compact phone (<700): bottom navigation, no rail', (
+      tester,
+    ) async {
+      await pumpAt(tester, const Size(400, 800));
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(NavigationRail), findsNothing);
+    });
+
+    testWidgets('small tablet (700-899): rail without inspector', (
+      tester,
+    ) async {
+      await pumpAt(tester, const Size(800, 1024));
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.text('Inspector'), findsNothing);
+    });
+
+    testWidgets('wide (>=900): rail with inspector on the right', (
+      tester,
+    ) async {
+      await pumpAt(tester, const Size(1200, 800));
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.text('Inspector'), findsOneWidget);
+      expect(find.byTooltip('Dock inspector left or right'), findsOneWidget);
+    });
+
+    testWidgets('wide inspector can dock left', (tester) async {
+      await pumpAt(tester, const Size(1200, 800));
+      expect(find.text('Inspector'), findsOneWidget);
+      await tester.tap(find.byTooltip('Dock inspector left or right'));
+      await tester.pumpAndSettle();
+      expect(find.text('Inspector'), findsOneWidget);
+    });
+
+    testWidgets('tiny and zero-size viewports do not crash', (tester) async {
+      await pumpAt(tester, const Size(200, 300));
+      expect(tester.takeException(), isNull);
+      await pumpAt(tester, const Size(0, 0));
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

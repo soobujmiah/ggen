@@ -31,7 +31,7 @@
 - [ ] Decide the owner-approved private-pack build profile; public artifacts must always omit blocked bytes.
 - [ ] Select production signing/secret custody strategy.
 - [ ] Define initial Phase 1 vertical slice and explicit non-goals.
-- [ ] Create threat model and plugin trust model ADR.
+- [x] Create threat model and plugin trust model ADR.
 - [ ] Define UDM schema v1 in sufficient detail for implementation.
 - [ ] Establish Flutter/Dart/Android SDK exact pins and provision Codespaces.
 - [ ] Select the native 3D engine language/render abstraction after a measured feasibility spike; do not lock from marketing claims.

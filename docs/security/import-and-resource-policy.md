@@ -22,6 +22,10 @@ Archive/manifest paths must be normalized relative names. Reject absolute paths,
 
 Admission reserves estimated peak memory and disk with safety margin. Streaming is preferred. Batch archives are written incrementally to disk. Disk-full/cancel/crash cleanup is idempotent; partial artifacts are marked and never presented as complete.
 
+## Related
+
+See also: `docs/security/threat-model.md` and ADR-0005 (plugin trust model).
+
 ## Android storage
 
 Use SAF/MediaStore/app-private storage and persistable URI grants. Do not request `MANAGE_EXTERNAL_STORAGE` for normal operation. Cloud/endpoint content transfer requires policy and user-visible disclosure.
