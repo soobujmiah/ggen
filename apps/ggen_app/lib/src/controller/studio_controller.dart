@@ -241,8 +241,7 @@ class StudioController extends ChangeNotifier {
   }
 
   void _storeJournalPayload(RecoveryJournalRecord record, String encoded) {
-    final journal = _journal;
-    if (journal is PayloadJournal) {
+    if (_journal case PayloadJournal journal) {
       journal.storePayload(record.projectId, record.id, encoded);
     }
   }

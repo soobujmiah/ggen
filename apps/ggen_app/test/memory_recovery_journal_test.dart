@@ -98,8 +98,8 @@ void main() {
       journal.storePayload(project, GgenId('rec-1'), codec.encode(envelope1));
 
       expect(journal.payloadFor(GgenId('rec-0'))!.project.revision, 0);
-      expect(journal.latestPayload(project)!.project.revision, 1);
-      expect(journal.latestPayload(GgenId('other')), isNull);
+      expect((await journal.latestPayload(project))!.project.revision, 1);
+      expect(await journal.latestPayload(GgenId('other')), isNull);
     });
 
     test('replay markers cannot move backwards', () async {

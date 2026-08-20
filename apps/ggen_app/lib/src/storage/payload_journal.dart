@@ -14,5 +14,5 @@ abstract interface class PayloadJournal {
   void storePayload(GgenId projectId, GgenId recordId, String canonicalJson);
 
   /// Returns the most recently stored payload for [projectId], decoded.
-  ProjectEnvelope? latestPayload(GgenId projectId);
+  Future<ProjectEnvelope?> latestPayload(GgenId projectId);
 }

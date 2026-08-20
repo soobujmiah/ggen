@@ -56,7 +56,7 @@ final class MemoryRecoveryJournal
   }
 
   @override
-  ProjectEnvelope? latestPayload(GgenId projectId) {
+  Future<ProjectEnvelope?> latestPayload(GgenId projectId) async {
     GgenId? latestRecord;
     for (final record in _records) {
       if (record.projectId == projectId) latestRecord = record.id;
