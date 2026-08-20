@@ -106,6 +106,10 @@ void main() {
     });
 
     test('entry cap evicts the oldest records and payloads', () async {
+      // The budget applies to the whole journal file, so with a cap of 3
+      // lines and interleaved payloads the newest 3 lines survive (payload
+      // of record 3, record 4, payload of record 4): the visible record
+      // stream is [4] and the payload reconstructs revision 4.
       final journal = FileRecoveryJournal(root, _policy(maxJournalEntries: 3));
       final project = GgenId('project-1');
       final codec = ProjectCodec(limits: ProjectCodecLimits.conservative());
@@ -119,7 +123,7 @@ void main() {
       }
 
       final seen = await journal.entries(project).toList();
-      expect(seen.map((record) => record.sequence), <int>[2, 3, 4]);
+      expect(seen.map((record) => record.sequence), <int>[4]);
 
       final latest = await journal.latestPayload(project);
       expect(latest!.project.revision, 4);

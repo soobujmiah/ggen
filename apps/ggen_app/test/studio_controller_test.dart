@@ -343,6 +343,7 @@ void main() {
       final key = first.storageKey;
       final receipt = await first.save();
       expect(receipt.byteSize, greaterThan(0));
+      await first.flushJournal();
 
       // A brand-new controller over the same root (fresh process) restores
       // the project from the file store with the journal intact.

@@ -58,6 +58,7 @@ class StudioController extends ChangeNotifier {
   int _lastSerializedBytes = 0;
   int _journalSequence = 0;
   int _transactionsSinceCheckpoint = 0;
+  Future<void> _journalTail = Future<void>.value();
   ProjectStoreReceipt? _lastReceipt;
 
   DocumentProject get project => _history.current;
@@ -218,8 +219,11 @@ class StudioController extends ChangeNotifier {
       payloadBytes: utf8.encode(encoded).length,
     );
     _journalSequence++;
-    unawaited(_journal.append(record));
-    _storeJournalPayload(record, encoded);
+    // Append then store the payload in order, chained so file-backed
+    // journals never see a payload before the record's journal exists.
+    _journalTail = _journalTail.then(
+      (_) => _appendAndStorePayload(record, encoded),
+    );
     _transactionsSinceCheckpoint++;
   }
 
@@ -235,15 +239,24 @@ class StudioController extends ChangeNotifier {
       payloadBytes: utf8.encode(encoded).length,
     );
     _journalSequence++;
-    await _journal.append(record);
-    _storeJournalPayload(record, encoded);
+    await _appendAndStorePayload(record, encoded);
     _transactionsSinceCheckpoint = 0;
   }
 
-  void _storeJournalPayload(RecoveryJournalRecord record, String encoded) {
+  Future<void> _appendAndStorePayload(
+    RecoveryJournalRecord record,
+    String encoded,
+  ) async {
+    await _journal.append(record);
     if (_journal case PayloadJournal journal) {
       journal.storePayload(record.projectId, record.id, encoded);
     }
+  }
+
+  /// Waits for all chained journal appends and payload stores to complete.
+  /// Tests and save paths use this to observe a quiescent journal.
+  Future<void> flushJournal() async {
+    await _journalTail;
   }
 
   static String _sha256Hex(String value) =>
