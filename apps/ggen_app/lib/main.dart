@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -314,7 +313,7 @@ class _StudioShellState extends State<StudioShell> {
         inspectorDock: _inspectorDock.name,
         lastProjectKey: receipt.key.value,
       ).save();
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -327,7 +326,7 @@ class _StudioShellState extends State<StudioShell> {
       debugLog.error('project_save', 'Save rejected by the store', {
         'error': error.toString(),
       });
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Save rejected: ${error.message}')),
       );
@@ -352,8 +351,9 @@ class _StudioShellState extends State<StudioShell> {
                     ),
                     Builder(
                       builder: (context) {
-                        if (MediaQuery.sizeOf(context).width < 900)
+                        if (MediaQuery.sizeOf(context).width < 900) {
                           return const SizedBox.shrink();
+                        }
                         return IconButton(
                           tooltip: 'Dock inspector left or right',
                           onPressed: () {

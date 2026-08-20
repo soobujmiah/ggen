@@ -9,7 +9,7 @@ import 'payload_journal.dart';
 /// File-backed [AutosaveRecoveryJournal] with durable payload association.
 ///
 /// Layout under [root]:
-///   <root>/journal/<sha256(projectId)>.jrnl
+///   `<root>/journal/<sha256(projectId)>.jrnl`
 ///
 /// The journal file is a line-oriented JSON log. Each line is either a
 /// record line (`{"type":"record","record":{...}}`) or a payload line

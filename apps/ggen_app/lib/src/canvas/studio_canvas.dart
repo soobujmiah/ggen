@@ -39,17 +39,29 @@ class _StudioCanvasState extends State<StudioCanvas> {
     offsetY: 0,
   );
   double? _gestureStartScale;
-  double _artboardWidth = 1200;
-  double _artboardHeight = 800;
+  (double, double, double, double)? _fitKey;
 
   void _reportViewport() => widget.onViewportChanged?.call(_viewport);
 
-  void _fit(BoxConstraints constraints) {
+  /// Fits the artboard into the canvas only when the canvas or artboard size
+  /// changes. Calling fit on every build would reset the user's zoom/pan on
+  /// every rebuild (e.g. after a gesture's setState), which a device and
+  /// widget-test both catch: the viewport must survive rebuilds.
+  void _fitIfNeeded(BoxConstraints constraints, Size artboardSize) {
+    final canvasSize = constraints.biggest;
+    final key = (
+      canvasSize.width,
+      canvasSize.height,
+      artboardSize.width,
+      artboardSize.height,
+    );
+    if (_fitKey == key) return;
+    _fitKey = key;
     _viewport = CanvasViewport.fit(
-      artboardWidth: _artboardWidth,
-      artboardHeight: _artboardHeight,
-      viewportWidth: constraints.maxWidth,
-      viewportHeight: constraints.maxHeight,
+      artboardWidth: artboardSize.width,
+      artboardHeight: artboardSize.height,
+      viewportWidth: canvasSize.width,
+      viewportHeight: canvasSize.height,
     );
     _reportViewport();
   }
@@ -63,12 +75,10 @@ class _StudioCanvasState extends State<StudioCanvas> {
       );
     }
     final artboard = artboards.first;
-    _artboardWidth = artboard.width;
-    _artboardHeight = artboard.height;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        _fit(constraints);
+        _fitIfNeeded(constraints, Size(artboard.width, artboard.height));
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onScaleStart: (details) {
@@ -117,8 +127,8 @@ class _StudioCanvasState extends State<StudioCanvas> {
           child: ClipRect(
             child: Transform(
               transform: Matrix4.identity()
-                ..translate(_viewport.offsetX, _viewport.offsetY)
-                ..scale(_viewport.scale),
+                ..translateByDouble(_viewport.offsetX, _viewport.offsetY, 0, 1)
+                ..scaleByDouble(_viewport.scale, _viewport.scale, 1, 1),
               child: SizedBox(
                 width: artboard.width,
                 height: artboard.height,
