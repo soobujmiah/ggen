@@ -233,14 +233,12 @@ class _StudioShellState extends State<StudioShell> {
         HardwareKeyboard.instance.isMetaPressed;
     if (isCtrl) {
       if (key == LogicalKeyboardKey.equal ||
-          key == LogicalKeyboardKey.add ||
           key == LogicalKeyboardKey.numpadAdd) {
         _zoomController.zoomIn();
         debugLog.info('key_zoom_in', 'Ctrl+= zoom in');
         return true;
       }
       if (key == LogicalKeyboardKey.minus ||
-          key == LogicalKeyboardKey.subtract ||
           key == LogicalKeyboardKey.numpadSubtract) {
         _zoomController.zoomOut();
         debugLog.info('key_zoom_out', 'Ctrl+- zoom out');
