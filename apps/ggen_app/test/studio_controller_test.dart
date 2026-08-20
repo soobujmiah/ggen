@@ -617,4 +617,115 @@ void main() {
       expect(geometry.y, 150);
     });
   });
+
+  group('layer operations', () {
+    test('toggleNodeVisibility flips visible through an undoable session', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(controller.project.artboards.first.nodes.single.visible, isTrue);
+
+      final result = controller.toggleNodeVisibility(nodeId);
+      expect(result, isTrue);
+      expect(controller.project.artboards.first.nodes.single.visible, isFalse);
+      expect(controller.revision, 2);
+      expect(controller.canUndo, isTrue);
+
+      controller.undo();
+      expect(controller.project.artboards.first.nodes.single.visible, isTrue);
+    });
+
+    test('toggleNodeLock flips locked through an undoable session', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(controller.project.artboards.first.nodes.single.locked, isFalse);
+
+      final result = controller.toggleNodeLock(nodeId);
+      expect(result, isTrue);
+      expect(controller.project.artboards.first.nodes.single.locked, isTrue);
+      expect(controller.revision, 2);
+
+      controller.undo();
+      expect(controller.project.artboards.first.nodes.single.locked, isFalse);
+    });
+
+    test('toggleNodeVisibility returns false for nonexistent node', () {
+      final controller = StudioController();
+      expect(
+        controller.toggleNodeVisibility(GgenId('no.such')),
+        isFalse,
+      );
+      expect(controller.revision, 0);
+    });
+
+    test('toggleNodeLock returns false for nonexistent node', () {
+      final controller = StudioController();
+      expect(controller.toggleNodeLock(GgenId('no.such')), isFalse);
+      expect(controller.revision, 0);
+    });
+
+    test('reorderNodes moves a node through an undoable session', () {
+      final controller = StudioController();
+      controller.addShapeNode(10, 10);
+      controller.addShapeNode(20, 20);
+      controller.addShapeNode(30, 30);
+      final nodes = controller.project.artboards.first.nodes;
+      expect(nodes.map((n) => n.name), ['Shape 1', 'Shape 2', 'Shape 3']);
+
+      final result = controller.reorderNodes(0, 2);
+      expect(result, isTrue);
+      final reordered = controller.project.artboards.first.nodes;
+      expect(reordered.map((n) => n.name), ['Shape 2', 'Shape 3', 'Shape 1']);
+      expect(controller.revision, 4); // 3 adds + 1 reorder
+
+      controller.undo();
+      final restored = controller.project.artboards.first.nodes;
+      expect(restored.map((n) => n.name), ['Shape 1', 'Shape 2', 'Shape 3']);
+    });
+
+    test('reorderNodes rejects out-of-range and identical indices', () {
+      final controller = StudioController();
+      controller.addShapeNode(10, 10);
+      controller.addShapeNode(20, 20);
+
+      expect(controller.reorderNodes(-1, 0), isFalse);
+      expect(controller.reorderNodes(0, 5), isFalse);
+      expect(controller.reorderNodes(0, 0), isFalse);
+      expect(controller.revision, 2); // Only the 2 adds.
+    });
+
+    test('deleteNode removes a node through an undoable session', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      controller.addShapeNode(200, 200);
+      final nodeId = controller.project.artboards.first.nodes.first.id;
+      expect(controller.objectCount, 2);
+
+      final result = controller.deleteNode(nodeId);
+      expect(result, isTrue);
+      expect(controller.objectCount, 1);
+      expect(controller.revision, 3);
+
+      controller.undo();
+      expect(controller.objectCount, 2);
+    });
+
+    test('deleteNode clears selection when the deleted node was selected', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      controller.selectNode(nodeId);
+      expect(controller.selectedNodeId, nodeId);
+
+      controller.deleteNode(nodeId);
+      expect(controller.selectedNodeId, isNull);
+    });
+
+    test('deleteNode returns false for nonexistent node', () {
+      final controller = StudioController();
+      expect(controller.deleteNode(GgenId('no.such')), isFalse);
+      expect(controller.revision, 0);
+    });
+  });
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-20 — Layer list panel with visibility, lock, delete and reorder
+
+- Added `LayerList` and `LayerPanel` widgets (`lib/src/layers/layer_list.dart`): displays all nodes in reverse z-order with kind icon, visibility toggle (eye), lock toggle (lock), delete button, drag-to-reorder handle, selection highlight and z-index badge.
+- Controller gains `toggleNodeVisibility()`, `toggleNodeLock()`, `reorderNodes()` and `deleteNode()` — all go through undoable tool sessions. Delete clears the selection when the deleted node was selected.
+- Shell integration: layers toggle button (top-right, always visible outside immersive) opens a bottom sheet on compact phones and toggles a docked 260px panel on wide layouts. Selection taps sync with the controller so the canvas highlights the chosen node.
+- Tests: controller (toggle visibility, toggle lock, reorder with undo, delete with selection clear, out-of-range rejection, nonexistent node rejection).
+- Deferred: multi-select layers, layer groups, opacity slider, blend mode, rename inline, drag-and-drop from external sources.
+
 ## 2026-08-20 — Select tool: node selection, hit-testing and drag-to-move
 
 - Implemented the Select tool on the canvas: selecting the Select tool (index 0) enables hit-testing on tap, with visual selection border (blue `#4E6BFF`) on the selected node.
