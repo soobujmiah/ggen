@@ -202,7 +202,10 @@ class _StudioShellState extends State<StudioShell> {
   Future<void> _restoreLastProject() async {
     final prefs = await WorkspacePreferences.load();
     final key = prefs.lastProjectKey;
-    if (key == null) return;
+    if (key == null) {
+      debugLog.info('project_restore', 'No prior project stored');
+      return;
+    }
     try {
       final restored = await _studio.restore(ProjectStorageKey(key));
       if (restored && mounted) {

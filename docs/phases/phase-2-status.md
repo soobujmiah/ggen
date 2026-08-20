@@ -51,6 +51,16 @@ Earlier diagnostics exposed profile-manager lifecycle defects. They were fixed i
 
 The persistence-milestone APK (2026-08-20 08:08:47Z export) confirmed the canvas-first switch fix on-device (`canvas_first` alternates enabled/disabled) and exercised `project_new`, `project_save` (idempotent re-save at the same key/revision/digest), profiles and immersive without crashes. It also exposed a **storage-init defect**: `LateInitializationError: Field '_studio' has already been initialized` — the shell's `_studio` was `late final` but `storage_init` reassigns it when swapping onto the file-backed store. The device run therefore fell back to in-memory storage (saves were not durable). Fixed by making the field reassignable, with a regression widget test using a fake `PathProviderPlatform` that exercises the swap and asserts a real `.ggen` file write on Save. A fresh APK is required to re-validate persistence on-device; the first launch after the fix may log a benign "no stored project" warning for the stale in-memory key from the affected build.
 
+A file-backed persistence run on 2026-08-20 (export `09:01:17Z`) confirmed on the Redmi Turbo 4 Pro:
+
+- `storage_init` logged info "File-backed storage initialized" at `/data/user/0/com.example.ggen/app_flutter` — the storage-init crash from the previous build is fixed on-device, and the path confirms the `com.example.ggen` applicationId (app-identity milestone) in the live data directory;
+- `project_new` and `project_save` exercised across three projects; idempotent re-saves produced identical keys, revisions and digests;
+- `canvas_first` alternated correctly across six toggles (switch fix stable);
+- profiles save/apply (`y7`, `8djgc`), workspace reset and immersive enter/restore all clean;
+- no Flutter or uncaught errors.
+
+No `project_restore` event appeared because the session started with empty preferences (clean install), so the last-project restore path still awaits an on-device restart test: save a project, fully close the app, reopen, and export diagnostics. `_restoreLastProject` now logs an info event for the clean-install case to make that distinction visible in exports. Undo/redo events are likewise still unexercised on-device because no editing tool creates history yet (the buttons are disabled until `commitSession` is wired to real edits).
+
 A further clean device run on 2026-08-20 (export `07:49:00Z`) re-confirmed on the Redmi Turbo 4 Pro:
 
 - compact viewport `471 x 1020`, canvas geometry `471 x 353`, zero safe-area/keyboard insets at measurement time;
