@@ -419,4 +419,101 @@ void main() {
 
     expect(scales.last, lessThan(initial));
   });
+
+  group('ResizeDrag proportional resize', () {
+    test('corner handle preserves aspect ratio when proportional', () {
+      const initialW = 100.0;
+      const initialH = 50.0; // aspect 2:1
+      final drag = ResizeDrag(
+        nodeId: GgenId('node.1'),
+        handle: ResizeHandle.bottomRight,
+        startScreen: Offset.zero,
+        initialX: 10,
+        initialY: 20,
+        initialW: initialW,
+        initialH: initialH,
+      ).withDelta(20, 5); // dx dominates -> scaleW = 1.2
+      final (x, y, w, h) = drag.computeGeometry(proportional: true);
+      // Aspect must be preserved: w/h == 2
+      expect(w / h, closeTo(2.0, 0.001));
+      // Scale driven by dominant axis (dx=20 vs dy=5 => horizontal)
+      expect(w, closeTo(120, 0.5));
+      expect(h, closeTo(60, 0.5));
+      expect(x, 10);
+      expect(y, 20);
+    });
+
+    test('topLeft proportional scales around opposite corner', () {
+      const initialW = 64.0;
+      const initialH = 64.0; // square
+      final drag = ResizeDrag(
+        nodeId: GgenId('node.1'),
+        handle: ResizeHandle.topLeft,
+        startScreen: Offset.zero,
+        initialX: 100,
+        initialY: 100,
+        initialW: initialW,
+        initialH: initialH,
+      ).withDelta(-16, -16); // expand outward
+      final (x, y, w, h) = drag.computeGeometry(proportional: true);
+      expect(w, closeTo(80, 0.5));
+      expect(h, closeTo(80, 0.5));
+      // Top-left moves outward, so x/y decrease to keep bottom-right fixed
+      expect(x, closeTo(84, 0.5)); // 100+64-80
+      expect(y, closeTo(84, 0.5));
+    });
+
+    test('edge handles ignore proportional flag', () {
+      final drag = ResizeDrag(
+        nodeId: GgenId('node.1'),
+        handle: ResizeHandle.middleRight,
+        startScreen: Offset.zero,
+        initialX: 0,
+        initialY: 0,
+        initialW: 100,
+        initialH: 50,
+      ).withDelta(20, 100); // dy should be ignored for middleRight
+      final (x1, y1, w1, h1) = drag.computeGeometry(proportional: false);
+      final (x2, y2, w2, h2) = drag.computeGeometry(proportional: true);
+      // Edge handle must not preserve aspect even when proportional=true
+      expect(w1, w2);
+      expect(h1, h2);
+      expect(w1, 120);
+      expect(h1, 50);
+    });
+
+    test('non-proportional resize matches legacy behavior', () {
+      final drag = ResizeDrag(
+        nodeId: GgenId('node.1'),
+        handle: ResizeHandle.bottomRight,
+        startScreen: Offset.zero,
+        initialX: 10,
+        initialY: 10,
+        initialW: 64,
+        initialH: 64,
+      ).withDelta(10, 20);
+      final (x, y, w, h) = drag.computeGeometry(proportional: false);
+      expect(x, 10);
+      expect(y, 10);
+      expect(w, 74);
+      expect(h, 84);
+    });
+
+    test('minimum size guard still applies with proportional', () {
+      final drag = ResizeDrag(
+        nodeId: GgenId('node.1'),
+        handle: ResizeHandle.bottomRight,
+        startScreen: Offset.zero,
+        initialX: 0,
+        initialY: 0,
+        initialW: 20,
+        initialH: 20,
+      ).withDelta(-100, -100); // try to shrink below minimum
+      final (x, y, w, h) = drag.computeGeometry(proportional: true);
+      expect(w, greaterThanOrEqualTo(8));
+      expect(h, greaterThanOrEqualTo(8));
+      // Aspect preserved even at minimum (square stays square)
+      expect(w, closeTo(h, 0.1));
+    });
+  });
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-22 — Proportional resize (Shift) for corner handles
+
+- **Proportional resize**: holding **Shift** while dragging a corner resize handle (topLeft, topRight, bottomLeft, bottomRight) preserves the node's initial aspect ratio (`initialW / initialH`). The dominant axis (larger absolute delta) drives the uniform scale, anchored at the opposite corner (e.g. bottomRight fixed when dragging topLeft). Edge-center handles (topCenter, middleLeft, etc.) ignore Shift and resize a single axis as before. Minimum size 8 artboard units still enforced after proportional scaling.
+- Canvas integration: `ResizeDrag.computeGeometry({bool proportional})` now pure for tests; shell preview (`_resizeHandleWidgets`) and commit (`onScaleEnd`) read `HardwareKeyboard.instance.isShiftPressed` live so the preview updates while Shift is held/released. `ResizeDrag` is now public for testing; requires `package:flutter/services.dart`.
+- Tests: 5 new `ResizeDrag` unit tests (aspect preservation on bottomRight and topLeft corners, edge-handle Shift-ignored, non-proportional legacy parity, minimum-size clamp with proportional square).
+- Deferred: snap-to-grid resize, numeric resize input, zoom presets (50%, 100%, 200%), multi-select.
+
 ## 2026-08-20 — Keyboard zoom shortcuts and node resize handles
 
 - **Keyboard zoom**: Ctrl+=/Ctrl++ zooms in, Ctrl+- zooms out, Ctrl+0 fits to screen. Uses a new `CanvasZoomController` command channel between the shell and the canvas (viewport state stays out of the project controller). Canvas zoom methods (`zoomIn()`, `zoomOut()`, `fitToScreen()`) are now public.

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:ggen_core/ggen_core.dart';
 
@@ -118,7 +119,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
   _NodeDrag? _nodeDrag;
 
   // Resize handle drag tracking.
-  _ResizeDrag? _resizeDrag;
+  ResizeDrag? _resizeDrag;
 
   void _reportViewport() => widget.onViewportChanged?.call(_viewport);
 
@@ -307,7 +308,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
                       final handles = resizeHandleRects(geom, _viewport);
                       for (final entry in handles.entries) {
                         if (entry.value.contains(details.localFocalPoint)) {
-                          _resizeDrag = _ResizeDrag(
+                          _resizeDrag = ResizeDrag(
                             nodeId: selectedId,
                             handle: entry.key,
                             startScreen: details.localFocalPoint,
@@ -398,7 +399,10 @@ class _StudioCanvasState extends State<StudioCanvas> {
               if (_resizeDrag != null) {
                 final drag = _resizeDrag!;
                 _resizeDrag = null;
-                final (x, y, w, h) = drag.computeGeometry();
+                final proportional =
+                    HardwareKeyboard.instance.isShiftPressed;
+                final (x, y, w, h) =
+                    drag.computeGeometry(proportional: proportional);
                 // Only commit if the geometry actually changed (>1 unit).
                 if ((x - drag.initialX).abs() > 1 ||
                     (y - drag.initialY).abs() > 1 ||
@@ -531,7 +535,9 @@ class _StudioCanvasState extends State<StudioCanvas> {
     double w = geometry.width;
     double h = geometry.height;
     if (resizeDrag != null && resizeDrag.nodeId == selectedId) {
-      final (rx, ry, rw, rh) = resizeDrag.computeGeometry();
+      final proportional = HardwareKeyboard.instance.isShiftPressed;
+      final (rx, ry, rw, rh) =
+          resizeDrag.computeGeometry(proportional: proportional);
       x = rx;
       y = ry;
       w = rw;
@@ -826,8 +832,8 @@ class _NodeDrag {
 }
 
 /// Tracks an in-progress resize handle drag.
-class _ResizeDrag {
-  const _ResizeDrag({
+class ResizeDrag {
+  const ResizeDrag({
     required this.nodeId,
     required this.handle,
     required this.startScreen,
@@ -849,7 +855,7 @@ class _ResizeDrag {
   final double deltaX;
   final double deltaY;
 
-  _ResizeDrag withDelta(double dx, double dy) => _ResizeDrag(
+  ResizeDrag withDelta(double dx, double dy) => ResizeDrag(
     nodeId: nodeId,
     handle: handle,
     startScreen: startScreen,
@@ -862,30 +868,149 @@ class _ResizeDrag {
   );
 
   /// Computes the new geometry after applying the artboard-space delta.
-  (double x, double y, double w, double h) computeGeometry() {
+  ///
+  /// When [proportional] is true, corner handles preserve the initial
+  /// aspect ratio (initialW / initialH). Edge-center handles ignore the
+  /// flag because they drive a single axis. Shift-proportional resize is a
+  /// desktop-quality requirement (see CHANGELOG deferred list) and is
+  /// detected via `HardwareKeyboard.instance.isShiftPressed` at the call
+  /// sites so the preview stays live while Shift is held/released. The
+  /// method itself remains pure for tests.
+  (double x, double y, double w, double h) computeGeometry({
+    bool proportional = false,
+  }) {
     var x = initialX;
     var y = initialY;
     var w = initialW;
     var h = initialH;
     final dx = deltaX;
     final dy = deltaY;
-    switch (handle) {
-      case ResizeHandle.topLeft:
-        x += dx; y += dy; w -= dx; h -= dy;
-      case ResizeHandle.topCenter:
-        y += dy; h -= dy;
-      case ResizeHandle.topRight:
-        y += dy; w += dx; h -= dy;
-      case ResizeHandle.middleLeft:
-        x += dx; w -= dx;
-      case ResizeHandle.middleRight:
-        w += dx;
-      case ResizeHandle.bottomLeft:
-        x += dx; w -= dx; h += dy;
-      case ResizeHandle.bottomCenter:
-        h += dy;
-      case ResizeHandle.bottomRight:
-        w += dx; h += dy;
+
+    // Corner handles with proportional lock: scale uniformly around the
+    // opposite corner, driven by the dominant axis change.
+    final isCorner = handle == ResizeHandle.topLeft ||
+        handle == ResizeHandle.topRight ||
+        handle == ResizeHandle.bottomLeft ||
+        handle == ResizeHandle.bottomRight;
+    if (proportional && isCorner && initialW > 0 && initialH > 0) {
+      var rawW = initialW;
+      var rawH = initialH;
+      switch (handle) {
+        case ResizeHandle.topLeft:
+          rawW = initialW - dx;
+          rawH = initialH - dy;
+          break;
+        case ResizeHandle.topRight:
+          rawW = initialW + dx;
+          rawH = initialH - dy;
+          break;
+        case ResizeHandle.bottomLeft:
+          rawW = initialW - dx;
+          rawH = initialH + dy;
+          break;
+        case ResizeHandle.bottomRight:
+          rawW = initialW + dx;
+          rawH = initialH + dy;
+          break;
+        default:
+          break;
+      }
+      final aspect = initialW / initialH;
+      // Choose scale from the axis that moved more relative to its size.
+      final scaleW = rawW / initialW;
+      final scaleH = rawH / initialH;
+      // Use the larger absolute scale change; guard against zero/negative.
+      double scale;
+      if (scaleW.isFinite && scaleH.isFinite) {
+        // Prefer the axis with larger absolute displacement magnitude.
+        final absDx = dx.abs();
+        final absDy = dy.abs();
+        scale = absDx > absDy ? scaleW : scaleH;
+        // If both deltas are tiny, fall back to average to avoid jitter.
+        if (absDx < 1 && absDy < 1) {
+          scale = (scaleW + scaleH) / 2;
+        }
+      } else {
+        scale = scaleW.isFinite ? scaleW : scaleH;
+      }
+      if (scale.isFinite && scale > 0) {
+        final newW = initialW * scale;
+        final newH = initialH * scale;
+        // Apply opposite-corner anchoring.
+        switch (handle) {
+          case ResizeHandle.topLeft:
+            x = initialX + initialW - newW;
+            y = initialY + initialH - newH;
+            w = newW;
+            h = newH;
+            break;
+          case ResizeHandle.topRight:
+            x = initialX;
+            y = initialY + initialH - newH;
+            w = newW;
+            h = newH;
+            break;
+          case ResizeHandle.bottomLeft:
+            x = initialX + initialW - newW;
+            y = initialY;
+            w = newW;
+            h = newH;
+            break;
+          case ResizeHandle.bottomRight:
+            x = initialX;
+            y = initialY;
+            w = newW;
+            h = newH;
+            break;
+          default:
+            break;
+        }
+      } else {
+        // Fallback to non-proportional raw if scale degenerate.
+        switch (handle) {
+          case ResizeHandle.topLeft:
+            x += dx; y += dy; w -= dx; h -= dy;
+            break;
+          case ResizeHandle.topRight:
+            y += dy; w += dx; h -= dy;
+            break;
+          case ResizeHandle.bottomLeft:
+            x += dx; w -= dx; h += dy;
+            break;
+          case ResizeHandle.bottomRight:
+            w += dx; h += dy;
+            break;
+          default:
+            break;
+        }
+      }
+    } else {
+      switch (handle) {
+        case ResizeHandle.topLeft:
+          x += dx; y += dy; w -= dx; h -= dy;
+          break;
+        case ResizeHandle.topCenter:
+          y += dy; h -= dy;
+          break;
+        case ResizeHandle.topRight:
+          y += dy; w += dx; h -= dy;
+          break;
+        case ResizeHandle.middleLeft:
+          x += dx; w -= dx;
+          break;
+        case ResizeHandle.middleRight:
+          w += dx;
+          break;
+        case ResizeHandle.bottomLeft:
+          x += dx; w -= dx; h += dy;
+          break;
+        case ResizeHandle.bottomCenter:
+          h += dy;
+          break;
+        case ResizeHandle.bottomRight:
+          w += dx; h += dy;
+          break;
+      }
     }
     // Enforce minimum size of 8 artboard units.
     if (w < 8) {
@@ -904,6 +1029,9 @@ class _ResizeDrag {
       }
       h = 8;
     }
+    // When proportional, re-assert aspect after clamping (if both dims
+    // were clamped, aspect may have drifted — this is acceptable for the
+    // minimum-size guard; we keep the clamped square).
     return (x, y, w, h);
   }
 }
