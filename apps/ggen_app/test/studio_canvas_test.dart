@@ -597,7 +597,7 @@ void main() {
 
       // Find a preset chip (e.g. 200%) and tap it if present.
       final preset200 = find.text('200%');
-      if (tester.any(preset200)) {
+      if (tester.widgetList(preset200).isNotEmpty) {
         await tester.tap(preset200);
         await tester.pumpAndSettle();
         // The last scale should be near 2.0 (preset) or still fit scale if sheet dismissed.
