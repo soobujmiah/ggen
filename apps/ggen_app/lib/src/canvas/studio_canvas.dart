@@ -102,6 +102,11 @@ class _StudioCanvasState extends State<StudioCanvas> {
   }
 
   void _onZoomCommand() {
+    final scale = widget.zoomController?.consumeScale();
+    if (scale != null) {
+      zoomTo(scale);
+      return;
+    }
     final cmd = widget.zoomController?.consumeCommand();
     if (cmd == null) return;
     switch (cmd) {
@@ -124,7 +129,13 @@ class _StudioCanvasState extends State<StudioCanvas> {
   void _reportViewport() => widget.onViewportChanged?.call(_viewport);
 
   /// Zooms in by 25% around the canvas center.
-  void zoomIn() {
+  void zoomIn() => zoomTo(_viewport.scale * 1.25);
+
+  /// Zooms to an absolute scale around the canvas center, clamped to
+  /// [CanvasViewport.minScale] / [maxScale]. Used by preset chips and the
+  /// numeric input so the same desktop-quality zoom is reachable from touch
+  /// and keyboard (the three deferred zoom items from CHANGELOG).
+  void zoomTo(double targetScale) {
     setState(() {
       final artboards = widget.controller.project.artboards;
       if (artboards.isEmpty) return;
@@ -134,7 +145,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
       _viewport = _viewport.zoomAt(
         focalX: centerX,
         focalY: centerY,
-        targetScale: _viewport.scale * 1.25,
+        targetScale: targetScale,
       );
     });
     _reportViewport();
@@ -354,6 +365,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
                 return;
               }
               // If we're dragging a node, update the drag preview.
+              // Ctrl/Cmd snaps movement to the 8-unit grid.
               if (_nodeDrag != null) {
                 final startArtboard = _viewport.toArtboard(
                   _nodeDrag!.startScreen,
@@ -361,8 +373,15 @@ class _StudioCanvasState extends State<StudioCanvas> {
                 final currentArtboard = _viewport.toArtboard(
                   details.localFocalPoint,
                 );
-                final dx = currentArtboard.dx - startArtboard.dx;
-                final dy = currentArtboard.dy - startArtboard.dy;
+                var dx = currentArtboard.dx - startArtboard.dx;
+                var dy = currentArtboard.dy - startArtboard.dy;
+                final snap = HardwareKeyboard.instance.isControlPressed ||
+                    HardwareKeyboard.instance.isMetaPressed;
+                if (snap) {
+                  const grid = 8.0;
+                  dx = (dx / grid).round() * grid;
+                  dy = (dy / grid).round() * grid;
+                }
                 setState(() {
                   _nodeDrag = _nodeDrag!.withDelta(dx, dy);
                 });
@@ -401,8 +420,13 @@ class _StudioCanvasState extends State<StudioCanvas> {
                 _resizeDrag = null;
                 final proportional =
                     HardwareKeyboard.instance.isShiftPressed;
-                final (x, y, w, h) =
-                    drag.computeGeometry(proportional: proportional);
+                final snapToGrid = HardwareKeyboard
+                        .instance.isControlPressed ||
+                    HardwareKeyboard.instance.isMetaPressed;
+                final (x, y, w, h) = drag.computeGeometry(
+                  proportional: proportional,
+                  snapToGrid: snapToGrid,
+                );
                 // Only commit if the geometry actually changed (>1 unit).
                 if ((x - drag.initialX).abs() > 1 ||
                     (y - drag.initialY).abs() > 1 ||
@@ -502,6 +526,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
                 onZoomIn: zoomIn,
                 onZoomOut: zoomOut,
                 onFit: fitToScreen,
+                onZoomToScale: zoomTo,
               ),
             ),
           ],
@@ -536,8 +561,12 @@ class _StudioCanvasState extends State<StudioCanvas> {
     double h = geometry.height;
     if (resizeDrag != null && resizeDrag.nodeId == selectedId) {
       final proportional = HardwareKeyboard.instance.isShiftPressed;
-      final (rx, ry, rw, rh) =
-          resizeDrag.computeGeometry(proportional: proportional);
+      final snapToGrid = HardwareKeyboard.instance.isControlPressed ||
+          HardwareKeyboard.instance.isMetaPressed;
+      final (rx, ry, rw, rh) = resizeDrag.computeGeometry(
+        proportional: proportional,
+        snapToGrid: snapToGrid,
+      );
       x = rx;
       y = ry;
       w = rw;
@@ -876,8 +905,16 @@ class ResizeDrag {
   /// detected via `HardwareKeyboard.instance.isShiftPressed` at the call
   /// sites so the preview stays live while Shift is held/released. The
   /// method itself remains pure for tests.
+  ///
+  /// When [snapToGrid] is true, the resulting x/y/w/h are snapped to the
+  /// nearest [gridSize] (default 8 artboard units, the minimum-size quantum
+  /// and the logical grid for GGEN's manual document vertical slice). Ctrl
+  /// (or Cmd on macOS) is the snap modifier, mirroring desktop DCC
+  /// conventions.
   (double x, double y, double w, double h) computeGeometry({
     bool proportional = false,
+    bool snapToGrid = false,
+    double gridSize = 8.0,
   }) {
     var x = initialX;
     var y = initialY;
@@ -1029,6 +1066,19 @@ class ResizeDrag {
       }
       h = 8;
     }
+    // Snap to grid after minimum guard so snapped size never goes below 8.
+    if (snapToGrid && gridSize > 0) {
+      // Simple independent snap; corner-anchoring drift of up to gridSize/2
+      // is acceptable for this milestone. A future refinement can snap the
+      // fixed edge and derive the moving edge to keep the opposite corner
+      // exactly stationary.
+      x = (x / gridSize).round() * gridSize;
+      y = (y / gridSize).round() * gridSize;
+      w = (w / gridSize).round() * gridSize;
+      h = (h / gridSize).round() * gridSize;
+      if (w < 8) w = 8;
+      if (h < 8) h = 8;
+    }
     // When proportional, re-assert aspect after clamping (if both dims
     // were clamped, aspect may have drifted — this is acceptable for the
     // minimum-size guard; we keep the clamped square).
@@ -1037,19 +1087,25 @@ class ResizeDrag {
 }
 
 /// Compact zoom controls overlay: zoom in, zoom out, fit-to-screen buttons
-/// and a zoom percentage indicator.
+/// and a zoom percentage indicator with presets and numeric input.
+///
+/// Presets 50/100/200% and a custom numeric dialog are the deferred
+/// zoom-quality items from CHANGELOG; tapping the percentage opens a
+/// preset sheet so the same desktop-quality zoom is reachable from touch.
 class _ZoomControls extends StatelessWidget {
   const _ZoomControls({
     required this.scale,
     required this.onZoomIn,
     required this.onZoomOut,
     required this.onFit,
+    required this.onZoomToScale,
   });
 
   final double scale;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
   final VoidCallback onFit;
+  final ValueChanged<double> onZoomToScale;
 
   @override
   Widget build(BuildContext context) {
@@ -1066,10 +1122,10 @@ class _ZoomControls extends StatelessWidget {
             icon: Icons.remove,
             onPressed: scale > CanvasViewport.minScale ? onZoomOut : null,
           ),
-          // Tap the percentage to fit to screen.
+          // Tap the percentage to open zoom presets and numeric input.
           InkWell(
             borderRadius: BorderRadius.circular(4),
-            onTap: onFit,
+            onTap: () => _showZoomPresets(context),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Text(
@@ -1094,6 +1150,121 @@ class _ZoomControls extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  void _showZoomPresets(BuildContext context) {
+    final presets = <double>[0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 4.0];
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Text(
+                'Zoom presets',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              children: [
+                for (final preset in presets)
+                  ChoiceChip(
+                    label: Text('${(preset * 100).round()}%'),
+                    selected: (scale - preset).abs() < 0.01,
+                    onSelected: (_) {
+                      Navigator.pop(sheetContext);
+                      onZoomToScale(preset);
+                    },
+                  ),
+                ActionChip(
+                  label: const Text('Fit'),
+                  onPressed: () {
+                    Navigator.pop(sheetContext);
+                    onFit();
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Text('Custom %', style: TextStyle(fontSize: 12)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _ZoomCustomField(
+                      initialPercent: percent,
+                      onSubmitted: (value) {
+                        Navigator.pop(sheetContext);
+                        final clamped = value.clamp(
+                          (CanvasViewport.minScale * 100).round(),
+                          (CanvasViewport.maxScale * 100).round(),
+                        );
+                        onZoomToScale(clamped / 100);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomCustomField extends StatefulWidget {
+  const _ZoomCustomField({
+    required this.initialPercent,
+    required this.onSubmitted,
+  });
+
+  final int initialPercent;
+  final ValueChanged<int> onSubmitted;
+
+  @override
+  State<_ZoomCustomField> createState() => _ZoomCustomFieldState();
+}
+
+class _ZoomCustomFieldState extends State<_ZoomCustomField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialPercent.toString());
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      keyboardType: TextInputType.number,
+      decoration: const InputDecoration(
+        isDense: true,
+        border: OutlineInputBorder(),
+        hintText: 'e.g. 150',
+        suffixText: '%',
+      ),
+      onSubmitted: (raw) {
+        final parsed = int.tryParse(raw.trim());
+        if (parsed != null) widget.onSubmitted(parsed);
+      },
     );
   }
 }

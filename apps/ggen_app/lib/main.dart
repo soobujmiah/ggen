@@ -229,6 +229,7 @@ class _StudioShellState extends State<StudioShell> {
       return true;
     }
     // Ctrl+= / Ctrl++ zooms in, Ctrl+- zooms out, Ctrl+0 fits to screen.
+    // Ctrl+1/2/3 are presets 50/100/200% (deferred zoom-quality items).
     final isCtrl = HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
     if (isCtrl) {
@@ -248,6 +249,24 @@ class _StudioShellState extends State<StudioShell> {
           key == LogicalKeyboardKey.numpad0) {
         _zoomController.fitToScreen();
         debugLog.info('key_zoom_fit', 'Ctrl+0 fit to screen');
+        return true;
+      }
+      if (key == LogicalKeyboardKey.digit1 ||
+          key == LogicalKeyboardKey.numpad1) {
+        _zoomController.zoomTo(0.5);
+        debugLog.info('key_zoom_preset', 'Ctrl+1 zoom 50%');
+        return true;
+      }
+      if (key == LogicalKeyboardKey.digit2 ||
+          key == LogicalKeyboardKey.numpad2) {
+        _zoomController.zoomTo(1.0);
+        debugLog.info('key_zoom_preset', 'Ctrl+2 zoom 100%');
+        return true;
+      }
+      if (key == LogicalKeyboardKey.digit3 ||
+          key == LogicalKeyboardKey.numpad3) {
+        _zoomController.zoomTo(2.0);
+        debugLog.info('key_zoom_preset', 'Ctrl+3 zoom 200%');
         return true;
       }
     }

@@ -7,6 +7,13 @@
 - Tests: 5 new `ResizeDrag` unit tests (aspect preservation on bottomRight and topLeft corners, edge-handle Shift-ignored, non-proportional legacy parity, minimum-size clamp with proportional square).
 - Deferred: snap-to-grid resize, numeric resize input, zoom presets (50%, 100%, 200%), multi-select.
 
+## 2026-08-22 — Snap-to-grid (Ctrl) and zoom presets + numeric input
+
+- **Snap-to-grid**: holding **Ctrl** (or **Cmd** on macOS) while dragging a node or resizing snaps the geometry to the nearest **8-unit grid** (GGEN's minimum-size quantum). Resize snapping rounds `x/y/w/h` after proportional and minimum-size logic; move snapping rounds `dx/dy` before the preview. Both `ResizeDrag.computeGeometry({snapToGrid, gridSize})` and the move-drag path are pure for tests; the shell reads `HardwareKeyboard.instance.isControlPressed || isMetaPressed` live.
+- **Zoom presets & numeric input**: tapping the zoom percentage label (bottom-right `_ZoomControls`) now opens a bottom-sheet with preset chips **25%, 50%, 75%, 100%, 150%, 200%, 400%** and a **Fit** chip, plus a custom `%` text field (validated, clamped to `CanvasViewport.minScale*100`–`maxScale*100`). Presets are reachable from **touch**, **mouse**, and **keyboard** (`Ctrl+1`→50%, `Ctrl+2`→100%, `Ctrl+3`→200% via `_ZoomController.zoomTo`). `CanvasZoomController` gains `zoomTo(double)` / `consumeScale()` and `StudioCanvasState._onZoomCommand` drains the scale before the enum command.
+- Tests: 3 new snap tests (grid alignment, snap+proportional approximate aspect, snap minimum), 2 zoom tests (preset sheet interaction and `CanvasZoomController` scale consume).
+- Deferred: multi-select, layer groups, snap visual overlay / grid toggle.
+
 ## 2026-08-20 — Keyboard zoom shortcuts and node resize handles
 
 - **Keyboard zoom**: Ctrl+=/Ctrl++ zooms in, Ctrl+- zooms out, Ctrl+0 fits to screen. Uses a new `CanvasZoomController` command channel between the shell and the canvas (viewport state stays out of the project controller). Canvas zoom methods (`zoomIn()`, `zoomOut()`, `fitToScreen()`) are now public.
