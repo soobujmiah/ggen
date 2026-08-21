@@ -108,12 +108,12 @@ final class _FileStoreTransaction implements ProjectStoreTransaction {
     }
     final revision = envelope.project.revision;
     // First write to a key accepts any valid revision; later writes may
-    // only re-save the stored revision or advance it by exactly one.
-    if (storedRevision >= 0 &&
-        revision != storedRevision &&
-        revision != storedRevision + 1) {
+    // re-save the stored revision (idempotent) or advance to any higher
+    // revision. The previous strict +1 check rejected multi-step history
+    // between saves (e.g. 5 adds → rev 5 after stored 0).
+    if (storedRevision >= 0 && revision < storedRevision) {
       throw StateError(
-        'Staged revision $revision does not advance stored revision '
+        'Staged revision $revision is behind stored revision '
         '$storedRevision for "${key.value}".',
       );
     }

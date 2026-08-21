@@ -688,7 +688,7 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                     ],
                   ),
-                  if (!_immersive)
+                  if (!_immersive && !compact)
                     Positioned(
                       bottom: 16,
                       left: 12,
@@ -756,76 +756,97 @@ class _StudioShellState extends State<StudioShell> {
           bottomNavigationBar: _immersive
               ? null
               : LayoutBuilder(
-                  builder: (context, constraints) => constraints.maxWidth < 700
-                      ? CompactNavigationBar(
-                          selectedIndex: _selectedTool,
-                          onSelected: (index) {
-                            if (index == 3) {
-                              if (_workspaceSettingsOpen) return;
-                              _workspaceSettingsOpen = true;
-                              unawaited(
-                                _showWorkspaceSettings(
-                                  context,
-                                  canvasFirst: _canvasFirst,
-                                  currentProfile: WorkspaceProfile(
-                                    name: 'Current',
-                                    inspectorVisible: _showInspector,
+                  builder: (context, constraints) {
+                    final isCompact = constraints.maxWidth < 700;
+                    if (isCompact) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Secondary toolbar — undo/redo, layers, zoom same 40×40, equal distance, above holding bar
+                          _SecondaryCanvasToolbar(
+                            controller: _studio,
+                            zoomController: _zoomController,
+                            showLayers: _showLayers,
+                            onToggleLayers: () {
+                              // Toolbar only shown when isCompact, so always sheet
+                              _showLayersSheet();
+                              debugLog.info('layers_toggle', 'Layers via toolbar');
+                            },
+                          ),
+                          const Divider(height: 1),
+                          CompactNavigationBar(
+                            selectedIndex: _selectedTool,
+                            onSelected: (index) {
+                              if (index == 3) {
+                                if (_workspaceSettingsOpen) return;
+                                _workspaceSettingsOpen = true;
+                                unawaited(
+                                  _showWorkspaceSettings(
+                                    context,
                                     canvasFirst: _canvasFirst,
-                                    inspectorDock: _inspectorDock.name,
-                                  ),
-                                  onProfileApplied: (profile) {
-                                    setState(() {
-                                      _showInspector = profile.inspectorVisible;
-                                      _canvasFirst = profile.canvasFirst;
-                                      _inspectorDock =
-                                          profile.inspectorDock == 'left'
-                                          ? InspectorDock.left
-                                          : InspectorDock.right;
-                                    });
-                                    unawaited(_persistWorkspace());
-                                    debugLog.info(
-                                      'profile_apply',
-                                      'Workspace profile applied',
-                                      {'name': profile.name},
-                                    );
-                                  },
-                                  onCanvasFirstChanged: (value) {
-                                    setState(() => _canvasFirst = value);
-                                    unawaited(_persistWorkspace());
-                                    debugLog.info(
-                                      'canvas_first',
-                                      value
-                                          ? 'Canvas-first enabled'
-                                          : 'Canvas-first disabled',
-                                    );
-                                  },
-                                  onReset: () {
-                                    setState(() {
-                                      _showInspector = true;
-                                      _canvasFirst = true;
-                                      _inspectorDock = InspectorDock.right;
-                                    });
-                                    unawaited(WorkspacePreferences().clear().then((_) => _persistWorkspace()));
-                                    debugLog.info('workspace_reset', 'Workspace reset to defaults');
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Workspace reset to defaults')),
+                                    currentProfile: WorkspaceProfile(
+                                      name: 'Current',
+                                      inspectorVisible: _showInspector,
+                                      canvasFirst: _canvasFirst,
+                                      inspectorDock: _inspectorDock.name,
+                                    ),
+                                    onProfileApplied: (profile) {
+                                      setState(() {
+                                        _showInspector = profile.inspectorVisible;
+                                        _canvasFirst = profile.canvasFirst;
+                                        _inspectorDock =
+                                            profile.inspectorDock == 'left'
+                                            ? InspectorDock.left
+                                            : InspectorDock.right;
+                                      });
+                                      unawaited(_persistWorkspace());
+                                      debugLog.info(
+                                        'profile_apply',
+                                        'Workspace profile applied',
+                                        {'name': profile.name},
                                       );
-                                    }
-                                  },
-                                ).whenComplete(
-                                  () => _workspaceSettingsOpen = false,
-                                ),
-                              );
-                            } else {
-                              _selectTool(index);
-                            }
-                          },
-                        )
-                      : StatusBar(
-                          objectCount: _studio.objectCount,
-                          revision: _studio.revision,
-                        ),
+                                    },
+                                    onCanvasFirstChanged: (value) {
+                                      setState(() => _canvasFirst = value);
+                                      unawaited(_persistWorkspace());
+                                      debugLog.info(
+                                        'canvas_first',
+                                        value
+                                            ? 'Canvas-first enabled'
+                                            : 'Canvas-first disabled',
+                                      );
+                                    },
+                                    onReset: () {
+                                      setState(() {
+                                        _showInspector = true;
+                                        _canvasFirst = true;
+                                        _inspectorDock = InspectorDock.right;
+                                      });
+                                      unawaited(WorkspacePreferences().clear().then((_) => _persistWorkspace()));
+                                      debugLog.info('workspace_reset', 'Workspace reset to defaults');
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Workspace reset to defaults')),
+                                        );
+                                      }
+                                    },
+                                  ).whenComplete(
+                                    () => _workspaceSettingsOpen = false,
+                                  ),
+                                );
+                              } else {
+                                _selectTool(index);
+                              }
+                            },
+                          ),
+                        ],
+                      );
+                    }
+                    return StatusBar(
+                      objectCount: _studio.objectCount,
+                      revision: _studio.revision,
+                    );
+                  },
                 ),
         );
       },
@@ -918,39 +939,45 @@ class CanvasArea extends StatelessWidget {
               constraints.biggest,
               suppress: suppressGeometryLog,
             );
-            return StudioCanvas(
-              controller: controller,
-              drawEnabled: drawEnabled,
-              onNodeAdded: onNodeAdded,
-              selectMode: selectMode,
-              selectedNodeId: selectedNodeId,
-              zoomController: zoomController,
-              onTextRequest: onTextRequest,
-              onNodeSelected: onNodeSelected,
-              onTwoFingerTap: onTwoFingerTap,
-              onThreeFingerTap: onThreeFingerTap,
+            return RepaintBoundary(
+              child: StudioCanvas(
+                controller: controller,
+                drawEnabled: drawEnabled,
+                onNodeAdded: onNodeAdded,
+                selectMode: selectMode,
+                selectedNodeId: selectedNodeId,
+                zoomController: zoomController,
+                onTextRequest: onTextRequest,
+                onNodeSelected: onNodeSelected,
+                onTwoFingerTap: onTwoFingerTap,
+                onThreeFingerTap: onThreeFingerTap,
+              ),
             );
           },
         ),
-        // Project name chip stays out of the gesture surface; long names
-        // scroll horizontally instead of being clipped by the canvas edge.
+        // Project name — no hazy bar per device feedback (was black 0.45 scrim).
+        // Now a clean text with shadow for legibility, no container bar.
         Positioned(
           top: 12,
           left: 12,
           right: 96,
           child: IgnorePointer(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.45),
-                borderRadius: BorderRadius.circular(12),
-              ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Text(
                   projectName,
                   maxLines: 1,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    shadows: [
+                      Shadow(blurRadius: 4, color: Colors.black54),
+                      Shadow(blurRadius: 8, color: Colors.black26),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1306,6 +1333,107 @@ class _CanvasFirstSwitchState extends State<_CanvasFirstSwitch> {
   );
 }
 
+class _SecondaryCanvasToolbar extends StatelessWidget {
+  const _SecondaryCanvasToolbar({
+    required this.controller,
+    required this.zoomController,
+    required this.showLayers,
+    required this.onToggleLayers,
+    super.key,
+  });
+
+  final StudioController controller;
+  final CanvasZoomController zoomController;
+  final bool showLayers;
+  final VoidCallback onToggleLayers;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([controller, zoomController]),
+      builder: (context, _) {
+        final canUndo = controller.canUndo;
+        final canRedo = controller.canRedo;
+        return Container(
+          height: 48,
+          color: Theme.of(context).colorScheme.surfaceContainer,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              // Undo / Redo — same 40×40 size, equal spacing
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: IconButton(
+                  tooltip: 'Undo',
+                  onPressed: canUndo ? () { controller.undo(); debugLog.info('history_undo', 'Undo via toolbar'); } : null,
+                  icon: const Icon(Icons.undo, size: 20),
+                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                ),
+              ),
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: IconButton(
+                  tooltip: 'Redo',
+                  onPressed: canRedo ? () { controller.redo(); debugLog.info('history_redo', 'Redo via toolbar'); } : null,
+                  icon: const Icon(Icons.redo, size: 20),
+                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                ),
+              ),
+              Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
+              // Layers — same size
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: IconButton(
+                  tooltip: showLayers ? 'Hide layers' : 'Show layers',
+                  onPressed: onToggleLayers,
+                  icon: Icon(showLayers ? Icons.layers_clear_outlined : Icons.layers_outlined, size: 20),
+                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                ),
+              ),
+              Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
+              // Zoom — same 40 size, equal spacing, above holding bar per device feedback
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: IconButton(
+                  tooltip: 'Zoom out',
+                  onPressed: () { zoomController.zoomOut(); debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar'); },
+                  icon: const Icon(Icons.remove, size: 20),
+                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                ),
+              ),
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: IconButton(
+                  tooltip: 'Zoom in',
+                  onPressed: () { zoomController.zoomIn(); debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar'); },
+                  icon: const Icon(Icons.add, size: 20),
+                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                ),
+              ),
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: IconButton(
+                  tooltip: 'Fit to screen',
+                  onPressed: () { zoomController.fitToScreen(); debugLog.info('toolbar_zoom_fit', 'Fit via toolbar'); },
+                  icon: const Icon(Icons.fit_screen_outlined, size: 20),
+                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class CompactNavigationBar extends StatelessWidget {
   const CompactNavigationBar({
     required this.selectedIndex,
@@ -1317,6 +1445,7 @@ class CompactNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => NavigationBar(
+    height: 56,
     selectedIndex: selectedIndex,
     onDestinationSelected: onSelected,
     destinations: const [
