@@ -567,7 +567,10 @@ class _StudioShellState extends State<StudioShell> {
               final showPanels = !_immersive;
               final inspector =
                   showPanels && _showInspector && constraints.maxWidth >= 900
-                  ? const SizedBox(width: 280, child: InspectorPanel())
+                  ? SizedBox(
+                      width: 280,
+                      child: InspectorPanel(controller: _studio),
+                    )
                   : const SizedBox.shrink();
               return Stack(
                 children: [
@@ -930,24 +933,249 @@ class CanvasArea extends StatelessWidget {
   );
 }
 
-class InspectorPanel extends StatelessWidget {
-  const InspectorPanel({super.key});
+class InspectorPanel extends StatefulWidget {
+  const InspectorPanel({required this.controller, super.key});
+
+  final StudioController controller;
 
   @override
-  Widget build(BuildContext context) => const Card(
-    margin: EdgeInsets.all(12),
-    child: Padding(
-      padding: EdgeInsets.all(16),
-      child: Column(
+  State<InspectorPanel> createState() => _InspectorPanelState();
+}
+
+class _InspectorPanelState extends State<InspectorPanel> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onController);
+  }
+
+  @override
+  void didUpdateWidget(covariant InspectorPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onController);
+      widget.controller.addListener(_onController);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onController);
+    super.dispose();
+  }
+
+  void _onController() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final selectedId = controller.selectedNodeId;
+    final artboards = controller.project.artboards;
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.all(12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Inspector', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            if (selectedId == null || artboards.isEmpty) ...[
+              const Text('Select an object to inspect its properties.'),
+              const SizedBox(height: 12),
+              Text('Objects: ${controller.objectCount}  •  Rev ${controller.revision}', style: theme.textTheme.bodySmall?.copyWith(color: Colors.white54)),
+            ] else ...[
+              _InspectorContent(controller: controller, selectedId: selectedId),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InspectorContent extends StatefulWidget {
+  const _InspectorContent({required this.controller, required this.selectedId});
+
+  final StudioController controller;
+  final GgenId selectedId;
+
+  @override
+  State<_InspectorContent> createState() => _InspectorContentState();
+}
+
+class _InspectorContentState extends State<_InspectorContent> {
+  late TextEditingController _xCtrl;
+  late TextEditingController _yCtrl;
+  late TextEditingController _wCtrl;
+  late TextEditingController _hCtrl;
+
+  DocumentNode? _node;
+  NodeGeometry? _geom;
+  TextNodeGeometry? _textGeom;
+
+  @override
+  void initState() {
+    super.initState();
+    _xCtrl = TextEditingController();
+    _yCtrl = TextEditingController();
+    _wCtrl = TextEditingController();
+    _hCtrl = TextEditingController();
+    _syncFromNode();
+    widget.controller.addListener(_syncFromNode);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InspectorContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedId != widget.selectedId || oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_syncFromNode);
+      widget.controller.addListener(_syncFromNode);
+      _syncFromNode();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_syncFromNode);
+    _xCtrl.dispose();
+    _yCtrl.dispose();
+    _wCtrl.dispose();
+    _hCtrl.dispose();
+    super.dispose();
+  }
+
+  void _syncFromNode() {
+    final artboards = widget.controller.project.artboards;
+    final nodes = artboards.isEmpty ? const <DocumentNode>[] : artboards.first.nodes;
+    final idx = nodes.indexWhere((n) => n.id == widget.selectedId);
+    if (idx < 0) return;
+    final node = nodes[idx];
+    final geom = nodeGeometry(node);
+    final tgeom = textNodeGeometry(node);
+    // Always sync from node; field focus handling deferred (numeric inspector is explicit Apply model).
+    setState(() {
+      _node = node;
+      _geom = geom;
+      _textGeom = tgeom;
+      if (geom != null) {
+        _xCtrl.text = geom.x.toStringAsFixed(1);
+        _yCtrl.text = geom.y.toStringAsFixed(1);
+        _wCtrl.text = geom.width.toStringAsFixed(1);
+        _hCtrl.text = geom.height.toStringAsFixed(1);
+      } else if (tgeom != null) {
+        _xCtrl.text = tgeom.x.toStringAsFixed(1);
+        _yCtrl.text = tgeom.y.toStringAsFixed(1);
+        _wCtrl.text = '';
+        _hCtrl.text = '';
+      }
+    });
+  }
+
+  void _applyShapeGeometry() {
+    final geom = _geom;
+    if (geom == null) return;
+    final x = double.tryParse(_xCtrl.text.trim());
+    final y = double.tryParse(_yCtrl.text.trim());
+    final w = double.tryParse(_wCtrl.text.trim());
+    final h = double.tryParse(_hCtrl.text.trim());
+    if (x == null || y == null || w == null || h == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter valid numbers for X/Y/W/H')));
+      return;
+    }
+    if (!x.isFinite || !y.isFinite || !w.isFinite || !h.isFinite || w < 8 || h < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('W/H must be ≥8 and numbers finite')));
+      return;
+    }
+    final ok = widget.controller.resizeNode(widget.selectedId, x: x, y: y, width: w, height: h);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Resize failed — node not found or not a shape')));
+    } else {
+      debugLog.info('inspector_resize', 'Inspector numeric resize', {'x': x, 'y': y, 'w': w, 'h': h});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final node = _node;
+    final geom = _geom;
+    final tgeom = _textGeom;
+    if (node == null) {
+      return const Text('Selected node not found.');
+    }
+    if (geom != null) {
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Inspector', style: TextStyle(fontWeight: FontWeight.bold)),
-          SizedBox(height: 20),
-          Text('Select an object to inspect its properties.'),
+          Text(node.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text('Shape • ${geom.width.toStringAsFixed(1)} × ${geom.height.toStringAsFixed(1)}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: _NumberField(label: 'X', controller: _xCtrl)),
+            const SizedBox(width: 8),
+            Expanded(child: _NumberField(label: 'Y', controller: _yCtrl)),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _NumberField(label: 'W', controller: _wCtrl)),
+            const SizedBox(width: 8),
+            Expanded(child: _NumberField(label: 'H', controller: _hCtrl)),
+          ]),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _applyShapeGeometry,
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Apply'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Hold Shift for proportional, Ctrl for 8-unit snap on canvas handles.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11)),
         ],
-      ),
-    ),
-  );
+      );
+    }
+    if (tgeom != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(node.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text('Text • "${tgeom.text}"', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: _NumberField(label: 'X', controller: _xCtrl)),
+            const SizedBox(width: 8),
+            Expanded(child: _NumberField(label: 'Y', controller: _yCtrl)),
+          ]),
+          const SizedBox(height: 8),
+          Text('Text content and size editing decoupled from geometry; use Text tool to recreate or future text inspector.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11)),
+        ],
+      );
+    }
+    return Text('Unknown node kind: ${node.kind.name}');
+  }
+}
+
+class _NumberField extends StatelessWidget {
+  const _NumberField({required this.label, required this.controller});
+
+  final String label;
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+      decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()),
+      onSubmitted: (_) {},
+    );
+  }
 }
 
 Future<void> _showWorkspaceSettings(

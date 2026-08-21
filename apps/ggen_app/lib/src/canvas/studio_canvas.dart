@@ -1200,7 +1200,7 @@ class _ZoomControls extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _ZoomCustomField(
-                      initialPercent: percent,
+                      initialPercent: (scale * 100).round(),
                       onSubmitted: (value) {
                         Navigator.pop(sheetContext);
                         final clamped = value.clamp(
