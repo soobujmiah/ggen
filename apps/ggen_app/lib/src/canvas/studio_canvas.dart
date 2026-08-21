@@ -392,24 +392,29 @@ class _StudioCanvasState extends State<StudioCanvas> {
                 // details.scale is cumulative from gesture start, so the
                 // target scale derives from the scale captured at start;
                 // applying it to the current viewport each update would
-                // compound the zoom.
+                // compound the zoom. Handle both pinch-zoom and pan
+                // simultaneously so two-finger pan+zoom feels fluid (was
+                // previously exclusive: scale !=1 ? zoom : pan).
                 final start = _gestureStartScale ?? _viewport.scale;
                 final target = start * details.scale;
+                var next = _viewport;
                 if (details.scale != 1.0) {
-                  // Keep the artboard point under the gesture focal point
-                  // stationary while the pinch changes scale.
                   final focal = details.localFocalPoint;
-                  _viewport = _viewport.zoomAt(
+                  next = next.zoomAt(
                     focalX: focal.dx,
                     focalY: focal.dy,
                     targetScale: target,
                   );
-                } else {
-                  _viewport = _viewport.panBy(
+                }
+                // Always apply the pan delta, even during a pinch, so the
+                // canvas follows the fingers without lag.
+                if (details.focalPointDelta.dx != 0 || details.focalPointDelta.dy != 0) {
+                  next = next.panBy(
                     details.focalPointDelta.dx,
                     details.focalPointDelta.dy,
                   );
                 }
+                _viewport = next;
               });
               _reportViewport();
             },

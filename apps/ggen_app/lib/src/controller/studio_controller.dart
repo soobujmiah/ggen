@@ -327,7 +327,10 @@ class StudioController extends ChangeNotifier {
     final session = beginSession();
     session.updatePreview(project.copyWith(artboards: nextArtboards));
     commitSession(session, 'Delete ${node.name}');
-    if (_selectedNodeId == nodeId) _selectedNodeId = null;
+    if (_selectedNodeId == nodeId) {
+      _selectedNodeId = null;
+      notifyListeners();
+    }
     return true;
   }
 
