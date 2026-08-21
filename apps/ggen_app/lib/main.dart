@@ -179,13 +179,35 @@ class _StudioShellState extends State<StudioShell> {
     super.initState();
     _ownsStudio = widget.controller == null;
     _studio = widget.controller ?? StudioController();
+    _studio.addListener(_onStudioChanged);
     _restoreWorkspace();
     unawaited(_initStorage());
     HardwareKeyboard.instance.addHandler(_handleVolumeKey);
   }
 
+  void _onStudioChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(covariant StudioShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_onStudioChanged);
+      // Re-wire to the new controller (injected for tests).
+      // When the shell owns its controller, this path is not taken,
+      // but keep it correct for the test harness.
+      if (widget.controller != null) {
+        _studio.removeListener(_onStudioChanged);
+        _studio = widget.controller!;
+        _studio.addListener(_onStudioChanged);
+      }
+    }
+  }
+
   @override
   void dispose() {
+    _studio.removeListener(_onStudioChanged);
     // Method tear-offs of the same method on the same instance compare
     // equal, so this removes the handler added in initState.
     HardwareKeyboard.instance.removeHandler(_handleVolumeKey);
@@ -783,7 +805,13 @@ class _StudioShellState extends State<StudioShell> {
                                       _canvasFirst = true;
                                       _inspectorDock = InspectorDock.right;
                                     });
-                                    unawaited(WorkspacePreferences().clear());
+                                    unawaited(WorkspacePreferences().clear().then((_) => _persistWorkspace()));
+                                    debugLog.info('workspace_reset', 'Workspace reset to defaults');
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Workspace reset to defaults')),
+                                      );
+                                    }
                                   },
                                 ).whenComplete(
                                   () => _workspaceSettingsOpen = false,

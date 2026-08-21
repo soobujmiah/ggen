@@ -26,22 +26,25 @@ class LayerList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final nodes = controller.project.artboards.isEmpty
-        ? const <DocumentNode>[]
-        : controller.project.artboards.first.nodes;
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final nodes = controller.project.artboards.isEmpty
+            ? const <DocumentNode>[]
+            : controller.project.artboards.first.nodes;
 
-    if (nodes.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'No layers yet.\nUse the Draw or Text tool to add content.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white54),
-          ),
-        ),
-      );
-    }
+        if (nodes.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'No layers yet.\nUse the Draw or Text tool to add content.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+          );
+        }
 
     // Display in reverse order: topmost node first (last in the list is
     // rendered on top of the canvas).
@@ -83,6 +86,8 @@ class LayerList extends StatelessWidget {
             ),
           ),
         );
+      },
+    );
       },
     );
   }
@@ -248,7 +253,9 @@ class LayerPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
@@ -277,6 +284,7 @@ class LayerPanel extends StatelessWidget {
           ),
         ),
       ],
+    ),
     );
   }
 }
