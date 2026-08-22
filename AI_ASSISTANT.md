@@ -1,6 +1,38 @@
 # AI assistant working agreement
 
-This file is mandatory reading for every AI assistant before it changes GGEN. GitHub is the canonical memory and source of truth; a local workspace is disposable.
+This file is mandatory reading for every AI assistant before it changes GGEN. GitHub is the canonical memory and source of truth; a local workspace is disposable. Model chat history is not authoritative project memory.
+
+## Session continuity and handoff
+
+AI assistants are interchangeable implementers. A new model MUST be able to continue from repository evidence without relying on the previous model's hidden or conversational context.
+
+### Start every engineering session
+
+1. Read this file first, then the required reading order below.
+2. Inspect the current `main` HEAD and recent commits.
+3. Read the current phase/status and relevant architecture/source/test files.
+4. Read the latest current handoff/status document when one exists.
+5. Treat repository state, tests, CI evidence, device evidence and documented handoff as the source of truth. Verify previous-agent claims instead of inheriting them blindly.
+6. Before implementation, state a session contract: exact milestone, current HEAD, direct evidence, files/docs expected to change, tests/checks required, physical-device validation required, and deliberately deferred work.
+
+### End every engineering session or completed milestone
+
+Perform a **session close** before handing work to another model:
+
+1. Inspect `git status` and `git diff`; review every changed file.
+2. Run all relevant available tests/checks. Never claim green without actual output.
+3. Update relevant documentation and phase/status files.
+4. Record important evidence, failures, fixes, known defects, deferred work, and exact reproduction/verification steps.
+5. Maintain/update a concise current handoff containing: current HEAD, completed work, known defects, latest verified evidence, tests and results, pending device validation, next recommended milestone, and deliberately deferred scope.
+6. Commit completed work with a clear conventional message and push when authorized by the workflow.
+7. Record the resulting commit SHA and verification status for substantial milestones.
+8. Leave no unexplained dirty changes. If work is intentionally uncommitted, document exactly why and what remains.
+
+### Model-switch / risky-change recovery
+
+Before a risky, large, or model-switching operation, create a named Git snapshot branch from the exact known-good HEAD, for example `snapshot/YYYY-MM-DD-pre-model-switch`. Do not rewrite or force-push history merely to create a snapshot. A snapshot is a recovery point, not permission to skip tests or documentation.
+
+When switching models, the new model MUST first read the current HEAD, relevant handoff, this AI agreement, the specification, phase status and latest evidence before implementing anything. It must not continue from conversational memory alone.
 
 ## Required reading order
 
