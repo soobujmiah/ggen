@@ -75,8 +75,8 @@ void main() {
     expect(geometry, isNotNull);
     expect(geometry!.x, greaterThanOrEqualTo(0));
     expect(geometry.y, greaterThanOrEqualTo(0));
-    expect(geometry.x + geometry.width, lessThanOrEqualTo(1200));
-    expect(geometry.y + geometry.height, lessThanOrEqualTo(800));
+    expect(geometry.x + geometry.width, lessThanOrEqualTo(1080));
+    expect(geometry.y + geometry.height, lessThanOrEqualTo(1920));
   });
 
   testWidgets('tap with Select tool does not add a node', (tester) async {
@@ -198,8 +198,8 @@ void main() {
   testWidgets('fit places the artboard centered in the canvas', (tester) async {
     // Device report regression: fit-to-screen collapsed the artboard into a
     // small rectangle hugging the left edge. The white artboard surface must
-    // be laid out at full artboard size (1200x800) and transformed so it is
-    // centered in the 471x803 canvas with the fit margins.
+    // be laid out at full artboard size (1080x1920) and transformed so it
+    // is centered in the 471x803 canvas (edge-to-edge fit, margin 0).
     tester.view.physicalSize = const Size(471, 803);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -230,12 +230,14 @@ void main() {
     );
     expect(white, findsOneWidget);
     final rect = tester.getRect(white);
-    // scale = (471-32)/1200 = 0.3658…, artboard screen size 439x292.7,
-    // centered: x=16, y=(803-292.7)/2.
-    expect(rect.width, closeTo(439, 1.0));
-    expect(rect.height, closeTo(292.7, 1.0));
-    expect(rect.left, closeTo(16, 1.0));
-    expect(rect.top, closeTo((803 - 292.7) / 2, 1.5));
+    // Portrait artboard 1080x1920 in the 471x803 viewport: height is the
+    // limiting axis (803/1920 = 0.41823 < 471/1080), so the artboard spans
+    // the full canvas height and is centered horizontally with equal side
+    // gaps (fit margin 0).
+    expect(rect.height, closeTo(803, 1.0));
+    expect(rect.top, closeTo(0, 1.0));
+    expect(rect.width, closeTo((1080 / 1920) * 803, 1.0));
+    expect(rect.left, closeTo((471 - rect.width) / 2, 1.0));
   });
 
   testWidgets('multiSelectMode makes Select taps additive', (tester) async {

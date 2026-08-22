@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-22 — Overlay top bar + More menu, collapsible canvas toolbar, portrait default canvas
+
+UI chrome rework per device feedback; widget tests updated/added (app suite grows); CI validates on GitHub; on-device re-validation pending.
+
+- **No AppBar, no title, no background.** Transparent icon-only top bar rendered INSIDE the canvas bounds at the status-bar boundary; icons in contrast color (white + soft shadow over the dark canvas, since the overlay floats on the artwork). Project-name chip moves under the bar.
+- **Everything behind More**: New project, Save, Settings, Diagnostics export, Immersive canvas, Dock inspector all live in a More bottom sheet (default). Menu supports per-action **pin/unpin to the bar** (pinned icons render left of More, in user order) and **up/down reorder**; order + pins persist in `WorkspacePreferences` (sanitized, bounded, fail-closed). Events: `top_action_more`, `top_action_run`, `top_action_pin`, `top_action_unpin`, `top_action_reorder`.
+- **Settings moved out of the bottom navigation** (Select/Draw/Text only) — via More or user-pinned to the bar.
+- **Collapsible/expandable secondary canvas toolbar**: chevron at the row end collapses it to a single 40 px expand handle; state persists (`canvas_toolbar_toggle`).
+- **Portrait default canvas**: controller default 1080x1920 (was landscape 1200x800); New project sizes the artboard to the device screen ratio (width 1080, height = width x ratio clamped 1:1..9:20).
+- **Edge-to-edge fit-to-screen**: `CanvasViewport.fit` default margin 0 — the artboard spans the full viewport on its limiting axis (device feedback: "fit leaves a gap on both sides").
+- Tests: shell render (no AppBar, More present), via-More immersive enter/leave + Settings + Dock inspector, pin-to-bar from More, canvas-toolbar collapse/expand, portrait new project from screen ratio, fit centered at margin 0, artboard defaults 1080x1920.
+- Docs: `docs/design/mobile-first-professional-ui.md` overlay-chrome rules; `docs/phases/phase-2-status.md` implemented list + rework section.
+
 ## 2026-08-22 — Layer groups (group/ungroup, member propagation)
 
 - **Core model**: group nodes (`DocumentNodeKind.group`) store member ids in the `children` extension; members remain first-class nodes (geometry, z-order, canvas, hit-testing untouched). `Artboard` validates group payloads fail-closed at construction: non-empty member list, no duplicates, every reference exists, single-level (no nested groups), and non-group nodes cannot declare `children`.

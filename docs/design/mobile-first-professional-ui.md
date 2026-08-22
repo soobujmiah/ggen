@@ -55,6 +55,43 @@ The underlying document, scene, font, vector, raster and tool models keep deskto
 - **Quick favorites:** user pins tool parameters/actions without changing tool semantics.
 - **Before/after and preview quality:** low-resolution progressive previews are labeled; final render never silently uses preview quality.
 
+## Overlay chrome rules (2026-08-22 device feedback)
+
+The shell chrome follows a zero-chrome overlay model on the canvas:
+
+- **Top action bar is transparent and title-less.** No AppBar background and
+  no title: only icons, drawn INSIDE the canvas bounds at the status-bar
+  boundary, in the contrast color of the surface they float over (white
+  icons with a soft shadow over the dark canvas). Project actions therefore
+  never consume layout space and never cover the artwork with a bar.
+- **Everything lives behind More.** Every top-level action (New, Save,
+  Settings, Diagnostics, Immersive, Dock inspector) sits inside the More
+  menu by default; the menu is a bottom sheet showing the actions in a
+  user-configurable order. Tapping a row runs the action; the star toggles
+  whether the action is pinned to the bar; the up/down arrows reorder the
+  menu. Pinned actions render left of the More button, in user order, and
+  the choice plus order persist in workspace preferences (sanitized,
+  bounded, fail-closed).
+- **No hidden AppBar actions anywhere** (the wide "dock inspector"
+  affordance also lives in More).
+- **Secondary canvas toolbar is collapsible and expandable.** A chevron at
+  the row's end collapses it to a single centered expand handle (40 px);
+  expanding restores the full multi-select / undo-redo / layers / grid /
+  zoom row. The collapsed state persists across launches.
+- **Bottom navigation is tools-only.** Select / Draw / Text remain; the
+  Settings tab moved into More (either behind the menu or pinned out to the
+  bar by the user).
+- **Default artboard is portrait, device-ratio sized.** New projects create
+  a portrait canvas (1080 wide, height = width x screen ratio, clamped to
+  1:1 .. 9:20) instead of a fixed landscape 1200x800 — phone-first content
+  starts on a canvas that matches the display.
+- **Fit-to-screen is edge-to-edge.** The fit margin is 0 so the artboard
+  spans the full viewport on its limiting axis ("fit must match the screen
+  resolution; no gap on the sides").
+- **Every action keeps a discoverable path:** anything unpinned is one tap
+  away in More; nothing exists only behind a hidden bar or a keyboard
+  shortcut.
+
 ## Performance targets
 
 Targets are established per device class and measured, not assumed. Interactive canvas reports frame-time percentiles and input latency. When resource pressure rises, GGEN may reduce preview resolution/LOD with a visible indicator, but preserves final-quality settings and project data.

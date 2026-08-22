@@ -405,11 +405,11 @@ class LayerPanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              padding: const EdgeInsets.fromLTRB(12, 10, 10, 6),
               child: Row(
                 children: [
                   const Icon(Icons.layers_outlined, size: 18),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Text(
                     'Layers',
                     style: Theme.of(context).textTheme.titleSmall,
@@ -420,9 +420,10 @@ class LayerPanel extends StatelessWidget {
                     iconSize: 18,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
+                      minWidth: 26,
+                      minHeight: 30,
                     ),
+                    visualDensity: VisualDensity.compact,
                     onPressed: canGroup
                         ? () {
                             final ok = controller.createGroup(selectedIds);
@@ -436,9 +437,10 @@ class LayerPanel extends StatelessWidget {
                     iconSize: 18,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
+                      minWidth: 26,
+                      minHeight: 30,
                     ),
+                    visualDensity: VisualDensity.compact,
                     onPressed: primaryIsGroup
                         ? () {
                             final ok = controller.ungroup(primary!);

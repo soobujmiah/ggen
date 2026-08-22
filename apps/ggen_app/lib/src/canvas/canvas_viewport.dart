@@ -24,12 +24,17 @@ final class CanvasViewport {
 
   /// Initial viewport that fits [artboardWidth]x[artboardHeight] into
   /// [viewportWidth]x[viewportHeight] with a [margin] around the artboard.
+  ///
+  /// The default margin is ZERO: Fit-to-screen means the artboard spans the
+  /// full viewport on its limiting axis (device feedback: "fit leaves a gap
+  /// on both sides; it should match the screen resolution"). A caller that
+  /// wants breathing room passes a small margin explicitly.
   factory CanvasViewport.fit({
     required double artboardWidth,
     required double artboardHeight,
     required double viewportWidth,
     required double viewportHeight,
-    double margin = 16,
+    double margin = 0,
   }) {
     final availableWidth = viewportWidth - 2 * margin;
     final availableHeight = viewportHeight - 2 * margin;
