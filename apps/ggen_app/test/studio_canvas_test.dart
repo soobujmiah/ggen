@@ -12,6 +12,8 @@ Widget _wrap(
   bool selectMode = false,
   bool textEnabled = false,
   bool showZoomOverlay = true,
+  bool gridVisible = true,
+  VoidCallback? onToggleGrid,
   ValueChanged<CanvasViewport>? onViewportChanged,
   void Function(Offset artboardPoint)? onTextRequest,
   void Function(GgenId? nodeId, bool additive)? onNodeSelected,
@@ -26,6 +28,8 @@ Widget _wrap(
       selectMode: selectMode,
       textEnabled: textEnabled,
       showZoomOverlay: showZoomOverlay,
+      gridVisible: gridVisible,
+      onToggleGrid: onToggleGrid,
       onViewportChanged: onViewportChanged,
       onTextRequest: onTextRequest,
       onNodeSelected: onNodeSelected,
@@ -343,6 +347,57 @@ void main() {
     controller.redo();
     expect(xOf(ids.first), closeTo(beforeA + delta, 0.5));
     expect(xOf(ids.last), closeTo(beforeB + delta, 0.5));
+  });
+
+  testWidgets('grid overlay renders under the nodes when gridVisible', (
+    tester,
+  ) async {
+    final controller = StudioController();
+    await tester.pumpWidget(_wrap(controller, drawEnabled: false));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('ggen_grid_overlay')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('grid overlay is absent when gridVisible is false', (
+    tester,
+  ) async {
+    final controller = StudioController();
+    await tester.pumpWidget(
+      _wrap(controller, drawEnabled: false, gridVisible: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('ggen_grid_overlay')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('overlay grid button reports the toggle callback', (
+    tester,
+  ) async {
+    final controller = StudioController();
+    var toggles = 0;
+    await tester.pumpWidget(
+      _wrap(controller, drawEnabled: false, onToggleGrid: () => toggles++),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.grid_4x4));
+    await tester.pumpAndSettle();
+    expect(toggles, 1);
+  });
+
+  testWidgets('overlay grid button is hidden without a toggle callback', (
+    tester,
+  ) async {
+    final controller = StudioController();
+    await tester.pumpWidget(_wrap(controller, drawEnabled: false));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.grid_4x4), findsNothing);
   });
 
   testWidgets('showZoomOverlay false hides the in-canvas zoom controls', (

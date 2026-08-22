@@ -159,6 +159,7 @@ class _StudioShellState extends State<StudioShell> {
   bool _showInspector = true;
   bool _showLayers = false;
   bool _multiSelect = false;
+  bool _showGrid = true;
   final CanvasZoomController _zoomController = CanvasZoomController();
   bool _canvasFirst = true;
   bool _workspaceSettingsOpen = false;
@@ -173,6 +174,14 @@ class _StudioShellState extends State<StudioShell> {
       'index': index,
       'tool': _toolNames[index],
     });
+  }
+
+  void _toggleGrid() {
+    setState(() => _showGrid = !_showGrid);
+    debugLog.info(
+      'grid_toggle',
+      _showGrid ? 'Grid overlay enabled' : 'Grid overlay disabled',
+    );
   }
 
   @override
@@ -638,6 +647,8 @@ class _StudioShellState extends State<StudioShell> {
                           textEnabled: _selectedTool == 2,
                           immersive: _immersive,
                           multiSelectMode: _multiSelect,
+                          gridVisible: _showGrid,
+                          onToggleGrid: _toggleGrid,
                           selectedNodeId: _studio.selectedNodeId,
                           suppressGeometryLog: _workspaceSettingsOpen,
                           zoomController: _zoomController,
@@ -793,6 +804,8 @@ class _StudioShellState extends State<StudioShell> {
                             zoomController: _zoomController,
                             showLayers: _showLayers,
                             multiSelect: _multiSelect,
+                            gridVisible: _showGrid,
+                            onToggleGrid: _toggleGrid,
                             onToggleMultiSelect: () {
                               setState(() => _multiSelect = !_multiSelect);
                               debugLog.info(
@@ -934,6 +947,8 @@ class CanvasArea extends StatelessWidget {
     this.textEnabled = false,
     this.immersive = false,
     this.multiSelectMode = false,
+    this.gridVisible = true,
+    this.onToggleGrid,
     this.selectedNodeId,
     this.suppressGeometryLog = false,
     this.zoomController,
@@ -958,6 +973,12 @@ class CanvasArea extends StatelessWidget {
 
   /// Multi-select mode from the shell: Select-tool taps toggle membership.
   final bool multiSelectMode;
+
+  /// Grid overlay state, forwarded to [StudioCanvas]; [onToggleGrid] null
+  /// hides the grid button in the canvas overlay (compact phones control the
+  /// grid from the bottom toolbar).
+  final bool gridVisible;
+  final VoidCallback? onToggleGrid;
 
   final GgenId? selectedNodeId;
 
@@ -999,6 +1020,8 @@ class CanvasArea extends StatelessWidget {
                 textEnabled: textEnabled,
                 showZoomOverlay: immersive || !compact,
                 multiSelectMode: multiSelectMode,
+                gridVisible: gridVisible,
+                onToggleGrid: onToggleGrid,
                 selectedNodeId: selectedNodeId,
                 zoomController: zoomController,
                 onTextRequest: onTextRequest,
@@ -1393,6 +1416,8 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
     required this.zoomController,
     required this.showLayers,
     required this.multiSelect,
+    required this.gridVisible,
+    required this.onToggleGrid,
     required this.onToggleMultiSelect,
     required this.onToggleLayers,
     super.key,
@@ -1402,6 +1427,8 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
   final CanvasZoomController zoomController;
   final bool showLayers;
   final bool multiSelect;
+  final bool gridVisible;
+  final VoidCallback onToggleGrid;
   final VoidCallback onToggleMultiSelect;
   final VoidCallback onToggleLayers;
 
@@ -1434,6 +1461,25 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
               ),
             ),
           ),
+          // Grid overlay — pairs with Ctrl-snap; same 40×40 style
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              tooltip: gridVisible ? 'Hide grid' : 'Show grid',
+              onPressed: onToggleGrid,
+              isSelected: gridVisible,
+              icon: const Icon(Icons.grid_4x4, size: 20),
+              style: IconButton.styleFrom(
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                backgroundColor: gridVisible
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : null,
+              ),
+            ),
+          ),
+          Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
           // Undo / Redo — same 40×40 size, equal spacing
           SizedBox(
             width: 40,
@@ -1510,7 +1556,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
           // real widths.
           child: LayoutBuilder(
             builder: (context, constraints) {
-              const contentWidth = 40 * 7 + 2 + 8.0; // 7 buttons + 2 dividers + padding
+              const contentWidth = 40 * 8 + 3 + 8.0; // 8 buttons + 3 dividers + padding
               if (constraints.maxWidth >= contentWidth) {
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,

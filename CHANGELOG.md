@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-22 — Grid overlay toggle (8/64-unit, scale-aware)
+
+- **Grid overlay**: 8-unit minor lines with a 64-unit major line every 8th, painted in artboard coordinates under the nodes so it scales with the artboard and snap positions (Ctrl) are visible. Stroke width = 1/viewport scale keeps lines ~1 screen pixel at any zoom; minor lines are skipped below ~4.5 px screen spacing so distant fit zoom stays clean.
+- Toggle: compact bottom toolbar button (next to multi-select, selected-state styling) and the in-canvas zoom overlay grid button on wide/immersive layouts; shell-owned view state, default on; `grid_toggle` diagnostics event.
+- Tests: 5 canvas widget tests (overlay present/absent, toggle callback, button hidden without callback) + 2 shell tests (compact and wide toggles flip the overlay through the running app). App suite **162 green**, core **27 green**, governance green (provenance, legal, docs, environment, pack, build security); analyzer: only the 4 pre-existing warnings.
+- Docs: phase-2-status implemented list + Next updated (remaining creative: layer groups, numeric inspector). Requires on-device re-validation (fresh APK): grid legibility at fit/zoom levels, toggle behavior, and the remaining pending device flows.
+
 ## 2026-08-22 — Multi-select (additive selection, group move/delete)
 
 - **Controller**: ordered multi-selection (`selectedNodeIds`, primary = most recently selected; `selectedNodeId` unchanged for existing callers). `selectNode(id, {toggle})` flips membership for additive taps and replaces otherwise; `moveNodes()`/`deleteNodes()` commit a group of nodes as ONE undoable step; `moveNode`/`deleteNode` delegate to the group versions.
