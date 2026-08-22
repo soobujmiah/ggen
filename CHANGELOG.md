@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-22 — Surface the canonical current-state handoff and source provenance at the top level
+
+Docs-only (no source/behavior change) to close the top-level session-continuity gap: `CURRENT_STATE.md` is the canonical current-state record and session handoff, but it was referenced nowhere in the repository docs and was absent from README's prescribed "Read first" list — so a fresh agent following README would not discover it.
+
+- `README.md`: `CURRENT_STATE.md` added as item 2 in "Read first" (with a session-continuity note that it is the authoritative up-to-date snapshot and that phase/status docs carry deeper dated evidence); the list is renumbered accordingly.
+- `README.md`: "Local checks" now documents the full dependency-free governance gate (8 scripts) and the `scripts/source_receipt.py` SHA-256 source receipt, including that it returns non-zero on a dirty worktree and that `CURRENT_STATE.md` is where the live HEAD is noted (rather than pinning a hash here). An auth/secret rule note is added.
+- Governance suite re-verified (dependency-free, PyYAML only): legal files, provenance, docs (57 Markdown, no broken links / no secret patterns), environment contract, protected pack, safety scan, build security, source receipt. Dart/Flutter core and widget suites were not run in this environment (no toolchain; run in CI) — see `docs/phases/phase-1-status.md` and `docs/phases/phase-2-status.md`.
+- No change to project direction, product scope, or evidence boundaries.
+
 ## 2026-08-22 — Device-feedback follow-up: status-bar-safe canvas, configurable canvas toolbar
 
 - **Canvas no longer slides under the status bar in normal mode.** The body applies the top `SafeArea` in BOTH modes (immersive hides the bars so the inset is 0 and fullscreen is untouched); the overlay top bar dropped its internal inset (the canvas already starts below the status bar) and the project-name chip now sits at 62 px with clearance — device feedback: the top-bar buttons overlapped the project name and the zoomed canvas went under the status bar in normal mode.

@@ -26,18 +26,21 @@ Protected features report `UNAVAILABLE_NO_PACK` until an owner-supplied pack is 
 
 ## Read first
 
-1. [`AI_ASSISTANT.md`](AI_ASSISTANT.md)
-2. [`MASTER_SPEC.md`](MASTER_SPEC.md)
-3. [`docs/product/computer-quality-tool-standard.md`](docs/product/computer-quality-tool-standard.md)
-4. [`docs/design/mobile-first-professional-ui.md`](docs/design/mobile-first-professional-ui.md)
-5. [`config/development-environments.yaml`](config/development-environments.yaml)
-6. [`config/tool-quality-standard.yaml`](config/tool-quality-standard.yaml)
-7. [`config/toolchain.yaml`](config/toolchain.yaml)
-8. [`docs/legal/licensing-policy.md`](docs/legal/licensing-policy.md)
-9. [`docs/security/import-and-resource-policy.md`](docs/security/import-and-resource-policy.md)
-10. [`docs/phases/phase-0-status.md`](docs/phases/phase-0-status.md)
-11. [`docs/phases/phase-1-status.md`](docs/phases/phase-1-status.md)
-12. Relevant architecture, interface, source and test files
+1. [`AI_ASSISTANT.md`](AI_ASSISTANT.md) — the AI working agreement (session start/close contract, evidence rules)
+2. [`CURRENT_STATE.md`](CURRENT_STATE.md) — the canonical current-state record and session handoff (current phase, verified baseline, evidence boundary, required reading for the next AI)
+3. [`MASTER_SPEC.md`](MASTER_SPEC.md)
+4. [`docs/product/computer-quality-tool-standard.md`](docs/product/computer-quality-tool-standard.md)
+5. [`docs/design/mobile-first-professional-ui.md`](docs/design/mobile-first-professional-ui.md)
+6. [`config/development-environments.yaml`](config/development-environments.yaml)
+7. [`config/tool-quality-standard.yaml`](config/tool-quality-standard.yaml)
+8. [`config/toolchain.yaml`](config/toolchain.yaml)
+9. [`docs/legal/licensing-policy.md`](docs/legal/licensing-policy.md)
+10. [`docs/security/import-and-resource-policy.md`](docs/security/import-and-resource-policy.md)
+11. [`docs/phases/phase-0-status.md`](docs/phases/phase-0-status.md)
+12. [`docs/phases/phase-1-status.md`](docs/phases/phase-1-status.md)
+13. Relevant architecture, interface, source and test files
+
+> Session continuity: `CURRENT_STATE.md` is the authoritative, up-to-date snapshot; phase/status docs carry the deeper detail and dated evidence. Reconstruct state from these plus repository evidence — never from a previous chat session's claims.
 
 ## Non-negotiable boundaries
 
@@ -52,3 +55,7 @@ Protected features report `UNAVAILABLE_NO_PACK` until an owner-supplied pack is 
 ## Local checks
 
 Dependency-free governance checks are under [`scripts/`](scripts/). The pinned Dart/Flutter toolchain is described in [`config/toolchain.yaml`](config/toolchain.yaml). If GitHub Actions is blocked by account billing or spending limits, record that as an infrastructure status and do not call the source code failed or green without the relevant output.
+
+- **Governance gate (dependency-free, requires only PyYAML):** `scripts/check_legal_files.py`, `scripts/validate_provenance.py`, `scripts/check_docs.py` (link + secret-pattern check), `scripts/validate_environment_contract.py`, `scripts/verify_protected_pack.py`, `scripts/public_safety_scan.py`, `scripts/check_build_security.py`, `scripts/source_receipt.py`. Run them from the repo root on any documentation/state change.
+- **Source receipt:** `scripts/source_receipt.py` prints a reproducible SHA-256 receipt for the current commit (`repository`, `source_commit`, `tree`, `clean_worktree`, `tracked_file_count`, `tracked_path_list_sha256`). It returns non-zero when the worktree is dirty, so a receipt describes a clean, verifiable state. `CURRENT_STATE.md` is the place to note the live HEAD a state snapshot corresponds to; the receipt itself is generated at run time rather than pinned here, so it never ages silently.
+- **Auth/secret rule:** never place a personal access token, key, or credential in any URL, commit, doc, issue, log, or documentation. `check_docs.py` and `check_build_security.py` scan for these.
