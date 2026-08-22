@@ -68,11 +68,8 @@ void main() {
   });
 
   test('group references are validated fail-closed', () {
-    DocumentNode shape(String id) => DocumentNode(
-      id: GgenId(id),
-      kind: DocumentNodeKind.shape,
-      name: id,
-    );
+    DocumentNode shape(String id) =>
+        DocumentNode(id: GgenId(id), kind: DocumentNodeKind.shape, name: id);
     Artboard artboard(List<DocumentNode> nodes) => Artboard(
       id: GgenId('artboard-1'),
       name: 'A',
@@ -116,10 +113,7 @@ void main() {
 
     // Empty children list fails.
     expect(
-      () => artboard(<DocumentNode>[
-        shape('node.1'),
-        group(<String>[]),
-      ]),
+      () => artboard(<DocumentNode>[shape('node.1'), group(<String>[])]),
       throwsArgumentError,
     );
 
@@ -130,7 +124,9 @@ void main() {
           id: GgenId('node.1'),
           kind: DocumentNodeKind.shape,
           name: 'S',
-          extensions: <String, Object?>{'children': <String>['node.1']},
+          extensions: <String, Object?>{
+            'children': <String>['node.1'],
+          },
         ),
       ]),
       throwsArgumentError,
