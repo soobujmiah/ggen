@@ -410,6 +410,16 @@ class _StudioShellState extends State<StudioShell> {
 
   void _setImmersive(bool value) {
     setState(() => _immersive = value);
+    // Hide the system bars in fullscreen so the canvas reaches the true
+    // screen edges instead of drawing under the status bar (device report:
+    // "fullscreen overlaps the status bar"). Restoring returns to normal
+    // edge-to-edge with bars visible; the SafeArea below guards the canvas
+    // from insets whenever the bars remain visible.
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(
+        value ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+      ),
+    );
     debugLog.info(
       'immersive_mode',
       value ? 'Canvas chrome hidden' : 'Canvas chrome restored',
@@ -594,7 +604,16 @@ class _StudioShellState extends State<StudioShell> {
                       child: InspectorPanel(controller: _studio),
                     )
                   : const SizedBox.shrink();
-              return Stack(
+              return SafeArea(
+                // In immersive mode the app bar is gone so the body starts
+                // at the screen top; keep the canvas below the status bar
+                // (and above the gesture bar) whenever system bars remain
+                // visible.
+                top: _immersive,
+                bottom: _immersive,
+                left: false,
+                right: false,
+                child: Stack(
                 children: [
                   Row(
                     children: [
@@ -615,6 +634,8 @@ class _StudioShellState extends State<StudioShell> {
                           controller: _studio,
                           drawEnabled: _selectedTool == 1,
                           selectMode: _selectedTool == 0,
+                          textEnabled: _selectedTool == 2,
+                          immersive: _immersive,
                           selectedNodeId: _studio.selectedNodeId,
                           suppressGeometryLog: _workspaceSettingsOpen,
                           zoomController: _zoomController,
@@ -711,7 +732,7 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                       ),
                     ),
-                  if (!_immersive)
+                  if (!_immersive && !compact)
                     Positioned(
                       top: 12,
                       right: 12,
@@ -750,6 +771,7 @@ class _StudioShellState extends State<StudioShell> {
                       ),
                     ),
                 ],
+                ),
               );
             },
           ),
@@ -896,6 +918,8 @@ class CanvasArea extends StatelessWidget {
     required this.drawEnabled,
     required this.onNodeAdded,
     this.selectMode = false,
+    this.textEnabled = false,
+    this.immersive = false,
     this.selectedNodeId,
     this.suppressGeometryLog = false,
     this.zoomController,
@@ -912,6 +936,12 @@ class CanvasArea extends StatelessWidget {
   final bool drawEnabled;
   final VoidCallback onNodeAdded;
   final bool selectMode;
+  final bool textEnabled;
+
+  /// Whether the shell is in immersive canvas mode; keeps the in-canvas
+  /// zoom overlay available there (no bottom toolbar exists in immersive).
+  final bool immersive;
+
   final GgenId? selectedNodeId;
 
   /// Suppresses canvas_geometry logging (e.g. while the settings sheet is
@@ -939,12 +969,18 @@ class CanvasArea extends StatelessWidget {
               constraints.biggest,
               suppress: suppressGeometryLog,
             );
+            // Compact phones get undo/redo, layers and zoom from the bottom
+            // toolbar, so the in-canvas zoom overlay is redundant there;
+            // wide layouts and immersive keep it (single source of zoom UI).
+            final compact = size.width < 700;
             return RepaintBoundary(
               child: StudioCanvas(
                 controller: controller,
                 drawEnabled: drawEnabled,
                 onNodeAdded: onNodeAdded,
                 selectMode: selectMode,
+                textEnabled: textEnabled,
+                showZoomOverlay: immersive || !compact,
                 selectedNodeId: selectedNodeId,
                 zoomController: zoomController,
                 onTextRequest: onTextRequest,
@@ -1354,79 +1390,95 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
       builder: (context, _) {
         final canUndo = controller.canUndo;
         final canRedo = controller.canRedo;
+        final buttons = <Widget>[
+          // Undo / Redo — same 40×40 size, equal spacing
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              tooltip: 'Undo',
+              onPressed: canUndo ? () { controller.undo(); debugLog.info('history_undo', 'Undo via toolbar'); } : null,
+              icon: const Icon(Icons.undo, size: 20),
+              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            ),
+          ),
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              tooltip: 'Redo',
+              onPressed: canRedo ? () { controller.redo(); debugLog.info('history_redo', 'Redo via toolbar'); } : null,
+              icon: const Icon(Icons.redo, size: 20),
+              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            ),
+          ),
+          Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
+          // Layers — same size
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              tooltip: showLayers ? 'Hide layers' : 'Show layers',
+              onPressed: onToggleLayers,
+              icon: Icon(showLayers ? Icons.layers_clear_outlined : Icons.layers_outlined, size: 20),
+              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            ),
+          ),
+          Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
+          // Zoom — same 40 size, equal spacing, above holding bar per device feedback
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              tooltip: 'Zoom out',
+              onPressed: () { zoomController.zoomOut(); debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar'); },
+              icon: const Icon(Icons.remove, size: 20),
+              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            ),
+          ),
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              tooltip: 'Zoom in',
+              onPressed: () { zoomController.zoomIn(); debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar'); },
+              icon: const Icon(Icons.add, size: 20),
+              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            ),
+          ),
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              tooltip: 'Fit to screen',
+              onPressed: () { zoomController.fitToScreen(); debugLog.info('toolbar_zoom_fit', 'Fit via toolbar'); },
+              icon: const Icon(Icons.fit_screen_outlined, size: 20),
+              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            ),
+          ),
+        ];
         return Container(
           height: 48,
           color: Theme.of(context).colorScheme.surfaceContainer,
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              // Undo / Redo — same 40×40 size, equal spacing
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: IconButton(
-                  tooltip: 'Undo',
-                  onPressed: canUndo ? () { controller.undo(); debugLog.info('history_undo', 'Undo via toolbar'); } : null,
-                  icon: const Icon(Icons.undo, size: 20),
-                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                ),
-              ),
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: IconButton(
-                  tooltip: 'Redo',
-                  onPressed: canRedo ? () { controller.redo(); debugLog.info('history_redo', 'Redo via toolbar'); } : null,
-                  icon: const Icon(Icons.redo, size: 20),
-                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                ),
-              ),
-              Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
-              // Layers — same size
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: IconButton(
-                  tooltip: showLayers ? 'Hide layers' : 'Show layers',
-                  onPressed: onToggleLayers,
-                  icon: Icon(showLayers ? Icons.layers_clear_outlined : Icons.layers_outlined, size: 20),
-                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                ),
-              ),
-              Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
-              // Zoom — same 40 size, equal spacing, above holding bar per device feedback
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: IconButton(
-                  tooltip: 'Zoom out',
-                  onPressed: () { zoomController.zoomOut(); debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar'); },
-                  icon: const Icon(Icons.remove, size: 20),
-                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                ),
-              ),
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: IconButton(
-                  tooltip: 'Zoom in',
-                  onPressed: () { zoomController.zoomIn(); debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar'); },
-                  icon: const Icon(Icons.add, size: 20),
-                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                ),
-              ),
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: IconButton(
-                  tooltip: 'Fit to screen',
-                  onPressed: () { zoomController.fitToScreen(); debugLog.info('toolbar_zoom_fit', 'Fit via toolbar'); },
-                  icon: const Icon(Icons.fit_screen_outlined, size: 20),
-                  style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                ),
-              ),
-            ],
+          // At degenerate/very narrow widths (e.g. the 200px test viewport)
+          // the fixed 40×40 buttons would overflow; keep the toolbar
+          // scrollable there while preserving the even-spaced layout at
+          // real widths.
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const contentWidth = 40 * 6 + 2 + 8.0; // 6 buttons + 2 dividers + padding
+              if (constraints.maxWidth >= contentWidth) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: buttons,
+                );
+              }
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: buttons),
+              );
+            },
           ),
         );
       },

@@ -85,6 +85,13 @@ A further clean device run on 2026-08-20 (export `07:49:00Z`) re-confirmed on th
 
 The same run exposed a **canvas-first switch defect**: six consecutive `canvas_first` "disabled" events showed the settings-sheet switch reporting the sheet-open snapshot instead of reacting to taps (a captured-value switch). Fixed by making the switch own its state (`_CanvasFirstSwitch`), with a widget regression test toggling it off and on. The run's build predates the persistence milestones, so `storage_init`, `project_new`, `project_save`, `history_undo`/`redo` and `project_restore` were not yet exercised on-device; a fresh APK from current `main` is required for that validation.
 
+A device run on 2026-08-22 (export `04:13:30Z`) exercised the current controls on the Redmi Turbo 4 Pro: 26 `node_add` Draw-tool shapes (revisions 1–26), two-finger-tap undo twice (revisions back to 8 then 9), four Bangla text frames (`node_add_text` at revisions 30/31 and 5/11), toolbar zoom in/out/fit, layers sheet, profiles save/apply, workspace reset, immersive enter/restore, `project_new`/`project_save` (twice: `project-1787371120182905` r0/254B and r6/1405B, then `project-1787371850538968` r11/2296B with SHA-256 receipts), `diagnostics_export` — no Flutter or uncaught errors. The run also exposed four defects, all fixed on `main` 2026-08-22 with pinned tests:
+
+- **Select tool added text**: the sequence `tool_select` Select → canvas tap → `node_add_text` showed the canvas routing a non-null text callback to any tool; taps now route by explicit flags (`drawEnabled`/`selectMode`/`textEnabled`).
+- **Duplicated canvas controls**: the compact bottom toolbar already carries undo/redo, layers and zoom, so the floating layers button and in-canvas zoom overlay are now wide/immersive-only.
+- **Fit-to-screen collapsed the artboard**: the artboard was laid out under the canvas's tight constraints, so the fit transform scaled a 471×803 box and the artboard landed small, left-aligned. The artboard now lays out unconstrained (`OverflowBox`, minima cleared); pinned test measures the centered 439×292.7 artboard at (16, 255).
+- **Immersive overlapped the status bar**: immersive now hides system bars (`immersiveSticky`) and the body applies `SafeArea` when bars remain visible.
+
 ## Evidence boundaries
 
 - Responsive widget tests are not physical-device tests.

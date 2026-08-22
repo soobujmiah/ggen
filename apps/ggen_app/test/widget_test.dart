@@ -267,6 +267,34 @@ void main() {
     );
   });
 
+  testWidgets(
+    'select tool never opens the text dialog (device report regression)',
+    (tester) async {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Select'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(StudioCanvas));
+      await tester.pumpAndSettle();
+
+      // No Add-text dialog; the tap must have been a Select hit-test only
+      // (the node at (100,100) may or may not be hit, but no text is added).
+      expect(find.text('Add text'), findsNothing);
+      expect(controller.objectCount, 1);
+      expect(controller.revision, 1);
+
+      // Sanity: switching to Text does open the dialog on a canvas tap.
+      await tester.tap(find.text('Text'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(StudioCanvas));
+      await tester.pumpAndSettle();
+      expect(find.text('Add text'), findsOneWidget);
+    },
+  );
+
   testWidgets('volume down undoes and volume up redoes', (tester) async {
     final controller = StudioController();
     controller.addShapeNode(10, 10);
@@ -449,6 +477,33 @@ void main() {
       await pumpAt(tester, const Size(400, 800));
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(find.byType(NavigationRail), findsNothing);
+    });
+
+    testWidgets(
+      'compact layout has one set of layer and zoom controls (device '
+      'report: canvas duplicates the bottom toolbar)',
+      (tester) async {
+        await pumpAt(tester, const Size(471, 803));
+        // Bottom toolbar owns layers/zoom; the floating layers button and
+        // the in-canvas zoom overlay must be gone.
+        expect(find.byIcon(Icons.layers_outlined), findsOneWidget);
+        expect(find.byIcon(Icons.fit_screen_outlined), findsOneWidget);
+        expect(find.byIcon(Icons.add), findsOneWidget); // toolbar zoom in
+        expect(find.byIcon(Icons.remove), findsOneWidget); // toolbar zoom out
+        // And the zoom percentage label must not be rendered at all.
+        expect(find.textContaining('%'), findsNothing);
+      },
+    );
+
+    testWidgets('immersive keeps the in-canvas zoom overlay', (tester) async {
+      await pumpAt(tester, const Size(471, 803));
+      // Enter immersive via the AppBar fullscreen button.
+      await tester.tap(find.byTooltip('Immersive canvas'));
+      await tester.pumpAndSettle();
+      // No bottom toolbar in immersive, so the canvas keeps its own zoom
+      // controls (single source, not duplicated).
+      expect(find.byIcon(Icons.fit_screen_outlined), findsOneWidget);
+      expect(find.textContaining('%'), findsOneWidget);
     });
 
     testWidgets('small tablet (700-899): rail without inspector', (

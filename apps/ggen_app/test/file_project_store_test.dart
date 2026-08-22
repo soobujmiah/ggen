@@ -79,16 +79,41 @@ void main() {
       expect(() => store.begin(key, expectedRevision: 1), throwsStateError);
     });
 
-    test('non-advancing staged revisions are rejected at commit', () async {
+    test('revisions behind the stored revision are rejected at commit', () async {
+      final store = FileProjectStore(root);
+      final key = ProjectStorageKey('project-1');
+      final first = await store.begin(key);
+      await first.stage(_envelope(5));
+      await first.commit();
+
+      // Unwinding the stored revision must fail; the async result is awaited
+      // via expectLater so the thrown StateError is actually observed
+      // (the previous sync-style expect on a Future never saw it).
+      final transaction = await store.begin(key, expectedRevision: 5);
+      await transaction.stage(_envelope(2));
+      await expectLater(transaction.commit(), throwsStateError);
+    });
+
+    test('multi-step revision jumps ahead of the stored revision commit', () async {
+      // Regression for the device-observed "project save not found": the old
+      // strict +1 check rejected a staged revision 5 after a stored 0 (five
+      // edits between saves). Any advancing revision must commit.
       final store = FileProjectStore(root);
       final key = ProjectStorageKey('project-1');
       final first = await store.begin(key);
       await first.stage(_envelope(0));
       await first.commit();
 
-      final transaction = await store.begin(key, expectedRevision: 0);
-      await transaction.stage(_envelope(2));
-      expect(transaction.commit(), throwsStateError);
+      final jump = await store.begin(key, expectedRevision: 0);
+      await jump.stage(_envelope(5));
+      final receipt = await jump.commit();
+      expect(receipt.committedRevision, 5);
+
+      // Idempotent re-save of the same revision stays accepted.
+      final redo = await store.begin(key, expectedRevision: 5);
+      await redo.stage(_envelope(5));
+      final redoReceipt = await redo.commit();
+      expect(redoReceipt.committedRevision, 5);
     });
 
     test('cancel discards the staged write', () async {

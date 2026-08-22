@@ -20,6 +20,8 @@ class StudioCanvas extends StatefulWidget {
     required this.drawEnabled,
     required this.onNodeAdded,
     this.selectMode = false,
+    this.textEnabled = false,
+    this.showZoomOverlay = true,
     this.selectedNodeId,
     this.onTextRequest,
     this.onNodeSelected,
@@ -37,6 +39,20 @@ class StudioCanvas extends StatefulWidget {
   /// When true, the Select tool is active: taps hit-test nodes and drags
   /// move the selected node.
   final bool selectMode;
+
+  /// When true, the Text tool is active: taps request a text frame through
+  /// [onTextRequest]. Kept explicit (like [drawEnabled]) so the text dialog
+  /// can never fire while another tool owns the canvas tap — device report:
+  /// tapping the canvas in Select mode opened the Add-text dialog because
+  /// a non-null [onTextRequest] was mistaken for an active Text tool.
+  final bool textEnabled;
+
+  /// Whether the compact in-canvas zoom overlay (+/−/fit/percent) is shown.
+  /// The shell hides it on compact phones where the bottom toolbar already
+  /// carries undo/redo, layers and zoom buttons (device feedback: duplicated
+  /// controls); it stays visible on wide layouts and in immersive mode where
+  /// no bottom toolbar exists.
+  final bool showZoomOverlay;
 
   /// The currently selected node's ID, used to render the selection visual.
   final GgenId? selectedNodeId;
@@ -473,16 +489,34 @@ class _StudioCanvasState extends State<StudioCanvas> {
                   artboardPoint.dy,
                 );
                 widget.onNodeAdded();
-              } else if (widget.onTextRequest != null) {
-                widget.onTextRequest!(artboardPoint);
               } else if (widget.selectMode) {
-                // Select tool: hit-test and report.
+                // Select tool: hit-test and report (never opens the text
+                // dialog — regression pinned by the shell test).
                 final hitId = _hitTest(artboardPoint);
                 widget.onNodeSelected?.call(hitId);
+              } else if (widget.textEnabled && widget.onTextRequest != null) {
+                widget.onTextRequest!(artboardPoint);
               }
             },
             child: ClipRect(
-              child: Transform(
+              // The artboard must lay out at its full artboard size even
+              // though the parent chain (Positioned.fill -> 471x803) is
+              // tight: a tight-constrained SizedBox would force the
+              // Transform's child down to the canvas size, collapsing the
+              // whole artboard into a small rectangle hugging the left edge
+              // (device report: "fit-to-screen shrinks the canvas to the
+              // left"). OverflowBox removes the constraint; the outer
+              // ClipRect keeps the visible area bounded to the canvas.
+              // Note the minima: OverflowBox falls back to the parent's
+              // minWidth/minHeight when unset, which re-constrained the box
+              // to 471x803 minima (observed as a 1200x803 layout).
+              child: OverflowBox(
+                alignment: Alignment.topLeft,
+                minWidth: 0,
+                minHeight: 0,
+                maxWidth: double.infinity,
+                maxHeight: double.infinity,
+                child: Transform(
                 transform: Matrix4.identity()
                   ..translateByDouble(
                     _viewport.offsetX,
@@ -515,6 +549,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
                   ),
                 ),
               ),
+              ),
             ),
           ),
               ),
@@ -522,8 +557,10 @@ class _StudioCanvasState extends State<StudioCanvas> {
             // Resize handles overlay for the selected shape node.
             if (widget.selectMode && widget.selectedNodeId != null)
               ..._resizeHandleWidgets(),
-            // Zoom controls overlay — bottom-right of the canvas.
-            Positioned(
+            // Zoom controls overlay — bottom-right of the canvas. Hidden on
+            // compact phones where the bottom toolbar duplicates these.
+            if (widget.showZoomOverlay)
+              Positioned(
               right: 12,
               bottom: 12,
               child: _ZoomControls(
