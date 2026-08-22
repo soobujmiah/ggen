@@ -526,6 +526,110 @@ void main() {
     });
   });
 
+  group('multi-select', () {
+    test('toggle selection adds, removes and keeps the primary last', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      controller.addShapeNode(400, 100);
+      controller.addShapeNode(700, 100);
+      final ids = controller.project.artboards.first.nodes
+          .map((n) => n.id)
+          .toList();
+
+      controller.selectNode(ids[0], toggle: true);
+      controller.selectNode(ids[1], toggle: true);
+      expect(controller.selectedNodeIds, <GgenId>[ids[0], ids[1]]);
+      expect(controller.selectedNodeId, ids[1]); // most recent = primary
+
+      // Toggling a selected node removes it; order is preserved.
+      controller.selectNode(ids[0], toggle: true);
+      expect(controller.selectedNodeIds, <GgenId>[ids[1]]);
+      expect(controller.selectedNodeId, ids[1]);
+
+      controller.selectNode(ids[1], toggle: true);
+      expect(controller.selectedNodeIds, isEmpty);
+      expect(controller.selectedNodeId, isNull);
+
+      // A plain select replaces the whole selection.
+      controller.selectNode(ids[0], toggle: true);
+      controller.selectNode(ids[2], toggle: true);
+      controller.selectNode(ids[1]);
+      expect(controller.selectedNodeIds, <GgenId>[ids[1]]);
+    });
+
+    test('moveNodes moves every selected node in one undoable step', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      controller.addShapeNode(400, 100);
+      final ids = controller.project.artboards.first.nodes
+          .map((n) => n.id)
+          .toList();
+
+      final moved = controller.moveNodes(ids, 50, 30);
+      expect(moved, isTrue);
+      // One transaction, not two.
+      expect(controller.revision, 3);
+      final nodes = controller.project.artboards.first.nodes;
+      expect(nodeGeometry(nodes[0])!.x, 150);
+      expect(nodeGeometry(nodes[0])!.y, 130);
+      expect(nodeGeometry(nodes[1])!.x, 450);
+      expect(nodeGeometry(nodes[1])!.y, 130);
+
+      controller.undo();
+      expect(nodeGeometry(controller.project.artboards.first.nodes[0])!.x, 100);
+      expect(nodeGeometry(controller.project.artboards.first.nodes[1])!.x, 400);
+      controller.redo();
+      expect(nodeGeometry(controller.project.artboards.first.nodes[0])!.x, 150);
+      expect(nodeGeometry(controller.project.artboards.first.nodes[1])!.x, 450);
+    });
+
+    test('moveNodes skips missing nodes and returns false when nothing moved', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final existing = controller.project.artboards.first.nodes.single.id;
+      expect(controller.moveNodes(<GgenId>[existing, GgenId('missing')], 10, 0),
+          isTrue);
+      expect(controller.moveNodes(<GgenId>[GgenId('missing')], 10, 0), isFalse);
+      expect(controller.moveNodes(const <GgenId>[], 10, 0), isFalse);
+      // Zero net delta is a no-op.
+      expect(controller.moveNodes(<GgenId>[existing], 0, 0), isFalse);
+    });
+
+    test('deleteNodes removes a group in one step and prunes the selection', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      controller.addShapeNode(400, 100);
+      controller.addShapeNode(700, 100);
+      final ids = controller.project.artboards.first.nodes
+          .map((n) => n.id)
+          .toList();
+
+      controller.selectNode(ids[0], toggle: true);
+      controller.selectNode(ids[1], toggle: true);
+      expect(controller.selectedNodeIds.length, 2);
+
+      final deleted = controller.deleteNodes(<GgenId>[ids[0], ids[1]]);
+      expect(deleted, isTrue);
+      expect(controller.objectCount, 1);
+      expect(controller.selectedNodeIds, isEmpty);
+      expect(controller.selectedNodeId, isNull);
+      // One undoable step restores both.
+      controller.undo();
+      expect(controller.objectCount, 3);
+      expect(controller.selectedNodeIds, isEmpty);
+    });
+
+    test('deleteNode still works as a single-node delete', () {
+      final controller = StudioController();
+      controller.addShapeNode(100, 100);
+      final id = controller.project.artboards.first.nodes.single.id;
+      controller.selectNode(id);
+      expect(controller.deleteNode(id), isTrue);
+      expect(controller.selectedNodeId, isNull);
+      expect(controller.objectCount, 0);
+    });
+  });
+
   group('node move', () {
     test('moveNode shifts a shape node through one undoable transaction', () {
       final controller = StudioController();

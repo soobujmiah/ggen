@@ -22,6 +22,7 @@ class StudioCanvas extends StatefulWidget {
     this.selectMode = false,
     this.textEnabled = false,
     this.showZoomOverlay = true,
+    this.multiSelectMode = false,
     this.selectedNodeId,
     this.onTextRequest,
     this.onNodeSelected,
@@ -54,15 +55,24 @@ class StudioCanvas extends StatefulWidget {
   /// no bottom toolbar exists.
   final bool showZoomOverlay;
 
-  /// The currently selected node's ID, used to render the selection visual.
+  /// When true, Select-tool taps toggle node membership in the
+  /// multi-selection instead of replacing it (touch-friendly mobile path;
+  /// Shift/Ctrl/Cmd taps do the same on hardware keyboards).
+  final bool multiSelectMode;
+
+  /// The currently selected node's ID (primary), used to render the
+  /// selection visual and resize handles. The full selection is read from
+  /// [controller] so every selected node gets a border.
   final GgenId? selectedNodeId;
 
   /// Called with the artboard-space tap point when the Text tool is active.
   final void Function(Offset artboardPoint)? onTextRequest;
 
   /// Called when the Select tool taps the canvas. [nodeId] is the hit-tested
-  /// node or null when the tap missed all nodes (deselect).
-  final void Function(GgenId? nodeId)? onNodeSelected;
+  /// node or null when the tap missed all nodes (deselect). [additive] is
+  /// true when the tap should toggle membership (multi-select), which the
+  /// shell passes to the controller; a plain tap replaces the selection.
+  final void Function(GgenId? nodeId, bool additive)? onNodeSelected;
 
   /// Called on a clean two-finger tap (undo by convention).
   final VoidCallback? onTwoFingerTap;
@@ -95,6 +105,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
   // Raw multi-touch tap tracking.
   final Map<int, _PointerStamp> _downPointers = <int, _PointerStamp>{};
   int _burstPointerCount = 0;
+  Offset? _lastDownLocal;
 
   @override
   void initState() {
@@ -219,6 +230,12 @@ class _StudioCanvasState extends State<StudioCanvas> {
 
   void _handlePointerDown(PointerDownEvent event) {
     final now = DateTime.now();
+    // Remember where the finger actually touched down: ScaleGestureRecognizer
+    // reports onScaleStart *after* the touch slop is crossed, so its focal
+    // point has already moved — hit-testing and drag references must use the
+    // touch-down position or slow drags can start on the wrong target and
+    // the slop distance is lost from the drag delta.
+    _lastDownLocal = event.localPosition;
     if (_downPointers.isEmpty) {
       _burstStart = now;
       _burstPointerCount = 0;
@@ -321,8 +338,12 @@ class _StudioCanvasState extends State<StudioCanvas> {
             behavior: HitTestBehavior.opaque,
             onScaleStart: (details) {
               _gestureStartScale = _viewport.scale;
-              // In select mode, check if the gesture starts on a resize
-              // handle of the selected node (checked first, before move).
+              // The gesture target is where the finger touched down, not the
+              // recognizer's post-slop focal point.
+              final gestureStart = _lastDownLocal ?? details.localFocalPoint;
+              // In select mode, first check whether the gesture starts on a
+              // resize handle of the primary selected node (handles are
+              // primary-only this milestone; group resize stays deferred).
               if (widget.selectMode && widget.selectedNodeId != null) {
                 final selectedId = widget.selectedNodeId!;
                 final artboards = widget.controller.project.artboards;
@@ -334,11 +355,11 @@ class _StudioCanvasState extends State<StudioCanvas> {
                     if (geom != null) {
                       final handles = resizeHandleRects(geom, _viewport);
                       for (final entry in handles.entries) {
-                        if (entry.value.contains(details.localFocalPoint)) {
+                        if (entry.value.contains(gestureStart)) {
                           _resizeDrag = ResizeDrag(
                             nodeId: selectedId,
                             handle: entry.key,
-                            startScreen: details.localFocalPoint,
+                            startScreen: gestureStart,
                             initialX: geom.x,
                             initialY: geom.y,
                             initialW: geom.width,
@@ -350,17 +371,30 @@ class _StudioCanvasState extends State<StudioCanvas> {
                     }
                   }
                 }
-                // Not a handle: check if the gesture starts on the node
-                // itself for a move.
-                final artboardPoint = _viewport.toArtboard(
-                  details.localFocalPoint,
-                );
+              }
+              // Not a handle (or nothing selected yet): check if the gesture
+              // starts on a node for a move. Dragging a node that is already
+              // part of the current selection moves the WHOLE selection
+              // (group move, one undoable step); dragging an unselected node
+              // selects it first (replacing the selection) and moves just
+              // that node.
+              if (widget.selectMode && _resizeDrag == null) {
+                final artboardPoint = _viewport.toArtboard(gestureStart);
                 final hitId = _hitTest(artboardPoint);
-                if (hitId == widget.selectedNodeId) {
-                  _nodeDrag = _NodeDrag(
-                    nodeId: hitId!,
-                    startScreen: details.localFocalPoint,
-                  );
+                if (hitId != null) {
+                  final selected = widget.controller.selectedNodeIds;
+                  if (selected.contains(hitId)) {
+                    _nodeDrag = _NodeDrag(
+                      nodeIds: selected,
+                      startScreen: gestureStart,
+                    );
+                  } else {
+                    widget.onNodeSelected?.call(hitId, false);
+                    _nodeDrag = _NodeDrag(
+                      nodeIds: <GgenId>[hitId],
+                      startScreen: gestureStart,
+                    );
+                  }
                 }
               }
             },
@@ -463,14 +497,15 @@ class _StudioCanvasState extends State<StudioCanvas> {
                 }
                 return;
               }
-              // Commit the node drag if one was active.
+              // Commit the node drag if one was active (a single undoable
+              // group move when multiple nodes were dragged).
               if (_nodeDrag != null) {
                 final drag = _nodeDrag!;
                 _nodeDrag = null;
                 // Only commit if there was actual movement (>1 artboard unit).
                 if (drag.deltaX.abs() > 1 || drag.deltaY.abs() > 1) {
-                  widget.controller.moveNode(
-                    drag.nodeId,
+                  widget.controller.moveNodes(
+                    drag.nodeIds,
                     drag.deltaX,
                     drag.deltaY,
                   );
@@ -491,9 +526,16 @@ class _StudioCanvasState extends State<StudioCanvas> {
                 widget.onNodeAdded();
               } else if (widget.selectMode) {
                 // Select tool: hit-test and report (never opens the text
-                // dialog — regression pinned by the shell test).
+                // dialog — regression pinned by the shell test). Shift,
+                // Ctrl/Cmd on a hardware keyboard and the shell's
+                // multi-select mode toggle all make the tap additive.
+                final additive =
+                    HardwareKeyboard.instance.isShiftPressed ||
+                    HardwareKeyboard.instance.isControlPressed ||
+                    HardwareKeyboard.instance.isMetaPressed ||
+                    widget.multiSelectMode;
                 final hitId = _hitTest(artboardPoint);
-                widget.onNodeSelected?.call(hitId);
+                widget.onNodeSelected?.call(hitId, additive);
               } else if (widget.textEnabled && widget.onTextRequest != null) {
                 widget.onTextRequest!(artboardPoint);
               }
@@ -592,8 +634,12 @@ class _StudioCanvasState extends State<StudioCanvas> {
 
     // Apply live drag offset if this node is being moved.
     final drag = _nodeDrag;
-    final dragDx = (drag != null && drag.nodeId == selectedId) ? drag.deltaX : 0.0;
-    final dragDy = (drag != null && drag.nodeId == selectedId) ? drag.deltaY : 0.0;
+    final dragDx = (drag != null && drag.nodeIds.contains(selectedId))
+        ? drag.deltaX
+        : 0.0;
+    final dragDy = (drag != null && drag.nodeIds.contains(selectedId))
+        ? drag.deltaY
+        : 0.0;
 
     // Apply live resize delta if this node is being resized.
     final resizeDrag = _resizeDrag;
@@ -644,11 +690,15 @@ class _StudioCanvasState extends State<StudioCanvas> {
   }
 
   List<Widget> _nodeWidgets(DocumentNode node) {
-    final isSelected = widget.selectedNodeId == node.id;
+    final isSelected = widget.controller.selectedNodeIds.contains(node.id);
     final drag = _nodeDrag;
-    // Apply live drag offset to the selected node's visual position.
-    final dragDx = (drag != null && drag.nodeId == node.id) ? drag.deltaX : 0.0;
-    final dragDy = (drag != null && drag.nodeId == node.id) ? drag.deltaY : 0.0;
+    // Apply live drag offset to every dragged node's visual position.
+    final dragDx = (drag != null && drag.nodeIds.contains(node.id))
+        ? drag.deltaX
+        : 0.0;
+    final dragDy = (drag != null && drag.nodeIds.contains(node.id))
+        ? drag.deltaY
+        : 0.0;
 
     if (node.kind == DocumentNodeKind.textFrame) {
       final geometry = textNodeGeometry(node);
@@ -879,23 +929,24 @@ Map<ResizeHandle, Rect> resizeHandleRects(
   };
 }
 
-/// Tracks an in-progress node drag: the node being moved, where the drag
-/// started in screen coordinates, and the cumulative artboard-space delta.
+/// Tracks an in-progress node drag: the nodes being moved (one or many),
+/// where the drag started in screen coordinates, and the cumulative
+/// artboard-space delta. A multi-node drag is committed as one group move.
 class _NodeDrag {
   const _NodeDrag({
-    required this.nodeId,
+    required this.nodeIds,
     required this.startScreen,
     this.deltaX = 0,
     this.deltaY = 0,
   });
 
-  final GgenId nodeId;
+  final List<GgenId> nodeIds;
   final Offset startScreen;
   final double deltaX;
   final double deltaY;
 
   _NodeDrag withDelta(double dx, double dy) => _NodeDrag(
-    nodeId: nodeId,
+    nodeIds: nodeIds,
     startScreen: startScreen,
     deltaX: dx,
     deltaY: dy,

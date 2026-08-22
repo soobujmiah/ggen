@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-22 — Multi-select (additive selection, group move/delete)
+
+- **Controller**: ordered multi-selection (`selectedNodeIds`, primary = most recently selected; `selectedNodeId` unchanged for existing callers). `selectNode(id, {toggle})` flips membership for additive taps and replaces otherwise; `moveNodes()`/`deleteNodes()` commit a group of nodes as ONE undoable step; `moveNode`/`deleteNode` delegate to the group versions.
+- **Canvas**: additive taps via the shell's multi-select toggle or Shift/Ctrl/Cmd; dragging a node that is part of the selection moves the whole selection with a live preview; dragging an unselected node selects and moves just it; every selected node gets the selection border. Gesture targeting now uses the pointer touch-down position — ScaleGestureRecognizer reports `onScaleStart` after the touch slop, so its focal drifts and slow drags started on the wrong target (and lost the slop distance).
+- **Shell**: compact secondary toolbar gains a multi-select toggle (selected-state styling); Delete/Backspace deletes the whole selection in one step; layer list highlights every selected node.
+- **Tests**: +9 (4 controller unit tests, 2 canvas widget tests incl. viewport-driven coordinates that avoid palette-color coupling, 2 shell widget tests, 1 existing suite alignment). App suite now **156 green**; core 27 green; governance (6 scripts) green; analyzer: only the 4 pre-existing warnings.
+- Scope notes: group resize (handles stay primary-only), marquee selection and wide-layout multi-select toggle (keyboard covers wide) are explicitly deferred.
+
 ## 2026-08-22 — Device validation of the device-report fixes (export 05:51:44Z)
 
 APK built from merged `main @ 0244290`; run on the Redmi Turbo 4 Pro (fresh install, no Flutter or uncaught errors). Verified on-device: Select tool never opens the text dialog (Select taps produce `node_select`/`node_deselect` only; the sole `node_add_text` followed the Text-tool selection); toolbar-only layer/zoom events on compact; 13 `toolbar_zoom_fit` presses clean; immersive geometry `471×964 with safe_top 0` (previously `471×1020, safe_top 56`) so the canvas starts below the status bar; content save at revision 50 / 7121 bytes and revision 7 / 1159 bytes with SHA-256 receipts; toolbar undo/redo ×2 each exercised on-device for the first time; Draw tool exercised with 40 taps. Still pending on-device: restart-restore, volume-key undo/redo, two-/three-finger gestures, in-canvas zoom overlay/presets (compact uses the toolbar), idempotent re-save at an existing key. See `docs/phases/phase-2-status.md`.

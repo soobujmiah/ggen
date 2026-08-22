@@ -14,7 +14,7 @@ Widget _wrap(
   bool showZoomOverlay = true,
   ValueChanged<CanvasViewport>? onViewportChanged,
   void Function(Offset artboardPoint)? onTextRequest,
-  void Function(GgenId? nodeId)? onNodeSelected,
+  void Function(GgenId? nodeId, bool additive)? onNodeSelected,
   VoidCallback? onTwoFingerTap,
   VoidCallback? onThreeFingerTap,
 }) => MaterialApp(
@@ -175,7 +175,7 @@ void main() {
           selectMode: true,
           textEnabled: false,
           onTextRequest: (_) => textRequests++,
-          onNodeSelected: (id) => selected = id,
+          onNodeSelected: (id, additive) => selected = id,
         ),
       );
       await tester.pumpAndSettle();
@@ -232,6 +232,117 @@ void main() {
     expect(rect.height, closeTo(292.7, 1.0));
     expect(rect.left, closeTo(16, 1.0));
     expect(rect.top, closeTo((803 - 292.7) / 2, 1.5));
+  });
+
+  testWidgets('multiSelectMode makes Select taps additive', (tester) async {
+    // Tapping a node with the multi-select mode on reports an additive tap;
+    // without it, taps replace the selection. Coordinates come from the
+    // reported viewport so the test never depends on palette colors.
+    final controller = StudioController();
+    controller.addShapeNode(100, 100);
+    controller.addShapeNode(400, 100);
+    final ids = controller.project.artboards.first.nodes
+        .map((n) => n.id)
+        .toList();
+    final viewports = <CanvasViewport>[];
+    GgenId? lastHit;
+    bool? lastAdditive;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StudioCanvas(
+            controller: controller,
+            drawEnabled: false,
+            onNodeAdded: () {},
+            selectMode: true,
+            multiSelectMode: true,
+            selectedNodeId: null,
+            onViewportChanged: viewports.add,
+            onNodeSelected: (id, additive) {
+              lastHit = id;
+              lastAdditive = additive;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap the center of the first node (100,100 + 64/2 in artboard space).
+    final screen = viewports.last.toScreen(const Offset(132, 132));
+    await tester.tapAt(screen);
+    await tester.pumpAndSettle();
+
+    expect(lastHit, ids.first);
+    expect(lastAdditive, isTrue, reason: 'multi-select mode must be additive');
+  });
+
+  testWidgets('dragging a selected node moves the whole selection in one step', (
+    tester,
+  ) async {
+    final controller = StudioController();
+    controller.addShapeNode(100, 100);
+    controller.addShapeNode(400, 100);
+    final ids = controller.project.artboards.first.nodes
+        .map((n) => n.id)
+        .toList();
+    // Build the selection: node A then node B (B is primary).
+    controller.selectNode(ids.first);
+    controller.selectNode(ids.last, toggle: true);
+    expect(controller.selectedNodeIds, ids);
+
+    double xOf(GgenId id) {
+      final node = controller.project.artboards.first.nodes
+          .firstWhere((n) => n.id == id);
+      return (node.extensions['x'] as num).toDouble();
+    }
+
+    final beforeA = xOf(ids.first);
+    final beforeB = xOf(ids.last);
+    // Drag from the primary node (B) center, using the reported viewport.
+    final viewports = <CanvasViewport>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StudioCanvas(
+            controller: controller,
+            drawEnabled: false,
+            onNodeAdded: () {},
+            selectMode: true,
+            selectedNodeId: controller.selectedNodeId,
+            onViewportChanged: viewports.add,
+            onNodeSelected: (_, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final screen = viewports.last.toScreen(const Offset(432, 132));
+    final gesture = await tester.startGesture(screen);
+    await tester.pump();
+    // Two-step move (a single 30px jump is consumed as the recognizer's
+    // acceptance event, so no onScaleUpdate would fire for it).
+    await gesture.moveBy(const Offset(10, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    // Both nodes moved by the same artboard delta (~30 px / fit scale).
+    final delta = xOf(ids.last) - beforeB;
+    expect(delta.abs(), greaterThan(1));
+    expect(xOf(ids.first), closeTo(beforeA + delta, 0.5));
+
+    // One undoable step restores both nodes.
+    final revisionAfterMove = controller.revision;
+    controller.undo();
+    expect(controller.revision, revisionAfterMove - 1);
+    expect(xOf(ids.first), closeTo(beforeA, 0.5));
+    expect(xOf(ids.last), closeTo(beforeB, 0.5));
+    controller.redo();
+    expect(xOf(ids.first), closeTo(beforeA + delta, 0.5));
+    expect(xOf(ids.last), closeTo(beforeB + delta, 0.5));
   });
 
   testWidgets('showZoomOverlay false hides the in-canvas zoom controls', (
@@ -325,7 +436,7 @@ void main() {
             onNodeAdded: () {},
             selectMode: true,
             selectedNodeId: null,
-            onNodeSelected: (id) => selected = id,
+            onNodeSelected: (id, additive) => selected = id,
           ),
         ),
       ),
@@ -362,7 +473,7 @@ void main() {
             onNodeAdded: () {},
             selectMode: true,
             selectedNodeId: nodeId,
-            onNodeSelected: (_) {},
+            onNodeSelected: (_, _) {},
           ),
         ),
       ),
@@ -397,7 +508,7 @@ void main() {
             onNodeAdded: () {},
             selectMode: true,
             selectedNodeId: null,
-            onNodeSelected: (_) {},
+            onNodeSelected: (_, _) {},
           ),
         ),
       ),
