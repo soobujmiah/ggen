@@ -9,8 +9,12 @@ import 'package:ggen_core/ggen_core.dart';
 Widget _wrap(
   StudioController controller, {
   required bool drawEnabled,
+  bool selectMode = false,
+  bool textEnabled = false,
+  bool showZoomOverlay = true,
   ValueChanged<CanvasViewport>? onViewportChanged,
   void Function(Offset artboardPoint)? onTextRequest,
+  void Function(GgenId? nodeId)? onNodeSelected,
   VoidCallback? onTwoFingerTap,
   VoidCallback? onThreeFingerTap,
 }) => MaterialApp(
@@ -19,8 +23,12 @@ Widget _wrap(
       controller: controller,
       drawEnabled: drawEnabled,
       onNodeAdded: () {},
+      selectMode: selectMode,
+      textEnabled: textEnabled,
+      showZoomOverlay: showZoomOverlay,
       onViewportChanged: onViewportChanged,
       onTextRequest: onTextRequest,
+      onNodeSelected: onNodeSelected,
       onTwoFingerTap: onTwoFingerTap,
       onThreeFingerTap: onThreeFingerTap,
     ),
@@ -138,6 +146,7 @@ void main() {
       _wrap(
         controller,
         drawEnabled: false,
+        textEnabled: true,
         onTextRequest: (point) => reported = point,
       ),
     );
@@ -148,6 +157,101 @@ void main() {
 
     expect(reported, isNotNull);
     expect(controller.objectCount, 0); // Text is added by the shell, not the canvas.
+  });
+
+  testWidgets(
+    'select tool with a text callback present never opens the text dialog',
+    (tester) async {
+      // Device report regression: tapping the canvas while the Select tool
+      // was active opened the Add-text dialog ("Select button adds a font").
+      // The non-null onTextRequest callback must only fire when textEnabled.
+      final controller = StudioController();
+      var textRequests = 0;
+      GgenId? selected;
+      await tester.pumpWidget(
+        _wrap(
+          controller,
+          drawEnabled: false,
+          selectMode: true,
+          textEnabled: false,
+          onTextRequest: (_) => textRequests++,
+          onNodeSelected: (id) => selected = id,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(StudioCanvas));
+      await tester.pumpAndSettle();
+
+      expect(textRequests, 0, reason: 'Select mode must not request text');
+      expect(controller.objectCount, 0);
+      // The Select tool still owns the tap: the empty-canvas hit test
+      // reports a miss (null), never a text request.
+      expect(selected, isNull);
+    },
+  );
+
+  testWidgets('fit places the artboard centered in the canvas', (tester) async {
+    // Device report regression: fit-to-screen collapsed the artboard into a
+    // small rectangle hugging the left edge. The white artboard surface must
+    // be laid out at full artboard size (1200x800) and transformed so it is
+    // centered in the 471x803 canvas with the fit margins.
+    tester.view.physicalSize = const Size(471, 803);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final controller = StudioController();
+    final zoom = CanvasZoomController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StudioCanvas(
+            controller: controller,
+            drawEnabled: false,
+            onNodeAdded: () {},
+            zoomController: zoom,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    zoom.fitToScreen();
+    await tester.pumpAndSettle();
+
+    final white = find.byWidgetPredicate(
+      (w) =>
+          w is DecoratedBox &&
+          w.decoration is BoxDecoration &&
+          (w.decoration as BoxDecoration).color == Colors.white,
+    );
+    expect(white, findsOneWidget);
+    final rect = tester.getRect(white);
+    // scale = (471-32)/1200 = 0.3658…, artboard screen size 439x292.7,
+    // centered: x=16, y=(803-292.7)/2.
+    expect(rect.width, closeTo(439, 1.0));
+    expect(rect.height, closeTo(292.7, 1.0));
+    expect(rect.left, closeTo(16, 1.0));
+    expect(rect.top, closeTo((803 - 292.7) / 2, 1.5));
+  });
+
+  testWidgets('showZoomOverlay false hides the in-canvas zoom controls', (
+    tester,
+  ) async {
+    final controller = StudioController();
+    await tester.pumpWidget(
+      _wrap(
+        controller,
+        drawEnabled: false,
+        showZoomOverlay: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // No zoom in/out/fit icons and no percentage label inside the canvas.
+    expect(find.byIcon(Icons.add), findsNothing);
+    expect(find.byIcon(Icons.remove), findsNothing);
+    expect(find.byIcon(Icons.fit_screen_outlined), findsNothing);
+    expect(find.textContaining('%'), findsNothing);
   });
 
   testWidgets('two-finger tap reports undo intent', (tester) async {
