@@ -88,7 +88,11 @@ void main() {
     );
 
     expect(
-      () => artboard(<DocumentNode>[shape('node.1'), shape('node.2'), group(<String>['node.1', 'node.2'])]),
+      () => artboard(<DocumentNode>[
+        shape('node.1'),
+        shape('node.2'),
+        group(<String>['node.1', 'node.2']),
+      ]),
       returnsNormally,
     );
 

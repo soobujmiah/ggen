@@ -430,8 +430,8 @@ class LayerPanel extends StatelessWidget {
                     ),
                     onPressed: primaryIsGroup
                         ? () {
-                            final ok = controller.ungroup(primary);
-                            if (ok) onUngroup?.call(primary);
+                            final ok = controller.ungroup(primary!);
+                            if (ok) onUngroup?.call(primary!);
                           }
                         : null,
                     icon: const Icon(Icons.folder_off_outlined),
