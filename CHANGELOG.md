@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-22 — Device validation of multi-select + grid build (export 07:25:50Z)
+
+APK from merged `main @ 4b72671` on the Redmi Turbo 4 Pro (fresh install, no Flutter or uncaught errors). Newly verified on-device: **volume-key undo/redo** (`volume_undo`/`volume_redo`, rev 1–11 across three bursts), **two-finger tap undo** (`gesture_undo` ×2, rev 13→12), and **multi-select additive selection** (`node_select` counts 1→6 with a mid-sequence toggle-off of node-15 4→3; plain replace when the toggle is off). Select-fix stability re-confirmed (~30 hits, no text dialog); Draw 18 taps, Text ×2, layers + `layer_select`, profiles, workspace reset, immersive (`471×964, safe_top 0`), toolbar fit/zoom all clean; three saves with SHA-256 receipts (revs 17/821 B, 0/245 B, 0/241 B). Still pending on-device: restart-restore, three-finger redo (`gesture_redo`), one press of the grid toggle (`grid_toggle` not yet logged), in-canvas zoom overlay/presets, existing-key re-save. See `docs/phases/phase-2-status.md`.
+
 ## 2026-08-22 — Grid overlay toggle (8/64-unit, scale-aware)
 
 - **Grid overlay**: 8-unit minor lines with a 64-unit major line every 8th, painted in artboard coordinates under the nodes so it scales with the artboard and snap positions (Ctrl) are visible. Stroke width = 1/viewport scale keeps lines ~1 screen pixel at any zoom; minor lines are skipped below ~4.5 px screen spacing so distant fit zoom stays clean.

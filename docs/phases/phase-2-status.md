@@ -105,6 +105,16 @@ A follow-up device run on 2026-08-22 (export `05:51:44Z`, APK built from merged 
 - **Previously pending, now exercised**: Draw tool on-device (40 taps), Select hit-testing on both shapes and text frames, profiles save, `canvas_first` toggle, workspace settings, `project_new`.
 - **Still unexercised**: restart-restore (save → force-close → reopen; this export was same-session and the start was a clean install), volume-key undo/redo (`volume_undo`/`volume_redo`), two-/three-finger taps (`gesture_undo`/`gesture_redo`), canvas zoom overlay + presets on-device (compact uses the toolbar), and an idempotent re-save or rev-jump re-save at an *existing* key (both saves in this run were first writes to new keys).
 
+A device run on 2026-08-22 (export `07:25:50Z`, APK from merged `main @ 4b72671` — multi-select + grid overlay build, fresh install) closed most of the remaining device gaps; no Flutter or uncaught errors:
+
+- **Volume-key undo/redo verified on-device**: `volume_undo`/`volume_redo` sequences across rev 1–11 (three bursts: 10→6, 6→11, 11→0→5), consuming the key so the system volume is untouched — the first `volume_*` events in any export.
+- **Two-finger tap undo verified on-device**: `gesture_undo` fired twice (rev 13→12, and again after re-adding) — first `gesture_*` event in any export.
+- **Multi-select additive selection verified on-device**: with the compact toolbar toggle on, `node_select` counts climbed 1→2→3→4→5→6 via repeated taps; tapping an already-selected node toggled it *off* (node-15: 4→3 mid-sequence); with multi-select off, every tap replaced to count 1. `multi_select_toggle` enabled/disabled cleanly multiple times.
+- **Select-fix stability**: Select taps produced only `node_select`/`node_deselect` (never a text dialog) across ~30 hits on shapes (`node-*`) and text frames (`text-1`, `text-2`).
+- Draw (18 taps), Text (`node_add_text` ×2, rev 6–7), layers sheet + `layer_select`, profiles save ×2, workspace reset, immersive enter/restore (`471×964, safe_top 0` again), toolbar fit/zoom (10× fit, zoom in/out) all clean.
+- **Saves with receipts**: `project-1787383226064377` rev 17 / 821 B; `project-1787383362353725` rev 0 / 245 B; `project-1787383547954370` rev 0 / 241 B.
+- **Still unexercised**: restart-restore (three fresh-install starts in a row; no force-close → reopen cycle yet), three-finger redo (`gesture_redo`), the **grid-overlay toggle** (no `grid_toggle` event — the grid renders on by default, but the button itself needs one press) and in-canvas zoom overlay/presets (compact uses the toolbar).
+
 ## Evidence boundaries
 
 - Responsive widget tests are not physical-device tests.
@@ -117,7 +127,8 @@ A follow-up device run on 2026-08-22 (export `05:51:44Z`, APK built from merged 
 1. ~~Generate a manual APK only when another device validation cycle is needed~~ (canonical manual workflow; used for every device round).
 2. ~~Exercise profile save, apply, delete and reset flows on the Redmi Turbo 4 Pro~~ (verified in the 08:08Z and 09:01Z exports).
 3. ~~Exercise the Draw tool on the Redmi with the text-tool build: select Draw, tap the canvas several times, export diagnostics containing `node_add`~~ (verified on-device 2026-08-22, exports `04:13:30Z` and `05:51:44Z`).
-4. Exercise the undo/redo shortcuts on the Redmi: ~~history-bar buttons~~ **(done 2026-08-22, export `05:51:44Z`)**, volume down/up (`volume_undo`/`volume_redo`) and two-finger undo / three-finger redo (`gesture_undo`/`gesture_redo`) still pending.
-5. Exercise the restart-restore flow: save a project with content, fully close the app, reopen, export diagnostics containing `project_restore` (still unexercised on-device; last exports logged the clean-install event).
+4. ~~Exercise the undo/redo shortcuts on the Redmi~~: history-bar buttons **(done, export `05:51:44Z`)**, volume down/up and two-finger undo **(done, export `07:25:50Z`)**; three-finger redo (`gesture_redo`) still pending.
+5. Exercise the restart-restore flow: save a project with content, fully close the app, reopen, export diagnostics containing `project_restore` (still unexercised on-device; every start so far logged the clean-install event).
+5b. Press the grid-overlay toggle once on device (no `grid_toggle` event yet; the grid renders on by default).
 6. SAF/MediaStore user-facing Import/Export (ADR-0004 defers this): share-sheet/SAF picker flow for exporting `.ggen` project files to user-chosen locations and importing them back; progress, cancellation and tests.
 7. Creative surface next: Select-tool node selection and move **(done)**; layer list panel **(done)**; zoom controls overlay **(done)**; delete keyboard shortcut **(done)**; canvas-geometry log suppression **(done)**; keyboard zoom shortcuts **(done)**; node resize handles **(done)**; proportional resize (Shift) **(done 2026-08-22, `ResizeDrag` corner-anchored)**; snap-to-grid (Ctrl/Cmd) **(done 2026-08-22, 8-unit grid for move+resize)**; zoom presets & numeric input **(done 2026-08-22, 25-400% + Fit + `Ctrl+1/2/3` + custom % field, `CanvasZoomController.zoomTo`)**; multi-select **(done 2026-08-22, additive toggle + group move/delete as single steps)**; grid overlay toggle **(done 2026-08-22, 8/64-unit grid, scale-aware stroke, toolbar + overlay toggle)**; then layer groups and numeric inspector (content/size editing for text frames).
