@@ -60,11 +60,22 @@ class _LayerListState extends State<LayerList> {
         // collapsed. The parallel index lists drive reordering and the
         // index badge.
         final reversed = nodes.reversed.toList(growable: false);
+        // Member nodes render ONLY as indented child rows under their
+        // group; skipping them here keeps every row key unique (a member
+        // listed twice tripped ReorderableListView's per-child GlobalKey
+        // reservation in the widget test).
+        final memberIds = <GgenId>{};
+        for (final node in nodes) {
+          final members = isGroupNode(node) ? groupChildIds(node) : null;
+          if (members != null) memberIds.addAll(members);
+        }
+        final memberIdSet = memberIds;
         final rows = <DocumentNode>[];
         final rowArtboardIndex = <int>[];
         final rowIsGroupMember = <bool>[];
         for (var topVisual = 0; topVisual < reversed.length; topVisual++) {
           final node = reversed[topVisual];
+          if (memberIdSet.contains(node.id)) continue;
           rows.add(node);
           rowArtboardIndex.add(nodes.length - 1 - topVisual);
           rowIsGroupMember.add(false);
