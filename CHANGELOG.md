@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-22 — Device validation of the device-report fixes (export 05:51:44Z)
+
+APK built from merged `main @ 0244290`; run on the Redmi Turbo 4 Pro (fresh install, no Flutter or uncaught errors). Verified on-device: Select tool never opens the text dialog (Select taps produce `node_select`/`node_deselect` only; the sole `node_add_text` followed the Text-tool selection); toolbar-only layer/zoom events on compact; 13 `toolbar_zoom_fit` presses clean; immersive geometry `471×964 with safe_top 0` (previously `471×1020, safe_top 56`) so the canvas starts below the status bar; content save at revision 50 / 7121 bytes and revision 7 / 1159 bytes with SHA-256 receipts; toolbar undo/redo ×2 each exercised on-device for the first time; Draw tool exercised with 40 taps. Still pending on-device: restart-restore, volume-key undo/redo, two-/three-finger gestures, in-canvas zoom overlay/presets (compact uses the toolbar), idempotent re-save at an existing key. See `docs/phases/phase-2-status.md`.
+
 ## 2026-08-22 — Device report fixes: Select-tool text dialog, duplicated controls, fit-to-screen, immersive overlap
 
 Diagnosed from the 2026-08-22 `04:13:30Z` Redmi Turbo 4 Pro diagnostics export; each fix is pinned by a widget regression test (app suite **147 green**, core suite **27 green**, governance checks pass).

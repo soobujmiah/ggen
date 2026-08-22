@@ -92,6 +92,17 @@ A device run on 2026-08-22 (export `04:13:30Z`) exercised the current controls o
 - **Fit-to-screen collapsed the artboard**: the artboard was laid out under the canvas's tight constraints, so the fit transform scaled a 471×803 box and the artboard landed small, left-aligned. The artboard now lays out unconstrained (`OverflowBox`, minima cleared); pinned test measures the centered 439×292.7 artboard at (16, 255).
 - **Immersive overlapped the status bar**: immersive now hides system bars (`immersiveSticky`) and the body applies `SafeArea` when bars remain visible.
 
+A follow-up device run on 2026-08-22 (export `05:51:44Z`, APK built from merged `main @ 0244290`, fresh install) validated the device-report fixes on the Redmi Turbo 4 Pro; no Flutter or uncaught errors:
+
+- **Select tool no longer adds text — verified on-device**: the only `node_add_text` (rev 35) followed the Text-tool selection (`tool_select` Text → tap); every other tap ran under Draw (`node_add` revisions 1–34, 45, 1–5) or Select (`node_select`/`node_deselect` for `text-1`, `node-1`, `node-2`, `node-3`, `node-4`). Tapping the canvas in Select mode selected/deselected nodes and never opened the text dialog.
+- **Toolbar-only controls on compact — consistent**: every layer and zoom event is toolbar-sourced (`layers_toggle` "Layers via toolbar", `toolbar_zoom_in`/`toolbar_zoom_out`/`toolbar_zoom_fit`); no in-canvas overlay or floating-panel events appeared.
+- **Fit-to-screen**: 13 `toolbar_zoom_fit` presses with no errors; the centered fit is pinned by the widget test (artboard 439×292.7 at (16, 255) in 471×803) and confirmed visually.
+- **Immersive no longer overlaps the status bar — verified via geometry**: immersive canvas geometry changed from `471×1020, safe_top 56` (old build, drew under the status bar) to `471×964, safe_top 0` — the outer `SafeArea` consumes the 56 px status-bar inset, so the canvas starts below the bar. Enter/restore exercised twice in the run.
+- **Content save with a multi-step revision jump**: `project_save` for `project-1787377438114422` at **revision 50, 7121 bytes** (34 shapes + text + selection/moves before the first save — the store's any-advancing-revision policy accepted the jump from a fresh key) and `project-1787377848177373` at revision 7, 1159 bytes; both with SHA-256 receipts.
+- **Toolbar undo/redo exercised on-device for the first time**: `history_undo`/`history_redo` ×2 each (rev 45–50) — the buttons enable once history exists and commit cleanly.
+- **Previously pending, now exercised**: Draw tool on-device (40 taps), Select hit-testing on both shapes and text frames, profiles save, `canvas_first` toggle, workspace settings, `project_new`.
+- **Still unexercised**: restart-restore (save → force-close → reopen; this export was same-session and the start was a clean install), volume-key undo/redo (`volume_undo`/`volume_redo`), two-/three-finger taps (`gesture_undo`/`gesture_redo`), canvas zoom overlay + presets on-device (compact uses the toolbar), and an idempotent re-save or rev-jump re-save at an *existing* key (both saves in this run were first writes to new keys).
+
 ## Evidence boundaries
 
 - Responsive widget tests are not physical-device tests.
@@ -103,8 +114,8 @@ A device run on 2026-08-22 (export `04:13:30Z`) exercised the current controls o
 
 1. ~~Generate a manual APK only when another device validation cycle is needed~~ (canonical manual workflow; used for every device round).
 2. ~~Exercise profile save, apply, delete and reset flows on the Redmi Turbo 4 Pro~~ (verified in the 08:08Z and 09:01Z exports).
-3. Exercise the Draw tool on the Redmi with the text-tool build: select Draw, tap the canvas several times, export diagnostics containing `node_add` (the shell integration test passes; on-device confirmation is the last step for this flow).
-4. Exercise the undo/redo shortcuts on the Redmi: history-bar buttons, volume down/up, two-finger undo and three-finger redo, exporting `history_undo`/`history_redo`/`volume_undo`/`volume_redo`/`gesture_undo`/`gesture_redo`.
-5. Exercise the restart-restore flow: save a project with content, fully close the app, reopen, export diagnostics containing `project_restore` (still unexercised on-device; last export logged the clean-install event).
+3. ~~Exercise the Draw tool on the Redmi with the text-tool build: select Draw, tap the canvas several times, export diagnostics containing `node_add`~~ (verified on-device 2026-08-22, exports `04:13:30Z` and `05:51:44Z`).
+4. Exercise the undo/redo shortcuts on the Redmi: ~~history-bar buttons~~ **(done 2026-08-22, export `05:51:44Z`)**, volume down/up (`volume_undo`/`volume_redo`) and two-finger undo / three-finger redo (`gesture_undo`/`gesture_redo`) still pending.
+5. Exercise the restart-restore flow: save a project with content, fully close the app, reopen, export diagnostics containing `project_restore` (still unexercised on-device; last exports logged the clean-install event).
 6. SAF/MediaStore user-facing Import/Export (ADR-0004 defers this): share-sheet/SAF picker flow for exporting `.ggen` project files to user-chosen locations and importing them back; progress, cancellation and tests.
 7. Creative surface next: Select-tool node selection and move **(done)**; layer list panel **(done)**; zoom controls overlay **(done)**; delete keyboard shortcut **(done)**; canvas-geometry log suppression **(done)**; keyboard zoom shortcuts **(done)**; node resize handles **(done)**; proportional resize (Shift) **(done 2026-08-22, `ResizeDrag` corner-anchored)**; snap-to-grid (Ctrl/Cmd) **(done 2026-08-22, 8-unit grid for move+resize)**; zoom presets & numeric input **(done 2026-08-22, 25-400% + Fit + `Ctrl+1/2/3` + custom % field, `CanvasZoomController.zoomTo`)**; then multi-select, grid overlay toggle, layer groups and numeric inspector.
