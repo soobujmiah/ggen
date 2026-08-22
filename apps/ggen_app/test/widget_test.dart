@@ -543,6 +543,53 @@ void main() {
       },
     );
 
+    testWidgets('compact grid toggle flips the artboard grid overlay', (
+      tester,
+    ) async {
+      await pumpAt(tester, const Size(471, 803));
+      // One grid control: the bottom toolbar (canvas overlay is hidden on
+      // compact, so no second grid icon inside the canvas).
+      expect(find.byIcon(Icons.grid_4x4), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('ggen_grid_overlay')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byIcon(Icons.grid_4x4));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('ggen_grid_overlay')),
+        findsNothing,
+      );
+
+      await tester.tap(find.byIcon(Icons.grid_4x4));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('ggen_grid_overlay')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('wide grid toggle flips the artboard grid overlay', (
+      tester,
+    ) async {
+      await pumpAt(tester, const Size(1200, 800));
+      // Wide layouts keep the in-canvas zoom overlay, which carries the
+      // grid toggle.
+      expect(find.byIcon(Icons.grid_4x4), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('ggen_grid_overlay')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byIcon(Icons.grid_4x4));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('ggen_grid_overlay')),
+        findsNothing,
+      );
+    });
+
     testWidgets('immersive keeps the in-canvas zoom overlay', (tester) async {
       await pumpAt(tester, const Size(471, 803));
       // Enter immersive via the AppBar fullscreen button.

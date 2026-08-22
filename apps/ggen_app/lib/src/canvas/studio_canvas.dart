@@ -23,6 +23,8 @@ class StudioCanvas extends StatefulWidget {
     this.textEnabled = false,
     this.showZoomOverlay = true,
     this.multiSelectMode = false,
+    this.gridVisible = true,
+    this.onToggleGrid,
     this.selectedNodeId,
     this.onTextRequest,
     this.onNodeSelected,
@@ -59,6 +61,15 @@ class StudioCanvas extends StatefulWidget {
   /// multi-selection instead of replacing it (touch-friendly mobile path;
   /// Shift/Ctrl/Cmd taps do the same on hardware keyboards).
   final bool multiSelectMode;
+
+  /// Whether the artboard grid overlay is drawn (8-unit minor lines with a
+  /// 64-unit major every 8th line). Presentation-only view state owned by
+  /// the shell; pairs with Ctrl-snap so the snapped positions are visible.
+  final bool gridVisible;
+
+  /// Toggles the grid overlay; null hides the grid button (grid is then
+  /// controlled elsewhere, e.g. the compact bottom toolbar).
+  final VoidCallback? onToggleGrid;
 
   /// The currently selected node's ID (primary), used to render the
   /// selection visual and resize handles. The full selection is read from
@@ -584,6 +595,16 @@ class _StudioCanvasState extends State<StudioCanvas> {
                     ),
                     child: Stack(
                       children: [
+                        // Grid overlay under the nodes (keyed for tests).
+                        if (widget.gridVisible)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                key: const ValueKey('ggen_grid_overlay'),
+                                painter: _GridPainter(scale: _viewport.scale),
+                              ),
+                            ),
+                          ),
                         for (final node in artboard.nodes)
                           ..._nodeWidgets(node),
                       ],
@@ -611,6 +632,8 @@ class _StudioCanvasState extends State<StudioCanvas> {
                 onZoomOut: zoomOut,
                 onFit: fitToScreen,
                 onZoomToScale: zoomTo,
+                gridVisible: widget.gridVisible,
+                onToggleGrid: widget.onToggleGrid,
               ),
             ),
           ],
@@ -1192,6 +1215,8 @@ class _ZoomControls extends StatelessWidget {
     required this.onZoomOut,
     required this.onFit,
     required this.onZoomToScale,
+    this.gridVisible = true,
+    this.onToggleGrid,
   });
 
   final double scale;
@@ -1199,6 +1224,11 @@ class _ZoomControls extends StatelessWidget {
   final VoidCallback onZoomOut;
   final VoidCallback onFit;
   final ValueChanged<double> onZoomToScale;
+
+  /// Grid overlay state for the toggle icon; null callback hides the button
+  /// (compact phones control the grid from the bottom toolbar).
+  final bool gridVisible;
+  final VoidCallback? onToggleGrid;
 
   @override
   Widget build(BuildContext context) {
@@ -1241,6 +1271,13 @@ class _ZoomControls extends StatelessWidget {
             icon: Icons.fit_screen_outlined,
             onPressed: onFit,
           ),
+          if (onToggleGrid != null)
+            _ZoomButton(
+              tooltip: gridVisible ? 'Hide grid' : 'Show grid',
+              icon: Icons.grid_4x4,
+              onPressed: onToggleGrid,
+              isSelected: gridVisible,
+            ),
         ],
       ),
     );
@@ -1367,11 +1404,15 @@ class _ZoomButton extends StatelessWidget {
     required this.tooltip,
     required this.icon,
     required this.onPressed,
+    this.isSelected = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback? onPressed;
+
+  /// Highlights the toggle button while its mode is active (grid overlay).
+  final bool isSelected;
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -1379,16 +1420,87 @@ class _ZoomButton extends StatelessWidget {
     child: InkWell(
       borderRadius: BorderRadius.circular(20),
       onTap: onPressed,
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Icon(
-          icon,
-          size: 18,
-          color: onPressed != null ? Colors.white70 : Colors.white24,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isSelected && onPressed != null
+              ? Theme.of(context).colorScheme.primaryContainer
+              : null,
+          shape: BoxShape.circle,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(
+            icon,
+            size: 18,
+            color: onPressed != null ? Colors.white70 : Colors.white24,
+          ),
         ),
       ),
     ),
   );
+}
+
+/// Draws the artboard grid in artboard coordinates (inside the viewport
+/// Transform, so the overlay scales with the artboard). Minor lines every
+/// 8 units and a major line every 8th (64 units). Stroke width is divided
+/// by the viewport scale so lines stay ~1 screen pixel at any zoom.
+///
+/// When the minor spacing would fall below ~4.5 screen pixels (distant fit
+/// zooms), minor lines are skipped to avoid a moiré wash — a desktop-quality
+/// grid stays legible at every zoom level.
+class _GridPainter extends CustomPainter {
+  _GridPainter({required this.scale});
+
+  final double scale;
+
+  static const double minorStep = 8;
+  static const double majorStep = 64;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+    final strokeWidth = (1 / scale).clamp(0.5, 8.0);
+    final minorPaint = Paint()
+      ..color = const Color(0x1F7A7A7A)
+      ..strokeWidth = strokeWidth;
+    final majorPaint = Paint()
+      ..color = const Color(0x3D4E6BFF)
+      ..strokeWidth = strokeWidth;
+    final drawMinor = minorStep * scale >= 4.5;
+
+    // Vertical lines.
+    final maxX = size.width;
+    for (var i = 0; i * minorStep <= maxX; i++) {
+      final x = i * minorStep;
+      if (i % (majorStep ~/ minorStep) == 0) {
+        canvas.drawLine(
+          Offset(x, 0),
+          Offset(x, size.height),
+          majorPaint,
+        );
+      } else if (drawMinor) {
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), minorPaint);
+      }
+    }
+    // Horizontal lines.
+    final maxY = size.height;
+    for (var i = 0; i * minorStep <= maxY; i++) {
+      final y = i * minorStep;
+      if (i % (majorStep ~/ minorStep) == 0) {
+        canvas.drawLine(
+          Offset(0, y),
+          Offset(size.width, y),
+          majorPaint,
+        );
+      } else if (drawMinor) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), minorPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GridPainter oldDelegate) =>
+      oldDelegate.scale != scale;
 }
 
 class _PointerStamp {
