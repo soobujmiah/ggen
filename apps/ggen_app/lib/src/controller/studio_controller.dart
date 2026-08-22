@@ -62,7 +62,6 @@ class StudioController extends ChangeNotifier {
   int _shapeCount = 0;
   int _textCount = 0;
   ProjectStoreReceipt? _lastReceipt;
-  GgenId? _selectedNodeId;
 
   DocumentProject get project => _history.current;
   int get revision => project.revision;
@@ -88,65 +87,117 @@ class StudioController extends ChangeNotifier {
     (sum, artboard) => sum + artboard.nodes.length,
   );
 
-  /// Currently selected node ID, or null when nothing is selected.
-  GgenId? get selectedNodeId => _selectedNodeId;
+  // Selection is transient workspace state (never part of history). The
+  // ordered list keeps the most recently selected node last; that node is
+  // the *primary* selection (inspector target, resize handles).
+  final List<GgenId> _orderedSelection = <GgenId>[];
+
+  /// All currently selected node IDs, most recent last (primary last).
+  List<GgenId> get selectedNodeIds => List<GgenId>.unmodifiable(_orderedSelection);
+
+  /// Whether anything is selected.
+  bool get hasSelection => _orderedSelection.isNotEmpty;
+
+  /// Currently selected node ID (the primary, most recently selected node),
+  /// or null when nothing is selected.
+  GgenId? get selectedNodeId =>
+      _orderedSelection.isEmpty ? null : _orderedSelection.last;
 
   /// Selects or deselects a node. Does not create a history transaction;
   /// selection is transient workspace state.
-  void selectNode(GgenId? nodeId) {
-    if (_selectedNodeId == nodeId) return;
-    _selectedNodeId = nodeId;
+  ///
+  /// When [toggle] is true the node's membership is flipped (add/remove)
+  /// without touching the rest of the selection; a null [nodeId] then does
+  /// nothing. When [toggle] is false the selection is replaced by exactly
+  /// [nodeId] (null clears everything).
+  void selectNode(GgenId? nodeId, {bool toggle = false}) {
+    if (toggle) {
+      if (nodeId == null) return;
+      if (!_orderedSelection.remove(nodeId)) {
+        _orderedSelection.add(nodeId);
+      }
+      notifyListeners();
+      return;
+    }
+    if (nodeId != null && _orderedSelection.length == 1 &&
+        _orderedSelection.first == nodeId) {
+      return; // Already the sole selection.
+    }
+    _orderedSelection
+      ..clear()
+      ..addAll(nodeId == null ? const <GgenId>[] : <GgenId>[nodeId]);
     notifyListeners();
   }
 
   /// Clears the current node selection.
   void deselectNode() => selectNode(null);
 
+  /// Toggles one node's membership in the multi-selection.
+  void toggleNodeSelection(GgenId nodeId) => selectNode(nodeId, toggle: true);
+
   /// Moves a node by the given artboard-space delta through one undoable
   /// tool session. The node's `x` and `y` extensions are updated; the
   /// resulting position is clamped into the artboard bounds.
   ///
   /// Returns false when no node with [nodeId] exists in the first artboard.
-  bool moveNode(GgenId nodeId, double dx, double dy) {
+  bool moveNode(GgenId nodeId, double dx, double dy) =>
+      moveNodes(<GgenId>[nodeId], dx, dy);
+
+  /// Moves every node in [nodeIds] that exists in the first artboard by the
+  /// same artboard-space delta through ONE undoable tool session, so group
+  /// move/undo/redo is a single history step. Positions clamp to artboard
+  /// bounds; nodes without numeric `x`/`y` extensions are skipped.
+  ///
+  /// Returns false when no node was moved (missing nodes or zero net delta).
+  bool moveNodes(List<GgenId> nodeIds, double dx, double dy) {
+    if (nodeIds.isEmpty) return false;
     if (!dx.isFinite || !dy.isFinite) {
       throw ArgumentError('Move delta must be finite.');
     }
     final artboards = project.artboards;
     if (artboards.isEmpty) return false;
     final artboard = artboards.first;
-    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
-    if (nodeIndex < 0) return false;
-    final node = artboard.nodes[nodeIndex];
+    final wanted = nodeIds.toSet();
 
-    // Read current geometry; move is a no-op for nodes without position.
-    final currentX = node.extensions['x'];
-    final currentY = node.extensions['y'];
-    if (currentX is! num || currentY is! num) return false;
-
-    final newX = (currentX.toDouble() + dx).clamp(0, artboard.width).toDouble();
-    final newY = (currentY.toDouble() + dy).clamp(0, artboard.height).toDouble();
-    if (newX == currentX.toDouble() && newY == currentY.toDouble()) {
-      return false; // No effective movement.
+    var movedAny = false;
+    final nextNodes = <DocumentNode>[];
+    for (final node in artboard.nodes) {
+      if (!wanted.contains(node.id)) {
+        nextNodes.add(node);
+        continue;
+      }
+      final currentX = node.extensions['x'];
+      final currentY = node.extensions['y'];
+      if (currentX is! num || currentY is! num) {
+        nextNodes.add(node);
+        continue;
+      }
+      final newX = (currentX.toDouble() + dx).clamp(0, artboard.width).toDouble();
+      final newY =
+          (currentY.toDouble() + dy).clamp(0, artboard.height).toDouble();
+      if (newX == currentX.toDouble() && newY == currentY.toDouble()) {
+        nextNodes.add(node);
+        continue;
+      }
+      movedAny = true;
+      nextNodes.add(
+        DocumentNode(
+          id: node.id,
+          kind: node.kind,
+          name: node.name,
+          visible: node.visible,
+          locked: node.locked,
+          opacity: node.opacity,
+          extensions: <String, Object?>{
+            ...node.extensions,
+            'x': newX,
+            'y': newY,
+          },
+        ),
+      );
     }
+    if (!movedAny) return false;
 
-    final movedNode = DocumentNode(
-      id: node.id,
-      kind: node.kind,
-      name: node.name,
-      visible: node.visible,
-      locked: node.locked,
-      opacity: node.opacity,
-      extensions: <String, Object?>{
-        ...node.extensions,
-        'x': newX,
-        'y': newY,
-      },
-    );
-    final nextNodes = <DocumentNode>[
-      ...artboard.nodes.sublist(0, nodeIndex),
-      movedNode,
-      ...artboard.nodes.sublist(nodeIndex + 1),
-    ];
     final nextArtboards = <Artboard>[
       Artboard(
         id: artboard.id,
@@ -159,7 +210,12 @@ class StudioController extends ChangeNotifier {
     ];
     final session = beginSession();
     session.updatePreview(project.copyWith(artboards: nextArtboards));
-    commitSession(session, 'Move ${node.name}');
+    commitSession(
+      session,
+      nodeIds.length == 1
+          ? 'Move ${nodeIds.first.value}'
+          : 'Move ${nodeIds.length} nodes',
+    );
     return true;
   }
 
@@ -300,20 +356,28 @@ class StudioController extends ChangeNotifier {
   }
 
   /// Deletes [nodeId] from the first artboard through one undoable tool
-  /// session. Clears the selection when the deleted node was selected.
+  /// session. Clears the node from the selection when it was selected.
   /// Returns false when the node is not found.
-  bool deleteNode(GgenId nodeId) {
+  bool deleteNode(GgenId nodeId) => deleteNodes(<GgenId>[nodeId]);
+
+  /// Deletes every node in [nodeIds] that exists in the first artboard
+  /// through ONE undoable tool session (group delete is a single history
+  /// step). Any deleted node is removed from the multi-selection; the
+  /// remaining selection keeps its order and primary node.
+  /// Returns false when no node was deleted.
+  bool deleteNodes(List<GgenId> nodeIds) {
+    if (nodeIds.isEmpty) return false;
     final artboards = project.artboards;
     if (artboards.isEmpty) return false;
     final artboard = artboards.first;
-    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
-    if (nodeIndex < 0) return false;
-    final node = artboard.nodes[nodeIndex];
+    final wanted = nodeIds.toSet();
 
     final nextNodes = <DocumentNode>[
-      ...artboard.nodes.sublist(0, nodeIndex),
-      ...artboard.nodes.sublist(nodeIndex + 1),
+      for (final node in artboard.nodes)
+        if (!wanted.contains(node.id)) node,
     ];
+    if (nextNodes.length == artboard.nodes.length) return false;
+
     final nextArtboards = <Artboard>[
       Artboard(
         id: artboard.id,
@@ -326,9 +390,15 @@ class StudioController extends ChangeNotifier {
     ];
     final session = beginSession();
     session.updatePreview(project.copyWith(artboards: nextArtboards));
-    commitSession(session, 'Delete ${node.name}');
-    if (_selectedNodeId == nodeId) {
-      _selectedNodeId = null;
+    commitSession(
+      session,
+      nodeIds.length == 1
+          ? 'Delete ${nodeIds.first.value}'
+          : 'Delete ${nodeIds.length} nodes',
+    );
+    final selectionBefore = _orderedSelection.length;
+    _orderedSelection.removeWhere(wanted.contains);
+    if (_orderedSelection.length != selectionBefore) {
       notifyListeners();
     }
     return true;
@@ -380,7 +450,7 @@ class StudioController extends ChangeNotifier {
     );
     _shapeCount = 0;
     _textCount = 0;
-    _selectedNodeId = null;
+    _orderedSelection.clear();
     _clearSerialized();
     _lastReceipt = null;
     notifyListeners();

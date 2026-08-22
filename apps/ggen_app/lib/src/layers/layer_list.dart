@@ -67,7 +67,9 @@ class LayerList extends StatelessWidget {
         final node = reversed[visualIndex];
         // The artboard index is (count - 1 - visualIndex).
         final artboardIndex = reversed.length - 1 - visualIndex;
-        final isSelected = controller.selectedNodeId == node.id;
+        // Every node in the multi-selection is highlighted; the primary
+        // (most recently selected) gets the accent badge via index == 0.
+        final isSelected = controller.selectedNodeIds.contains(node.id);
 
         return _LayerTile(
           key: ValueKey(node.id.value),

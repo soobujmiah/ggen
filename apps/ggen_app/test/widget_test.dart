@@ -313,6 +313,54 @@ void main() {
     expect(controller.revision, 1);
   });
 
+  testWidgets('compact toolbar has a working multi-select toggle', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(471, 803);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(const GgenApp());
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Multi-select off'), findsOneWidget);
+    await tester.tap(find.byTooltip('Multi-select off'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Multi-select on'), findsOneWidget);
+
+    // Toggle off again.
+    await tester.tap(find.byTooltip('Multi-select on'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Multi-select off'), findsOneWidget);
+  });
+
+  testWidgets('delete key removes the whole multi-selection in one step', (
+    tester,
+  ) async {
+    final controller = StudioController();
+    controller.addShapeNode(100, 100);
+    controller.addShapeNode(400, 100);
+    controller.addShapeNode(700, 100);
+    await tester.pumpWidget(GgenApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final ids = controller.project.artboards.first.nodes
+        .map((n) => n.id)
+        .toList();
+    controller.selectNode(ids.first, toggle: true);
+    controller.selectNode(ids.last, toggle: true);
+    await tester.pumpAndSettle();
+    expect(controller.objectCount, 3);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.delete);
+    await tester.pumpAndSettle();
+
+    expect(controller.objectCount, 1);
+    expect(controller.selectedNodeIds, isEmpty);
+    // Single undo restores both deleted nodes.
+    controller.undo();
+    expect(controller.objectCount, 3);
+  });
+
   testWidgets('project name chip scrolls for long names', (tester) async {
     final longName = 'A very long project name that keeps going and going';
     final controller = StudioController(projectName: longName);

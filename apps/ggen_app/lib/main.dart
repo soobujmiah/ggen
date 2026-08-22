@@ -158,6 +158,7 @@ class _StudioShellState extends State<StudioShell> {
   bool _immersive = false;
   bool _showInspector = true;
   bool _showLayers = false;
+  bool _multiSelect = false;
   final CanvasZoomController _zoomController = CanvasZoomController();
   bool _canvasFirst = true;
   bool _workspaceSettingsOpen = false;
@@ -238,14 +239,14 @@ class _StudioShellState extends State<StudioShell> {
       });
       return true;
     }
-    // Delete / Backspace removes the selected node.
+    // Delete / Backspace removes every selected node (one history step).
     if (key == LogicalKeyboardKey.delete ||
         key == LogicalKeyboardKey.backspace) {
-      final selected = _studio.selectedNodeId;
-      if (selected == null) return false;
-      _studio.deleteNode(selected);
-      debugLog.info('key_delete', 'Node deleted via keyboard', {
-        'node_id': selected.value,
+      final selected = _studio.selectedNodeIds;
+      if (selected.isEmpty) return false;
+      _studio.deleteNodes(selected);
+      debugLog.info('key_delete', 'Nodes deleted via keyboard', {
+        'count': selected.length,
         'revision': _studio.revision,
       });
       return true;
@@ -636,6 +637,7 @@ class _StudioShellState extends State<StudioShell> {
                           selectMode: _selectedTool == 0,
                           textEnabled: _selectedTool == 2,
                           immersive: _immersive,
+                          multiSelectMode: _multiSelect,
                           selectedNodeId: _studio.selectedNodeId,
                           suppressGeometryLog: _workspaceSettingsOpen,
                           zoomController: _zoomController,
@@ -649,8 +651,8 @@ class _StudioShellState extends State<StudioShell> {
                               },
                             );
                           },
-                          onNodeSelected: (nodeId) {
-                            _studio.selectNode(nodeId);
+                          onNodeSelected: (nodeId, additive) {
+                            _studio.selectNode(nodeId, toggle: additive);
                             debugLog.info(
                               nodeId != null ? 'node_select' : 'node_deselect',
                               nodeId != null
@@ -658,6 +660,7 @@ class _StudioShellState extends State<StudioShell> {
                                   : 'Selection cleared',
                               {
                                 if (nodeId != null) 'node_id': nodeId.value,
+                                'selected_count': _studio.selectedNodeIds.length,
                               },
                             );
                           },
@@ -784,11 +787,21 @@ class _StudioShellState extends State<StudioShell> {
                       return Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Secondary toolbar — undo/redo, layers, zoom same 40×40, equal distance, above holding bar
+                          // Secondary toolbar — multi-select, undo/redo, layers, zoom same 40×40, equal distance, above holding bar
                           _SecondaryCanvasToolbar(
                             controller: _studio,
                             zoomController: _zoomController,
                             showLayers: _showLayers,
+                            multiSelect: _multiSelect,
+                            onToggleMultiSelect: () {
+                              setState(() => _multiSelect = !_multiSelect);
+                              debugLog.info(
+                                'multi_select_toggle',
+                                _multiSelect
+                                    ? 'Multi-select enabled'
+                                    : 'Multi-select disabled',
+                              );
+                            },
                             onToggleLayers: () {
                               // Toolbar only shown when isCompact, so always sheet
                               _showLayersSheet();
@@ -920,6 +933,7 @@ class CanvasArea extends StatelessWidget {
     this.selectMode = false,
     this.textEnabled = false,
     this.immersive = false,
+    this.multiSelectMode = false,
     this.selectedNodeId,
     this.suppressGeometryLog = false,
     this.zoomController,
@@ -942,6 +956,9 @@ class CanvasArea extends StatelessWidget {
   /// zoom overlay available there (no bottom toolbar exists in immersive).
   final bool immersive;
 
+  /// Multi-select mode from the shell: Select-tool taps toggle membership.
+  final bool multiSelectMode;
+
   final GgenId? selectedNodeId;
 
   /// Suppresses canvas_geometry logging (e.g. while the settings sheet is
@@ -952,7 +969,7 @@ class CanvasArea extends StatelessWidget {
   final CanvasZoomController? zoomController;
 
   final void Function(Offset artboardPoint)? onTextRequest;
-  final void Function(GgenId? nodeId)? onNodeSelected;
+  final void Function(GgenId? nodeId, bool additive)? onNodeSelected;
   final VoidCallback? onTwoFingerTap;
   final VoidCallback? onThreeFingerTap;
 
@@ -981,6 +998,7 @@ class CanvasArea extends StatelessWidget {
                 selectMode: selectMode,
                 textEnabled: textEnabled,
                 showZoomOverlay: immersive || !compact,
+                multiSelectMode: multiSelectMode,
                 selectedNodeId: selectedNodeId,
                 zoomController: zoomController,
                 onTextRequest: onTextRequest,
@@ -1374,6 +1392,8 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
     required this.controller,
     required this.zoomController,
     required this.showLayers,
+    required this.multiSelect,
+    required this.onToggleMultiSelect,
     required this.onToggleLayers,
     super.key,
   });
@@ -1381,6 +1401,8 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
   final StudioController controller;
   final CanvasZoomController zoomController;
   final bool showLayers;
+  final bool multiSelect;
+  final VoidCallback onToggleMultiSelect;
   final VoidCallback onToggleLayers;
 
   @override
@@ -1391,6 +1413,27 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
         final canUndo = controller.canUndo;
         final canRedo = controller.canRedo;
         final buttons = <Widget>[
+          // Multi-select toggle — Select-tool taps extend the selection
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              tooltip: multiSelect ? 'Multi-select on' : 'Multi-select off',
+              onPressed: onToggleMultiSelect,
+              isSelected: multiSelect,
+              icon: Icon(
+                multiSelect ? Icons.done_all : Icons.done_all_outlined,
+                size: 20,
+              ),
+              style: IconButton.styleFrom(
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                backgroundColor: multiSelect
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : null,
+              ),
+            ),
+          ),
           // Undo / Redo — same 40×40 size, equal spacing
           SizedBox(
             width: 40,
@@ -1467,7 +1510,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
           // real widths.
           child: LayoutBuilder(
             builder: (context, constraints) {
-              const contentWidth = 40 * 6 + 2 + 8.0; // 6 buttons + 2 dividers + padding
+              const contentWidth = 40 * 7 + 2 + 8.0; // 7 buttons + 2 dividers + padding
               if (constraints.maxWidth >= contentWidth) {
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
