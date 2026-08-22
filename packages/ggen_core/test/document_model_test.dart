@@ -98,19 +98,28 @@ void main() {
 
     // Missing child reference fails.
     expect(
-      () => artboard(<DocumentNode>[shape('node.1'), group(<String>['node.1', 'node.2'])]),
+      () => artboard(<DocumentNode>[
+        shape('node.1'),
+        group(<String>['node.1', 'node.2']),
+      ]),
       throwsArgumentError,
     );
 
     // Duplicate child id fails.
     expect(
-      () => artboard(<DocumentNode>[shape('node.1'), group(<String>['node.1', 'node.1'])]),
+      () => artboard(<DocumentNode>[
+        shape('node.1'),
+        group(<String>['node.1', 'node.1']),
+      ]),
       throwsArgumentError,
     );
 
     // Empty children list fails.
     expect(
-      () => artboard(<DocumentNode>[shape('node.1'), group(<String>[])]),
+      () => artboard(<DocumentNode>[
+        shape('node.1'),
+        group(<String>[]),
+      ]),
       throwsArgumentError,
     );
 
