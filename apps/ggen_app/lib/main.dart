@@ -1018,7 +1018,11 @@ class _StudioShellState extends State<StudioShell> {
                     ),
                   if (!_immersive && !compact)
                     Positioned(
-                      top: 12,
+                      // Below the overlay top bar (which occupies the very
+                      // top of the canvas); a top:12 position collided with
+                      // the More button and broke its hit area on
+                      // tablet/wide layouts.
+                      top: 60,
                       right: 12,
                       child: SafeArea(
                         child: IconButton.filledTonal(
