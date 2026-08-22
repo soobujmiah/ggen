@@ -731,7 +731,9 @@ void main() {
     testWidgets(
       'secondary canvas toolbar hides fully (no remnant), mini and expands',
       (tester) async {
-        tester.view.physicalSize = const Size(400, 800);
+        // Real-device size: at 471 the full toolbar fits without scrolling
+        // and the 8-row More sheet is fully on-screen.
+        tester.view.physicalSize = const Size(471, 1020);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         await tester.pumpWidget(const GgenApp());
@@ -773,7 +775,7 @@ void main() {
     testWidgets('canvas toolbar docks to the side and logs the change', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(400, 800);
+      tester.view.physicalSize = const Size(471, 1020);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       debugLog.clear();
