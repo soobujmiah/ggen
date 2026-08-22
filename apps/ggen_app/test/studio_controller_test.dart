@@ -934,4 +934,230 @@ void main() {
       );
     });
   });
+
+  group('layer groups', () {
+    StudioController controllerWithShapes() {
+      final controller = StudioController();
+      controller.addShapeNode(10, 10);
+      controller.addShapeNode(40, 40);
+      controller.addShapeNode(70, 70);
+      return controller;
+    }
+
+    List<GgenId> shapeIds(StudioController controller) => <GgenId>[
+      for (final node in controller.project.artboards.first.nodes)
+        node.id,
+    ];
+
+    DocumentNode groupNode(StudioController controller) =>
+        controller.project.artboards.first.nodes
+            .lastWhere((n) => n.kind == DocumentNodeKind.group);
+
+    test('createGroup groups nodes into one undoable step', () {
+      final controller = controllerWithShapes();
+      final ids = shapeIds(controller);
+      final before = controller.revision;
+
+      expect(controller.createGroup(<GgenId>[ids[0], ids[1]]), isTrue);
+      expect(controller.revision, before + 1);
+      final group = groupNode(controller);
+      expect(groupChildIds(group), <GgenId>[ids[0], ids[1]]);
+      expect(controller.selectedNodeId, group.id);
+      // Members stay first-class nodes in the artboard.
+      expect(controller.objectCount, 4);
+
+      controller.undo();
+      expect(
+        controller.project.artboards.first.nodes
+            .any((n) => n.kind == DocumentNodeKind.group),
+        isFalse,
+      );
+    });
+
+    test('createGroup rejects invalid inputs without extra revisions', () {
+      final controller = controllerWithShapes();
+      final ids = shapeIds(controller);
+      final before = controller.revision;
+
+      expect(controller.createGroup(<GgenId>[ids[0]]), isFalse);
+      expect(
+        controller.createGroup(<GgenId>[ids[0], GgenId('node-missing')]),
+        isFalse,
+      );
+      expect(controller.createGroup(<GgenId>[ids[0], ids[0]]), isFalse);
+      expect(controller.createGroup(<GgenId>[ids[0], ids[1]]), isTrue);
+      // A member of an existing group cannot be regrouped.
+      expect(
+        controller.createGroup(<GgenId>[ids[1], ids[2]]),
+        isFalse,
+      );
+      // An existing group cannot be nested into another group.
+      final group = groupNode(controller);
+      expect(
+        controller.createGroup(<GgenId>[group.id, ids[2]]),
+        isFalse,
+      );
+      expect(controller.revision, before + 1);
+    });
+
+    test('createGroup preserves a custom name', () {
+      final controller = controllerWithShapes();
+      final ids = shapeIds(controller);
+      expect(
+        controller.createGroup(<GgenId>[ids[0], ids[1]], name: 'Logo'),
+        isTrue,
+      );
+      expect(groupNode(controller).name, 'Logo');
+    });
+
+    test('ungroup dissolves the group and keeps members', () {
+      final controller = controllerWithShapes();
+      final ids = shapeIds(controller);
+      controller.createGroup(<GgenId>[ids[0], ids[1]]);
+      final group = groupNode(controller);
+
+      expect(controller.ungroup(group.id), isTrue);
+      final nodes = controller.project.artboards.first.nodes;
+      expect(
+        nodes.any((n) => n.kind == DocumentNodeKind.group),
+        isFalse,
+      );
+      expect(nodes, hasLength(3));
+      expect(
+        controller.selectedNodeIds,
+        unorderedEquals(<GgenId>[ids[0], ids[1]]),
+      );
+
+      controller.undo();
+      expect(
+        controller.project.artboards.first.nodes
+            .any((n) => n.kind == DocumentNodeKind.group),
+        isTrue,
+      );
+    });
+
+    test('group visibility toggles members in one step', () {
+      final controller = controllerWithShapes();
+      final ids = shapeIds(controller);
+      controller.createGroup(<GgenId>[ids[0], ids[1]]);
+      final before = controller.revision;
+      final group = groupNode(controller);
+
+      expect(controller.toggleNodeVisibility(group.id), isTrue);
+      expect(controller.revision, before + 1);
+      for (final node in controller.project.artboards.first.nodes) {
+        final grouped =
+            node.id == group.id || node.id == ids[0] || node.id == ids[1];
+        expect(
+          node.visible,
+          grouped ? isFalse : isTrue,
+          reason: '${node.id} should hide only with its group',
+        );
+      }
+    });
+
+    test('group lock toggles members in one step', () {
+      final controller = controllerWithShapes();
+      final ids = shapeIds(controller);
+      controller.createGroup(<GgenId>[ids[0], ids[1]]);
+      final group = groupNode(controller);
+
+      expect(controller.toggleNodeLock(group.id), isTrue);
+      for (final node in controller.project.artboards.first.nodes) {
+        final grouped =
+            node.id == group.id || node.id == ids[0] || node.id == ids[1];
+        expect(
+          node.locked,
+          grouped ? isTrue : isFalse,
+          reason: '${node.id} should lock only with its group',
+        );
+      }
+    });
+
+    test('deleting a group deletes its members too', () {
+      final controller = controllerWithShapes();
+      final ids = shapeIds(controller);
+      controller.createGroup(<GgenId>[ids[0], ids[1]]);
+      final group = groupNode(controller);
+
+      expect(controller.deleteNode(group.id), isTrue);
+      expect(controller.objectCount, 1); // Only ids[2] remains.
+      controller.undo();
+      expect(controller.objectCount, 4);
+    });
+
+    test('deleting a member prunes it from its group', () {
+      final controller = controllerWithShapes();
+      final ids = shapeIds(controller);
+      controller.createGroup(<GgenId>[ids[0], ids[1]]);
+
+      expect(controller.deleteNode(ids[0]), isTrue);
+      expect(controller.objectCount, 3);
+      expect(groupChildIds(groupNode(controller)), <GgenId>[ids[1]]);
+
+      // Deleting the last member dissolves the group.
+      expect(controller.deleteNode(ids[1]), isTrue);
+      expect(controller.objectCount, 1);
+      expect(
+        controller.project.artboards.first.nodes
+            .any((n) => n.kind == DocumentNodeKind.group),
+        isFalse,
+      );
+    });
+
+    test('moving a group moves its members in one step', () {
+      final controller = controllerWithShapes();
+      final ids = shapeIds(controller);
+      controller.createGroup(<GgenId>[ids[0], ids[1]]);
+      final before = controller.revision;
+
+      double xOf(GgenId id) {
+        final node = controller.project.artboards.first.nodes
+            .firstWhere((n) => n.id == id);
+        return (node.extensions['x']! as num).toDouble();
+      }
+
+      final before0 = xOf(ids[0]);
+      final before1 = xOf(ids[1]);
+      expect(controller.moveNodes(<GgenId>[groupNode(controller).id], 20, 0), isTrue);
+      expect(controller.revision, before + 1);
+      expect(xOf(ids[0]), before0 + 20);
+      expect(xOf(ids[1]), before1 + 20);
+    });
+
+    test('helpers fail closed on malformed group payloads', () {
+      final plain = DocumentNode(
+        id: GgenId('node.x'),
+        kind: DocumentNodeKind.shape,
+        name: 'Shape',
+      );
+      expect(isGroupNode(plain), isFalse);
+      expect(groupChildIds(plain), isNull);
+
+      final malformed = DocumentNode(
+        id: GgenId('group.x'),
+        kind: DocumentNodeKind.group,
+        name: 'Group',
+        extensions: <String, Object?>{'children': 'not-a-list'},
+      );
+      expect(groupChildIds(malformed), isNull);
+      expect(
+        () => Artboard(
+          id: GgenId('artboard-1'),
+          name: 'A',
+          width: 800,
+          height: 600,
+          nodes: <DocumentNode>[
+            DocumentNode(
+              id: GgenId('node.1'),
+              kind: DocumentNodeKind.shape,
+              name: 'S',
+            ),
+            malformed,
+          ],
+        ),
+        throwsArgumentError,
+      );
+    });
+  });
 }

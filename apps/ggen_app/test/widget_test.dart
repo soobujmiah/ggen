@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ggen_app/main.dart';
 import 'package:ggen_app/src/canvas/studio_canvas.dart';
+import 'package:ggen_app/src/layers/layer_list.dart';
 import 'package:ggen_app/src/controller/studio_controller.dart';
 import 'package:ggen_core/ggen_core.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -633,5 +634,48 @@ void main() {
       await pumpAt(tester, const Size(0, 0));
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets('layer panel groups and ungroups the selection', (tester) async {
+    final controller = StudioController();
+    controller.addShapeNode(10, 10);
+    controller.addShapeNode(40, 40);
+    controller.addShapeNode(70, 70);
+    final nodes = controller.project.artboards.first.nodes;
+    controller.selectNode(nodes[0].id);
+    controller.selectNode(nodes[1].id, toggle: true);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 500,
+            child: LayerPanel(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Group selection'));
+    await tester.pumpAndSettle();
+
+    expect(
+      controller.project.artboards.first.nodes
+          .where((n) => n.kind == DocumentNodeKind.group),
+      hasLength(1),
+    );
+    // Members are listed indented under the group (expanded by default).
+    expect(find.text('Shape 1'), findsOneWidget);
+    expect(find.text('Shape 2'), findsOneWidget);
+
+    // Ungroup through the header button restores plain top-level layers.
+    await tester.tap(find.byTooltip('Ungroup'));
+    await tester.pumpAndSettle();
+    expect(
+      controller.project.artboards.first.nodes
+          .where((n) => n.kind == DocumentNodeKind.group),
+      isEmpty,
+    );
   });
 }

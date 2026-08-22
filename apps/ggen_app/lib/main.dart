@@ -459,6 +459,16 @@ class _StudioShellState extends State<StudioShell> {
               {'node_id': nodeId.value},
             );
           },
+          onGroup: (count) => debugLog.info(
+            'group_create',
+            'Group created from selection',
+            {'count': count},
+          ),
+          onUngroup: (groupId) => debugLog.info(
+            'group_ungroup',
+            'Group dissolved',
+            {'node_id': groupId.value},
+          ),
         ),
       ),
     );
@@ -718,6 +728,16 @@ class _StudioShellState extends State<StudioShell> {
                                   {'node_id': nodeId.value},
                                 );
                               },
+                              onGroup: (count) => debugLog.info(
+                                'group_create',
+                                'Group created from selection',
+                                {'count': count},
+                              ),
+                              onUngroup: (groupId) => debugLog.info(
+                                'group_ungroup',
+                                'Group dissolved',
+                                {'node_id': groupId.value},
+                              ),
                             ),
                           ),
                         ),
