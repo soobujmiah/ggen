@@ -160,6 +160,11 @@ class _StudioShellState extends State<StudioShell> {
   bool _showLayers = false;
   bool _multiSelect = false;
   bool _showGrid = true;
+  bool _secondaryToolbarCollapsed = false;
+  List<EditorTopAction> _topActionOrder = List<EditorTopAction>.of(
+    EditorTopAction.values,
+  );
+  Set<EditorTopAction> _topActionPinned = <EditorTopAction>{};
   final CanvasZoomController _zoomController = CanvasZoomController();
   bool _canvasFirst = true;
   bool _workspaceSettingsOpen = false;
@@ -404,19 +409,292 @@ class _StudioShellState extends State<StudioShell> {
       _inspectorDock = prefs.inspectorDock == 'left'
           ? InspectorDock.left
           : InspectorDock.right;
+      _secondaryToolbarCollapsed = prefs.secondaryToolbarCollapsed;
+      _topActionOrder = _sanitizeActionOrder(prefs.topActionOrder);
+      _topActionPinned = _sanitizePinned(prefs.topActionPinned);
     });
     debugLog.info('workspace_restore', 'Workspace preferences restored', {
       'inspector_visible': _showInspector,
       'canvas_first': _canvasFirst,
       'inspector_dock': _inspectorDock.name,
+      'secondary_toolbar_collapsed': _secondaryToolbarCollapsed,
+      'top_action_pinned': _topActionPinned.length,
     });
   }
+
+  /// Accepts only known action ids, keeps the configured relative order and
+  /// fills in any missing actions at the end (canonical order).
+  List<EditorTopAction> _sanitizeActionOrder(List<String> raw) {
+    final known = <String>{for (final a in EditorTopAction.values) a.name};
+    final result = <EditorTopAction>[];
+    final seen = <EditorTopAction>{};
+    for (final id in raw) {
+      if (!known.contains(id)) continue;
+      final action = EditorTopAction.values.byName(id);
+      if (seen.add(action)) result.add(action);
+    }
+    for (final action in EditorTopAction.values) {
+      if (seen.add(action)) result.add(action);
+    }
+    return result;
+  }
+
+  Set<EditorTopAction> _sanitizePinned(List<String> raw) {
+    final known = <String>{for (final a in EditorTopAction.values) a.name};
+    final result = <EditorTopAction>{};
+    for (final id in raw) {
+      if (!known.contains(id)) continue;
+      result.add(EditorTopAction.values.byName(id));
+    }
+    return result;
+  }
+
+  /// Pinned actions in the user's configured order (pins not in the order
+  /// list are appended at the end of the bar).
+  List<EditorTopAction> get _pinnedInOrder => <EditorTopAction>[
+    for (final action in _topActionOrder)
+      if (_topActionPinned.contains(action)) action,
+    for (final action in _topActionPinned)
+      if (!_topActionOrder.contains(action)) action,
+  ];
 
   Future<void> _persistWorkspace() => WorkspacePreferences(
     inspectorVisible: _showInspector,
     canvasFirst: _canvasFirst,
     inspectorDock: _inspectorDock.name,
+    secondaryToolbarCollapsed: _secondaryToolbarCollapsed,
+    topActionOrder: <String>[for (final a in _topActionOrder) a.name],
+    topActionPinned: <String>[
+      for (final a in _topActionOrder)
+        if (_topActionPinned.contains(a)) a.name,
+    ],
   ).save();
+
+  /// Opens the workspace settings sheet (moved out of the bottom
+  /// navigation into the top-bar More menu per device feedback).
+  Future<void> _openWorkspaceSettings() async {
+    if (_workspaceSettingsOpen) return;
+    _workspaceSettingsOpen = true;
+    await _showWorkspaceSettings(
+      context,
+      canvasFirst: _canvasFirst,
+      currentProfile: WorkspaceProfile(
+        name: 'Current',
+        inspectorVisible: _showInspector,
+        canvasFirst: _canvasFirst,
+        inspectorDock: _inspectorDock.name,
+      ),
+      onProfileApplied: (profile) {
+        setState(() {
+          _showInspector = profile.inspectorVisible;
+          _canvasFirst = profile.canvasFirst;
+          _inspectorDock = profile.inspectorDock == 'left'
+              ? InspectorDock.left
+              : InspectorDock.right;
+        });
+        unawaited(_persistWorkspace());
+        debugLog.info(
+          'profile_apply',
+          'Workspace profile applied',
+          {'name': profile.name},
+        );
+      },
+      onCanvasFirstChanged: (value) {
+        setState(() => _canvasFirst = value);
+        unawaited(_persistWorkspace());
+        debugLog.info(
+          'canvas_first',
+          value ? 'Canvas-first enabled' : 'Canvas-first disabled',
+        );
+      },
+      onReset: () {
+        setState(() {
+          _showInspector = true;
+          _canvasFirst = true;
+          _inspectorDock = InspectorDock.right;
+        });
+        unawaited(
+          WorkspacePreferences().clear().then((_) => _persistWorkspace()),
+        );
+        debugLog.info('workspace_reset', 'Workspace reset to defaults');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Workspace reset to defaults')),
+          );
+        }
+      },
+    ).whenComplete(() => _workspaceSettingsOpen = false);
+  }
+
+  /// Runs a top action-bar action (pinned icon or a More-menu tap).
+  Future<void> _runTopAction(EditorTopAction action) async {
+    switch (action) {
+      case EditorTopAction.newProject:
+        await _newProject(context);
+      case EditorTopAction.save:
+        await _saveProject(context);
+      case EditorTopAction.diagnostics:
+        await _showDiagnostics(context);
+      case EditorTopAction.immersive:
+        _setImmersive(!_immersive);
+      case EditorTopAction.settings:
+        await _openWorkspaceSettings();
+      case EditorTopAction.dockInspector:
+        setState(() {
+          if (_showInspector) {
+            _inspectorDock = _inspectorDock == InspectorDock.left
+                ? InspectorDock.right
+                : InspectorDock.left;
+          } else {
+            _showInspector = true;
+          }
+        });
+        unawaited(_persistWorkspace());
+        debugLog.info(
+          'panel_dock',
+          'Inspector dock changed',
+          {'dock': _inspectorDock.name},
+        );
+    }
+  }
+
+  /// Shows the More menu: every top action in configurable order with pin
+  /// (show in the top bar) and reorder (up/down) controls; tapping a row
+  /// runs the action.
+  Future<void> _showMoreMenu() async {
+    debugLog.info('top_action_more', 'More menu opened');
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(bottom: 16),
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Text(
+                  'More actions',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+              ),
+              for (var i = 0; i < _topActionOrder.length; i++)
+                _buildMoreRow(sheetContext, i, setSheetState),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMoreRow(
+    BuildContext sheetContext,
+    int index,
+    StateSetter setSheetState,
+  ) {
+    final action = _topActionOrder[index];
+    final pinned = _topActionPinned.contains(action);
+    return ListTile(
+      dense: true,
+      leading: IconButton(
+        tooltip: pinned ? 'Hide from top bar' : 'Show in top bar',
+        iconSize: 20,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        visualDensity: VisualDensity.compact,
+        onPressed: () {
+          setSheetState(() {
+            if (pinned) {
+              _topActionPinned.remove(action);
+            } else {
+              _topActionPinned.add(action);
+            }
+          });
+          debugLog.info(
+            pinned ? 'top_action_unpin' : 'top_action_pin',
+            pinned ? 'Action hidden from top bar' : 'Action pinned to top bar',
+            {'action': action.name},
+          );
+          unawaited(_persistWorkspace());
+        },
+        icon: Icon(
+          pinned ? Icons.star : Icons.star_border,
+          color: pinned ? Colors.amber.shade300 : Colors.white54,
+        ),
+      ),
+      title: Text(action.label),
+      onTap: () {
+        debugLog.info('top_action_run', 'Action run from More menu', {
+          'action': action.name,
+        });
+        Navigator.pop(sheetContext);
+        unawaited(_runTopAction(action));
+      },
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Move up',
+            iconSize: 18,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            visualDensity: VisualDensity.compact,
+            onPressed: index == 0
+                ? null
+                : () {
+                    setSheetState(() {
+                      final prev = _topActionOrder[index - 1];
+                      _topActionOrder[index - 1] = action;
+                      _topActionOrder[index] = prev;
+                    });
+                    debugLog.info(
+                      'top_action_reorder',
+                      'Action moved up',
+                      {'action': action.name},
+                    );
+                    unawaited(_persistWorkspace());
+                  },
+            icon: const Icon(Icons.arrow_upward),
+          ),
+          IconButton(
+            tooltip: 'Move down',
+            iconSize: 18,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            visualDensity: VisualDensity.compact,
+            onPressed: index == _topActionOrder.length - 1
+                ? null
+                : () {
+                    setSheetState(() {
+                      final next = _topActionOrder[index + 1];
+                      _topActionOrder[index + 1] = action;
+                      _topActionOrder[index] = next;
+                    });
+                    debugLog.info(
+                      'top_action_reorder',
+                      'Action moved down',
+                      {'action': action.name},
+                    );
+                    unawaited(_persistWorkspace());
+                  },
+            icon: const Icon(Icons.arrow_downward),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toggleSecondaryToolbar() {
+    setState(() => _secondaryToolbarCollapsed = !_secondaryToolbarCollapsed);
+    debugLog.info(
+      'canvas_toolbar_toggle',
+      _secondaryToolbarCollapsed
+          ? 'Canvas toolbar collapsed'
+          : 'Canvas toolbar expanded',
+    );
+    unawaited(_persistWorkspace());
+  }
 
   void _setImmersive(bool value) {
     setState(() => _immersive = value);
@@ -500,8 +778,28 @@ class _StudioShellState extends State<StudioShell> {
     );
     final trimmed = (result ?? name).trim();
     if (!mounted || trimmed.isEmpty) return;
-    _studio.newProject(trimmed);
-    debugLog.info('project_new', 'New project created', {'name': trimmed});
+    // Default canvas is portrait and follows the device screen ratio
+    // (clamped to a sensible 1:1 .. 9:20 range), per device feedback:
+    // "a portrait canvas sized to the display resolution".
+    final screen = MediaQuery.sizeOf(context);
+    final ratio = (screen.height / screen.width).clamp(1.0, 2.22);
+    final artboardWidth = StudioController.defaultArtboardWidth;
+    final artboardHeight =
+        (artboardWidth * ratio).clamp(
+              StudioController.defaultArtboardHeight,
+              artboardWidth * 2.4,
+            )
+            .roundToDouble();
+    _studio.newProject(
+      trimmed,
+      artboardWidth: artboardWidth,
+      artboardHeight: artboardHeight,
+    );
+    debugLog.info(
+      'project_new',
+      'New project created',
+      {'name': trimmed, 'artboard': '${artboardWidth.round()}x${artboardHeight.round()}'},
+    );
   }
 
   Future<void> _saveProject(BuildContext context) async {
@@ -518,6 +816,12 @@ class _StudioShellState extends State<StudioShell> {
         canvasFirst: _canvasFirst,
         inspectorDock: _inspectorDock.name,
         lastProjectKey: receipt.key.value,
+        secondaryToolbarCollapsed: _secondaryToolbarCollapsed,
+        topActionOrder: <String>[for (final a in _topActionOrder) a.name],
+        topActionPinned: <String>[
+          for (final a in _topActionOrder)
+            if (_topActionPinned.contains(a)) a.name,
+        ],
       ).save();
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -545,66 +849,7 @@ class _StudioShellState extends State<StudioShell> {
       listenable: _studio,
       builder: (context, _) {
         return Scaffold(
-          appBar: _immersive
-              ? null
-              : AppBar(
-                  title: const Text('GGEN'),
-                  actions: [
-                    IconButton(
-                      tooltip: 'Immersive canvas',
-                      onPressed: () => _setImmersive(true),
-                      icon: const Icon(Icons.fullscreen),
-                    ),
-                    Builder(
-                      builder: (context) {
-                        if (MediaQuery.sizeOf(context).width < 900) {
-                          return const SizedBox.shrink();
-                        }
-                        return IconButton(
-                          tooltip: 'Dock inspector left or right',
-                          onPressed: () {
-                            setState(() {
-                              if (_showInspector) {
-                                _inspectorDock =
-                                    _inspectorDock == InspectorDock.left
-                                    ? InspectorDock.right
-                                    : InspectorDock.left;
-                              } else {
-                                _showInspector = true;
-                              }
-                            });
-                            unawaited(_persistWorkspace());
-                            debugLog.info(
-                              'panel_dock',
-                              'Inspector dock changed',
-                              {'dock': _inspectorDock.name},
-                            );
-                          },
-                          icon: Icon(
-                            _inspectorDock == InspectorDock.left
-                                ? Icons.keyboard_double_arrow_left
-                                : Icons.keyboard_double_arrow_right,
-                          ),
-                        );
-                      },
-                    ),
-                    IconButton(
-                      tooltip: 'Export diagnostics',
-                      onPressed: () => _showDiagnostics(context),
-                      icon: const Icon(Icons.bug_report_outlined),
-                    ),
-                    IconButton(
-                      tooltip: 'New project',
-                      onPressed: () => _newProject(context),
-                      icon: const Icon(Icons.note_add_outlined),
-                    ),
-                    IconButton(
-                      tooltip: 'Save project',
-                      onPressed: () => _saveProject(context),
-                      icon: const Icon(Icons.save_outlined),
-                    ),
-                  ],
-                ),
+          appBar: null,
           body: LayoutBuilder(
             builder: (context, constraints) {
               final compact = constraints.maxWidth < 700;
@@ -660,6 +905,11 @@ class _StudioShellState extends State<StudioShell> {
                           gridVisible: _showGrid,
                           onToggleGrid: _toggleGrid,
                           selectedNodeId: _studio.selectedNodeId,
+                          topBar: _TopActionBar(
+                            actions: _pinnedInOrder,
+                            onRun: (action) => unawaited(_runTopAction(action)),
+                            onMore: () => unawaited(_showMoreMenu()),
+                          ),
                           suppressGeometryLog: _workspaceSettingsOpen,
                           zoomController: _zoomController,
                           onNodeAdded: () {
@@ -792,18 +1042,6 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                       ),
                     ),
-                  if (_immersive)
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: SafeArea(
-                        child: IconButton.filledTonal(
-                          tooltip: 'Show workspace controls',
-                          onPressed: () => _setImmersive(false),
-                          icon: const Icon(Icons.fullscreen_exit),
-                        ),
-                      ),
-                    ),
                 ],
                 ),
               );
@@ -825,6 +1063,8 @@ class _StudioShellState extends State<StudioShell> {
                             showLayers: _showLayers,
                             multiSelect: _multiSelect,
                             gridVisible: _showGrid,
+                            collapsed: _secondaryToolbarCollapsed,
+                            onToggleCollapsed: _toggleSecondaryToolbar,
                             onToggleGrid: _toggleGrid,
                             onToggleMultiSelect: () {
                               setState(() => _multiSelect = !_multiSelect);
@@ -842,70 +1082,11 @@ class _StudioShellState extends State<StudioShell> {
                             },
                           ),
                           const Divider(height: 1),
+                          // Settings moved into the top-bar More menu (device
+                          // feedback); the bottom bar is tools-only now.
                           CompactNavigationBar(
                             selectedIndex: _selectedTool,
-                            onSelected: (index) {
-                              if (index == 3) {
-                                if (_workspaceSettingsOpen) return;
-                                _workspaceSettingsOpen = true;
-                                unawaited(
-                                  _showWorkspaceSettings(
-                                    context,
-                                    canvasFirst: _canvasFirst,
-                                    currentProfile: WorkspaceProfile(
-                                      name: 'Current',
-                                      inspectorVisible: _showInspector,
-                                      canvasFirst: _canvasFirst,
-                                      inspectorDock: _inspectorDock.name,
-                                    ),
-                                    onProfileApplied: (profile) {
-                                      setState(() {
-                                        _showInspector = profile.inspectorVisible;
-                                        _canvasFirst = profile.canvasFirst;
-                                        _inspectorDock =
-                                            profile.inspectorDock == 'left'
-                                            ? InspectorDock.left
-                                            : InspectorDock.right;
-                                      });
-                                      unawaited(_persistWorkspace());
-                                      debugLog.info(
-                                        'profile_apply',
-                                        'Workspace profile applied',
-                                        {'name': profile.name},
-                                      );
-                                    },
-                                    onCanvasFirstChanged: (value) {
-                                      setState(() => _canvasFirst = value);
-                                      unawaited(_persistWorkspace());
-                                      debugLog.info(
-                                        'canvas_first',
-                                        value
-                                            ? 'Canvas-first enabled'
-                                            : 'Canvas-first disabled',
-                                      );
-                                    },
-                                    onReset: () {
-                                      setState(() {
-                                        _showInspector = true;
-                                        _canvasFirst = true;
-                                        _inspectorDock = InspectorDock.right;
-                                      });
-                                      unawaited(WorkspacePreferences().clear().then((_) => _persistWorkspace()));
-                                      debugLog.info('workspace_reset', 'Workspace reset to defaults');
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Workspace reset to defaults')),
-                                        );
-                                      }
-                                    },
-                                  ).whenComplete(
-                                    () => _workspaceSettingsOpen = false,
-                                  ),
-                                );
-                              } else {
-                                _selectTool(index);
-                              }
-                            },
+                            onSelected: _selectTool,
                           ),
                         ],
                       );
@@ -969,6 +1150,7 @@ class CanvasArea extends StatelessWidget {
     this.multiSelectMode = false,
     this.gridVisible = true,
     this.onToggleGrid,
+    this.topBar,
     this.selectedNodeId,
     this.suppressGeometryLog = false,
     this.zoomController,
@@ -999,6 +1181,11 @@ class CanvasArea extends StatelessWidget {
   /// grid from the bottom toolbar).
   final bool gridVisible;
   final VoidCallback? onToggleGrid;
+
+  /// Transparent top action bar rendered inside the canvas bounds, right
+  /// under the status bar ("at the canvas boundary"), so project actions
+  /// float over the artwork instead of consuming chrome space.
+  final Widget? topBar;
 
   final GgenId? selectedNodeId;
 
@@ -1052,10 +1239,18 @@ class CanvasArea extends StatelessWidget {
             );
           },
         ),
+        // Transparent top action bar (icon-only, inside canvas bounds).
+        if (topBar != null)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: topBar!,
+          ),
         // Project name — no hazy bar per device feedback (was black 0.45 scrim).
         // Now a clean text with shadow for legibility, no container bar.
         Positioned(
-          top: 12,
+          top: topBar == null ? 12 : 56,
           left: 12,
           right: 96,
           child: IgnorePointer(
@@ -1437,6 +1632,8 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
     required this.showLayers,
     required this.multiSelect,
     required this.gridVisible,
+    required this.collapsed,
+    required this.onToggleCollapsed,
     required this.onToggleGrid,
     required this.onToggleMultiSelect,
     required this.onToggleLayers,
@@ -1448,6 +1645,11 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
   final bool showLayers;
   final bool multiSelect;
   final bool gridVisible;
+
+  /// When true only the expand handle is shown (the toolbar is collapsible
+  /// and expandable — device feedback).
+  final bool collapsed;
+  final VoidCallback onToggleCollapsed;
   final VoidCallback onToggleGrid;
   final VoidCallback onToggleMultiSelect;
   final VoidCallback onToggleLayers;
@@ -1566,6 +1768,33 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
             ),
           ),
         ];
+        if (collapsed) {
+          return Container(
+            height: 40,
+            color: Theme.of(context).colorScheme.surfaceContainer,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  tooltip: 'Show canvas toolbar',
+                  onPressed: onToggleCollapsed,
+                  icon: const Icon(Icons.keyboard_arrow_up),
+                  iconSize: 20,
+                ),
+              ],
+            ),
+          );
+        }
+        final expandedButtons = <Widget>[
+          ...buttons,
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: 'Hide canvas toolbar',
+            onPressed: onToggleCollapsed,
+            icon: const Icon(Icons.keyboard_arrow_down),
+            iconSize: 20,
+          ),
+        ];
         return Container(
           height: 48,
           color: Theme.of(context).colorScheme.surfaceContainer,
@@ -1576,16 +1805,16 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
           // real widths.
           child: LayoutBuilder(
             builder: (context, constraints) {
-              const contentWidth = 40 * 8 + 3 + 8.0; // 8 buttons + 3 dividers + padding
+              const contentWidth = 40 * 9 + 3 + 16.0; // 9 buttons + 3 dividers + padding
               if (constraints.maxWidth >= contentWidth) {
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: buttons,
+                  children: expandedButtons,
                 );
               }
               return SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: Row(children: buttons),
+                child: Row(children: expandedButtons),
               );
             },
           ),
@@ -1616,7 +1845,6 @@ class CompactNavigationBar extends StatelessWidget {
       ),
       NavigationDestination(icon: Icon(Icons.brush_outlined), label: 'Draw'),
       NavigationDestination(icon: Icon(Icons.text_fields), label: 'Text'),
-      NavigationDestination(icon: Icon(Icons.tune), label: 'Settings'),
     ],
   );
 }
@@ -1725,3 +1953,84 @@ class StatusBar extends StatelessWidget {
     ),
   );
 }
+
+/// Top-level project actions shown in the transparent overlay top bar.
+/// All of them live inside the More menu by default; the user pins any of
+/// them out to the bar and reorders the menu (persisted in workspace
+/// preferences). Order of declaration = canonical default order.
+enum EditorTopAction {
+  newProject('New project', Icons.note_add_outlined),
+  save('Save project', Icons.save_outlined),
+  diagnostics('Diagnostics export', Icons.bug_report_outlined),
+  settings('Settings', Icons.tune),
+  immersive('Immersive canvas', Icons.fullscreen),
+  dockInspector('Dock inspector', Icons.vertical_split_outlined);
+
+  const EditorTopAction(this.label, this.icon);
+
+  final String label;
+  final IconData icon;
+}
+
+/// Transparent, icon-only action bar drawn INSIDE the canvas bounds at the
+/// status-bar boundary (`CanvasArea.topBar`). No background, no title: the
+/// icons render in the contrast color of the surface they float over (the
+/// dark canvas background, so white with a soft shadow) and every action
+/// without a pinned slot lives behind the More menu.
+class _TopActionBar extends StatelessWidget {
+  const _TopActionBar({
+    required this.actions,
+    required this.onRun,
+    required this.onMore,
+  });
+
+  /// Pinned actions, in user order, drawn before the More button (left
+  /// side of the bar).
+  final List<EditorTopAction> actions;
+  final ValueChanged<EditorTopAction> onRun;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    const shadow = <Shadow>[
+      Shadow(blurRadius: 6, color: Colors.black87),
+      Shadow(blurRadius: 12, color: Colors.black45),
+    ];
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Row(
+          children: [
+            for (final action in actions)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: IconButton(
+                  tooltip: action.label,
+                  onPressed: () => onRun(action),
+                  icon: Icon(
+                    action.icon,
+                    size: 22,
+                    color: Colors.white,
+                    shadows: shadow,
+                  ),
+                ),
+              ),
+            const Spacer(),
+            IconButton(
+              tooltip: 'More actions',
+              onPressed: onMore,
+              icon: Icon(
+                Icons.more_horiz,
+                size: 26,
+                color: Colors.white,
+                shadows: shadow,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

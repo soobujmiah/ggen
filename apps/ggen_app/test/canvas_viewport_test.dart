@@ -10,8 +10,9 @@ void main() {
         viewportWidth: 400,
         viewportHeight: 800,
       );
-      // Width is the limiting dimension: (400-32)/1200.
-      expect(viewport.scale, closeTo(368 / 1200, 0.0001));
+      // Width is the limiting dimension; default fit margin is 0 so the
+      // artboard spans the full viewport on its limiting axis.
+      expect(viewport.scale, closeTo(400 / 1200, 0.0001));
       // Artboard is vertically centered.
       final artboardScreenHeight = 800 * viewport.scale;
       expect(
@@ -27,7 +28,7 @@ void main() {
         viewportWidth: 800,
         viewportHeight: 400,
       );
-      expect(viewport.scale, closeTo((400 - 32) / 1200, 0.0001));
+      expect(viewport.scale, closeTo(400 / 1200, 0.0001));
     });
 
     test('clamps the fit scale to the supported range', () {

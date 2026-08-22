@@ -28,7 +28,11 @@ class StudioController extends ChangeNotifier {
     TransactionalProjectStore? store,
     AutosaveRecoveryJournal? journal,
     int checkpointEveryTransactions = 16,
+    double artboardWidth = defaultArtboardWidth,
+    double artboardHeight = defaultArtboardHeight,
   }) : _checkpointEveryTransactions = checkpointEveryTransactions,
+       _artboardWidth = artboardWidth,
+       _artboardHeight = artboardHeight,
        _store = store ?? MemoryProjectStore(),
        _journal =
            journal ??
@@ -40,12 +44,18 @@ class StudioController extends ChangeNotifier {
              ),
            ),
        _history = ProjectHistory.start(
-         _newProject(projectName),
+         _newProject(projectName, artboardWidth: artboardWidth, artboardHeight: artboardHeight),
          maxEntries: historyLimit,
        );
 
-  static const double defaultArtboardWidth = 1200;
-  static const double defaultArtboardHeight = 800;
+  /// Default artboard is a 9:16 PORTRAIT canvas (device-friendly default;
+  /// the shell passes the device screen ratio for new projects). Portrait
+  /// is the GGEN default because the primary flow is phone-first content.
+  static const double defaultArtboardWidth = 1080;
+  static const double defaultArtboardHeight = 1920;
+
+  final double _artboardWidth;
+  final double _artboardHeight;
 
   /// Provisional checkpoint cadence until measured limits are approved.
   final int _checkpointEveryTransactions;
@@ -679,9 +689,20 @@ class StudioController extends ChangeNotifier {
 
   /// Replaces the whole project (New Project). Not undoable by design: the
   /// previous project leaves the workspace entirely.
-  void newProject(String name) {
+  /// Starts a fresh project. [artboardWidth]/[artboardHeight] default to the
+  /// device-ratio portrait canvas captured at construction; the shell passes
+  /// the current screen ratio when creating a new project interactively.
+  void newProject(
+    String name, {
+    double? artboardWidth,
+    double? artboardHeight,
+  }) {
     _history = ProjectHistory.start(
-      _newProject(name),
+      _newProject(
+        name,
+        artboardWidth: artboardWidth ?? _artboardWidth,
+        artboardHeight: artboardHeight ?? _artboardHeight,
+      ),
       maxEntries: maxHistoryEntries,
     );
     _shapeCount = 0;
@@ -977,15 +998,19 @@ class StudioController extends ChangeNotifier {
   static String _sha256Hex(String value) =>
       sha256.convert(utf8.encode(value)).toString();
 
-  static DocumentProject _newProject(String name) => DocumentProject(
+  static DocumentProject _newProject(
+    String name, {
+    double? artboardWidth,
+    double? artboardHeight,
+  }) => DocumentProject(
     id: GgenId('project-${DateTime.now().microsecondsSinceEpoch}'),
     name: name,
     artboards: <Artboard>[
       Artboard(
         id: GgenId('artboard-1'),
         name: 'Artboard 1',
-        width: defaultArtboardWidth,
-        height: defaultArtboardHeight,
+        width: artboardWidth ?? defaultArtboardWidth,
+        height: artboardHeight ?? defaultArtboardHeight,
       ),
     ],
   );

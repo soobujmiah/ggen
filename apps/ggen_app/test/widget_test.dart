@@ -93,9 +93,11 @@ void main() {
     expect(find.text('Inspector'), findsOneWidget);
   });
 
-  testWidgets('renders the original studio shell', (tester) async {
+  testWidgets('renders the overlay studio shell (no app bar)', (tester) async {
     await tester.pumpWidget(const GgenApp());
-    expect(find.text('GGEN'), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.text('GGEN'), findsNothing);
+    expect(find.byTooltip('More actions'), findsOneWidget);
     expect(find.text('Select'), findsOneWidget);
     expect(find.text('Manual mode'), findsOneWidget);
   });
@@ -105,11 +107,15 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(const GgenApp());
-    await tester.tap(find.byTooltip('Immersive canvas'));
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Immersive canvas'));
     await tester.pumpAndSettle();
     expect(find.byType(NavigationBar), findsNothing);
-    expect(find.byTooltip('Show workspace controls'), findsOneWidget);
-    await tester.tap(find.byTooltip('Show workspace controls'));
+    // Leave again through the same More entry (it toggles).
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Immersive canvas'));
     await tester.pumpAndSettle();
     expect(find.byType(NavigationBar), findsOneWidget);
   });
@@ -203,7 +209,10 @@ void main() {
     await tester.pumpWidget(const GgenApp());
     await tester.pumpAndSettle();
 
-    // Open the workspace settings sheet via the compact Settings tab.
+    // Open the workspace settings sheet via the top-bar More menu
+    // (Settings moved out of the bottom navigation).
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
 
@@ -593,8 +602,11 @@ void main() {
 
     testWidgets('immersive keeps the in-canvas zoom overlay', (tester) async {
       await pumpAt(tester, const Size(471, 803));
-      // Enter immersive via the AppBar fullscreen button.
-      await tester.tap(find.byTooltip('Immersive canvas'));
+      // Enter immersive via the More menu (the top bar is the single
+      // entry point for project actions).
+      await tester.tap(find.byTooltip('More actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Immersive canvas'));
       await tester.pumpAndSettle();
       // No bottom toolbar in immersive, so the canvas keeps its own zoom
       // controls (single source, not duplicated).
@@ -617,13 +629,15 @@ void main() {
       await pumpAt(tester, const Size(1200, 800));
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.text('Inspector'), findsOneWidget);
-      expect(find.byTooltip('Dock inspector left or right'), findsOneWidget);
+      expect(find.byTooltip('More actions'), findsOneWidget);
     });
 
     testWidgets('wide inspector can dock left', (tester) async {
       await pumpAt(tester, const Size(1200, 800));
       expect(find.text('Inspector'), findsOneWidget);
-      await tester.tap(find.byTooltip('Dock inspector left or right'));
+      await tester.tap(find.byTooltip('More actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dock inspector'));
       await tester.pumpAndSettle();
       expect(find.text('Inspector'), findsOneWidget);
     });
@@ -677,5 +691,74 @@ void main() {
           .where((n) => n.kind == DocumentNodeKind.group),
       isEmpty,
     );
+  });
+
+  group('overlay top bar and collapsible canvas toolbar', () {
+    testWidgets('pinning an action brings its icon into the top bar', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const GgenApp());
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('More actions'), findsOneWidget);
+      expect(find.byTooltip('New project'), findsNothing);
+
+      await tester.tap(find.byTooltip('More actions'));
+      await tester.pumpAndSettle();
+      final newProjectTile = find.widgetWithText(ListTile, 'New project');
+      await tester.tap(
+        find.descendant(
+          of: newProjectTile,
+          matching: find.byTooltip('Show in top bar'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(8, 8));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('New project'), findsOneWidget);
+    });
+
+    testWidgets('secondary canvas toolbar collapses and expands', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const GgenApp());
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Hide canvas toolbar'), findsOneWidget);
+      await tester.tap(find.byTooltip('Hide canvas toolbar'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Show canvas toolbar'), findsOneWidget);
+      expect(find.byTooltip('Hide canvas toolbar'), findsNothing);
+
+      await tester.tap(find.byTooltip('Show canvas toolbar'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Hide canvas toolbar'), findsOneWidget);
+    });
+
+    testWidgets('new project creates a portrait artboard from the screen ratio', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(471, 1020);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final controller = StudioController();
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('More actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New project'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).last, 'Portrait');
+      await tester.tap(find.text('Create'));
+      await tester.pumpAndSettle();
+
+      final artboard = controller.project.artboards.single;
+      expect(artboard.width, 1080);
+      expect(artboard.height, closeTo(1080 * (1020 / 471), 1.0));
+      expect(artboard.height, greaterThan(artboard.width));
+    });
   });
 }

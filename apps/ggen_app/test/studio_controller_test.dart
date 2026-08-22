@@ -390,9 +390,9 @@ void main() {
       final node = controller.project.artboards.first.nodes.single;
       final geometry = nodeGeometry(node)!;
       expect(geometry.x, 0);
-      expect(geometry.y, 800 - 64);
-      expect(geometry.x + geometry.width, lessThanOrEqualTo(1200));
-      expect(geometry.y + geometry.height, lessThanOrEqualTo(800));
+      expect(geometry.y, 1920 - 64);
+      expect(geometry.x + geometry.width, lessThanOrEqualTo(1080));
+      expect(geometry.y + geometry.height, lessThanOrEqualTo(1920));
     });
 
     test('undo removes the shape and redo restores it', () {
@@ -458,7 +458,7 @@ void main() {
       final node = controller.project.artboards.first.nodes.single;
       final geometry = textNodeGeometry(node)!;
       expect(geometry.x, 0);
-      expect(geometry.y, 800);
+      expect(geometry.y, 1920);
       expect(geometry.text, 'padded');
     });
 
@@ -657,7 +657,7 @@ void main() {
       final node = controller.project.artboards.first.nodes.single;
       final geometry = nodeGeometry(node)!;
       expect(geometry.x, 0);
-      expect(geometry.y, 800); // clamped to artboard height
+      expect(geometry.y, 1920); // clamped to artboard height
     });
 
     test('moveNode returns false for nonexistent node', () {
