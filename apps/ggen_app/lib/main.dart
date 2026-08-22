@@ -1745,7 +1745,8 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
 
   /// Renders one toolbar control as a translucent circular icon button so
   /// the strip can be fully transparent over the canvas and still legible.
-  Widget _tool(IconData icon, String tooltip, VoidCallback? onPressed,
+  Widget _tool(BuildContext context, IconData icon, String tooltip,
+      VoidCallback? onPressed,
       {bool selected = false}) {
     return IconButton(
       tooltip: tooltip,
@@ -1780,7 +1781,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
         if (mini) {
           // Mini level: only the essentials that keep editing responsive.
           buttons = <Widget>[
-            _tool(
+            _tool(context,
               Icons.undo,
               'Undo',
               canUndo
@@ -1790,7 +1791,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
                     }
                   : null,
             ),
-            _tool(
+            _tool(context,
               Icons.redo,
               'Redo',
               canRedo
@@ -1801,7 +1802,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
                   : null,
             ),
             sep(),
-            _tool(
+            _tool(context,
               Icons.remove,
               'Zoom out',
               () {
@@ -1809,7 +1810,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
                 debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar');
               },
             ),
-            _tool(
+            _tool(context,
               Icons.add,
               'Zoom in',
               () {
@@ -1817,7 +1818,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
                 debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar');
               },
             ),
-            _tool(
+            _tool(context,
               Icons.fit_screen_outlined,
               'Fit to screen',
               () {
@@ -1826,7 +1827,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
               },
             ),
             // Expand back to the full toolbar.
-            _tool(
+            _tool(context,
               vertical ? Icons.chevron_left : Icons.keyboard_arrow_up,
               'Expand canvas toolbar',
               onExpand,
@@ -1834,13 +1835,13 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
           ];
         } else {
           buttons = <Widget>[
-            _tool(
+            _tool(context,
               multiSelect ? Icons.done_all : Icons.done_all_outlined,
               multiSelect ? 'Multi-select on' : 'Multi-select off',
               onToggleMultiSelect,
               selected: multiSelect,
             ),
-            _tool(
+            _tool(context,
               Icons.undo,
               'Undo',
               canUndo
@@ -1850,7 +1851,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
                     }
                   : null,
             ),
-            _tool(
+            _tool(context,
               Icons.redo,
               'Redo',
               canRedo
@@ -1861,14 +1862,14 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
                   : null,
             ),
             sep(),
-            _tool(
+            _tool(context,
               showLayers ? Icons.layers_clear_outlined : Icons.layers_outlined,
               showLayers ? 'Hide layers' : 'Show layers',
               onToggleLayers,
               selected: showLayers,
             ),
             sep(),
-            _tool(
+            _tool(context,
               Icons.remove,
               'Zoom out',
               () {
@@ -1876,7 +1877,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
                 debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar');
               },
             ),
-            _tool(
+            _tool(context,
               Icons.add,
               'Zoom in',
               () {
@@ -1884,7 +1885,7 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
                 debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar');
               },
             ),
-            _tool(
+            _tool(context,
               Icons.fit_screen_outlined,
               'Fit to screen',
               () {
@@ -1892,19 +1893,19 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
                 debugLog.info('toolbar_zoom_fit', 'Fit via toolbar');
               },
             ),
-            _tool(
+            _tool(context,
               Icons.grid_4x4,
               gridVisible ? 'Hide grid' : 'Show grid',
               onToggleGrid,
               selected: gridVisible,
             ),
             // Mini level (compress) then fully hide (chevron) — no remnant.
-            _tool(
+            _tool(context,
               Icons.compress,
               'Mini canvas toolbar',
               onMini,
             ),
-            _tool(
+            _tool(context,
               vertical ? Icons.close : Icons.keyboard_arrow_down,
               'Hide canvas toolbar',
               onHide,
