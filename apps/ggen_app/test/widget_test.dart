@@ -728,23 +728,75 @@ void main() {
       expect(find.byTooltip('New project'), findsOneWidget);
     });
 
-    testWidgets('secondary canvas toolbar collapses and expands', (
+    testWidgets(
+      'secondary canvas toolbar hides fully (no remnant), mini and expands',
+      (tester) async {
+        // Real-device size: at 471 the full toolbar fits without scrolling
+        // and the 8-row More sheet is fully on-screen.
+        tester.view.physicalSize = const Size(471, 1020);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(const GgenApp());
+        await tester.pumpAndSettle();
+
+        // Full -> hide leaves NOTHING behind (device feedback: a hidden
+        // toolbar must not keep a 40px strip).
+        expect(find.byTooltip('Hide canvas toolbar'), findsOneWidget);
+        expect(find.byTooltip('Undo'), findsOneWidget);
+        await tester.tap(find.byTooltip('Hide canvas toolbar'));
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Hide canvas toolbar'), findsNothing);
+        expect(find.byTooltip('Undo'), findsNothing);
+
+        // Restore through the More menu (Canvas toolbar action).
+        await tester.tap(find.byTooltip('More actions'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+        find.widgetWithText(ListTile, 'Canvas toolbar'),
+      );
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Hide canvas toolbar'), findsOneWidget);
+
+        // Full -> mini leaves only the essentials.
+        await tester.tap(find.byTooltip('Mini canvas toolbar'));
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Expand canvas toolbar'), findsOneWidget);
+        expect(find.byTooltip('Mini canvas toolbar'), findsNothing);
+        expect(find.byTooltip('Zoom in'), findsOneWidget);
+        expect(find.byTooltip('Show layers'), findsNothing);
+
+        // Mini -> back to full.
+        await tester.tap(find.byTooltip('Expand canvas toolbar'));
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Mini canvas toolbar'), findsOneWidget);
+      },
+    );
+
+    testWidgets('canvas toolbar docks to the side and logs the change', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(400, 800);
+      tester.view.physicalSize = const Size(471, 1020);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
+      debugLog.clear();
       await tester.pumpWidget(const GgenApp());
       await tester.pumpAndSettle();
 
-      expect(find.byTooltip('Hide canvas toolbar'), findsOneWidget);
-      await tester.tap(find.byTooltip('Hide canvas toolbar'));
+      await tester.tap(find.byTooltip('More actions'));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Show canvas toolbar'), findsOneWidget);
-      expect(find.byTooltip('Hide canvas toolbar'), findsNothing);
+      await tester.tap(find.text('Dock canvas toolbar'));
+      await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Show canvas toolbar'));
-      await tester.pumpAndSettle();
+      expect(
+        debugLog.entries.any(
+          (entry) =>
+              entry.event == 'canvas_toolbar_dock' &&
+              (entry.details['dock'] == 'left'),
+        ),
+        isTrue,
+        reason: 'first Dock action should move the toolbar to the left',
+      );
+      // The vertical toolbar is present (its Hide tooltip exists).
       expect(find.byTooltip('Hide canvas toolbar'), findsOneWidget);
     });
 

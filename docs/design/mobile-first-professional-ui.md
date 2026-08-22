@@ -74,10 +74,20 @@ The shell chrome follows a zero-chrome overlay model on the canvas:
   bounded, fail-closed).
 - **No hidden AppBar actions anywhere** (the wide "dock inspector"
   affordance also lives in More).
-- **Secondary canvas toolbar is collapsible and expandable.** A chevron at
-  the row's end collapses it to a single centered expand handle (40 px);
-  expanding restores the full multi-select / undo-redo / layers / grid /
-  zoom row. The collapsed state persists across launches.
+- **Secondary canvas toolbar is fully configurable.** Three levels: full
+  (multi-select / undo-redo / layers / grid / zoom row), mini (compact
+  essentials strip: undo, redo, zoom +/−, fit, expand) and hidden (NO
+  remnant — the canvas gets the full height, per device feedback "hiding
+  leaves a strip, so what's the point"). Three docks: bottom (floating
+  strip above the navigation bar), left and right (vertical floating
+  strip over the canvas edge, below the top bar). The strip is
+  transparent (each button carries its own translucent circular
+  background), the level and dock persist across launches, and the
+  level is also reachable from the More menu ("Canvas toolbar" toggles
+  hidden/full, "Dock canvas toolbar" cycles bottom → left → right).
+  The bottom navigation bar stays fixed in normal mode; in fullscreen
+  every bar is hidden except the top bar, whose actions are all
+  hideable and rearrangeable from More.
 - **Bottom navigation is tools-only.** Select / Draw / Text remain; the
   Settings tab moved into More (either behind the menu or pinned out to the
   bar by the user).

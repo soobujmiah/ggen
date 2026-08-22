@@ -160,7 +160,8 @@ class _StudioShellState extends State<StudioShell> {
   bool _showLayers = false;
   bool _multiSelect = false;
   bool _showGrid = true;
-  bool _secondaryToolbarCollapsed = false;
+  String _toolbarMode = 'full'; // 'full' | 'mini' | 'hidden'
+  String _toolbarDock = 'bottom'; // 'bottom' | 'left' | 'right'
   List<EditorTopAction> _topActionOrder = List<EditorTopAction>.of(
     EditorTopAction.values,
   );
@@ -409,7 +410,10 @@ class _StudioShellState extends State<StudioShell> {
       _inspectorDock = prefs.inspectorDock == 'left'
           ? InspectorDock.left
           : InspectorDock.right;
-      _secondaryToolbarCollapsed = prefs.secondaryToolbarCollapsed;
+      final mode = prefs.secondaryToolbarMode;
+      final dock = prefs.secondaryToolbarDock;
+      _toolbarMode = (mode == 'mini' || mode == 'hidden') ? mode : 'full';
+      _toolbarDock = (dock == 'left' || dock == 'right') ? dock : 'bottom';
       _topActionOrder = _sanitizeActionOrder(prefs.topActionOrder);
       _topActionPinned = _sanitizePinned(prefs.topActionPinned);
     });
@@ -417,7 +421,8 @@ class _StudioShellState extends State<StudioShell> {
       'inspector_visible': _showInspector,
       'canvas_first': _canvasFirst,
       'inspector_dock': _inspectorDock.name,
-      'secondary_toolbar_collapsed': _secondaryToolbarCollapsed,
+      'canvas_toolbar_mode': _toolbarMode,
+      'canvas_toolbar_dock': _toolbarDock,
       'top_action_pinned': _topActionPinned.length,
     });
   }
@@ -462,7 +467,8 @@ class _StudioShellState extends State<StudioShell> {
     inspectorVisible: _showInspector,
     canvasFirst: _canvasFirst,
     inspectorDock: _inspectorDock.name,
-    secondaryToolbarCollapsed: _secondaryToolbarCollapsed,
+    secondaryToolbarMode: _toolbarMode,
+    secondaryToolbarDock: _toolbarDock,
     topActionOrder: <String>[for (final a in _topActionOrder) a.name],
     topActionPinned: <String>[
       for (final a in _topActionOrder)
@@ -555,6 +561,10 @@ class _StudioShellState extends State<StudioShell> {
           'Inspector dock changed',
           {'dock': _inspectorDock.name},
         );
+      case EditorTopAction.canvasToolbar:
+        _setToolbarMode(_toolbarMode == 'hidden' ? 'full' : 'hidden');
+      case EditorTopAction.dockToolbar:
+        _cycleToolbarDock();
     }
   }
 
@@ -688,13 +698,32 @@ class _StudioShellState extends State<StudioShell> {
     );
   }
 
-  void _toggleSecondaryToolbar() {
-    setState(() => _secondaryToolbarCollapsed = !_secondaryToolbarCollapsed);
+  void _setToolbarMode(String mode) {
+    setState(() => _toolbarMode = mode);
     debugLog.info(
       'canvas_toolbar_toggle',
-      _secondaryToolbarCollapsed
-          ? 'Canvas toolbar collapsed'
+      _toolbarMode == 'hidden'
+          ? 'Canvas toolbar hidden'
+          : _toolbarMode == 'mini'
+          ? 'Canvas toolbar mini'
           : 'Canvas toolbar expanded',
+      {'mode': _toolbarMode, 'dock': _toolbarDock},
+    );
+    unawaited(_persistWorkspace());
+  }
+
+  void _cycleToolbarDock() {
+    setState(() {
+      _toolbarDock = switch (_toolbarDock) {
+        'left' => 'right',
+        'right' => 'bottom',
+        _ => 'left',
+      };
+    });
+    debugLog.info(
+      'canvas_toolbar_dock',
+      'Canvas toolbar docked ${_toolbarDock == 'bottom' ? 'to the bottom' : _toolbarDock == 'left' ? 'to the left' : 'to the right'}',
+      {'dock': _toolbarDock},
     );
     unawaited(_persistWorkspace());
   }
@@ -819,7 +848,8 @@ class _StudioShellState extends State<StudioShell> {
         canvasFirst: _canvasFirst,
         inspectorDock: _inspectorDock.name,
         lastProjectKey: receipt.key.value,
-        secondaryToolbarCollapsed: _secondaryToolbarCollapsed,
+        secondaryToolbarMode: _toolbarMode,
+        secondaryToolbarDock: _toolbarDock,
         topActionOrder: <String>[for (final a in _topActionOrder) a.name],
         topActionPinned: <String>[
           for (final a in _topActionOrder)
@@ -873,11 +903,13 @@ class _StudioShellState extends State<StudioShell> {
                     )
                   : const SizedBox.shrink();
               return SafeArea(
-                // In immersive mode the app bar is gone so the body starts
-                // at the screen top; keep the canvas below the status bar
-                // (and above the gesture bar) whenever system bars remain
-                // visible.
-                top: _immersive,
+                // The canvas must NEVER draw under the status bar in normal
+                // mode (device feedback: the canvas and zoomed content slid
+                // under the status bar). Top inset is therefore always
+                // consumed here; in immersive the system bars are hidden so
+                // the inset is 0 and the canvas still reaches the true
+                // screen top.
+                top: true,
                 bottom: _immersive,
                 left: false,
                 right: false,
@@ -1049,6 +1081,42 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                       ),
                     ),
+                  // Side-docked secondary canvas toolbar (left/right),
+                  // floating over the canvas below the top bar.
+                  if (!_immersive &&
+                      _toolbarDock != 'bottom' &&
+                      _toolbarMode != 'hidden')
+                    Positioned(
+                      left: _toolbarDock == 'left' ? 6 : null,
+                      right: _toolbarDock == 'right' ? 6 : null,
+                      top: 64,
+                      child: _SecondaryCanvasToolbar(
+                        controller: _studio,
+                        zoomController: _zoomController,
+                        showLayers: _showLayers,
+                        multiSelect: _multiSelect,
+                        gridVisible: _showGrid,
+                        vertical: true,
+                        mini: _toolbarMode == 'mini',
+                        onExpand: () => _setToolbarMode('full'),
+                        onMini: () => _setToolbarMode('mini'),
+                        onHide: () => _setToolbarMode('hidden'),
+                        onToggleGrid: _toggleGrid,
+                        onToggleMultiSelect: () {
+                          setState(() => _multiSelect = !_multiSelect);
+                          debugLog.info(
+                            'multi_select_toggle',
+                            _multiSelect
+                                ? 'Multi-select enabled'
+                                : 'Multi-select disabled',
+                          );
+                        },
+                        onToggleLayers: () {
+                          _showLayersSheet();
+                          debugLog.info('layers_toggle', 'Layers via toolbar');
+                        },
+                      ),
+                    ),
                 ],
                 ),
               );
@@ -1063,15 +1131,21 @@ class _StudioShellState extends State<StudioShell> {
                       return Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Secondary toolbar — multi-select, undo/redo, layers, zoom same 40×40, equal distance, above holding bar
+                          // Secondary canvas toolbar — only when docked to
+                          // the bottom and not hidden (device feedback: a
+                          // hidden toolbar must leave no remnant).
+                          if (_toolbarDock == 'bottom' && _toolbarMode != 'hidden')
                           _SecondaryCanvasToolbar(
                             controller: _studio,
                             zoomController: _zoomController,
                             showLayers: _showLayers,
                             multiSelect: _multiSelect,
                             gridVisible: _showGrid,
-                            collapsed: _secondaryToolbarCollapsed,
-                            onToggleCollapsed: _toggleSecondaryToolbar,
+                            vertical: false,
+                            mini: _toolbarMode == 'mini',
+                            onExpand: () => _setToolbarMode('full'),
+                            onMini: () => _setToolbarMode('mini'),
+                            onHide: () => _setToolbarMode('hidden'),
                             onToggleGrid: _toggleGrid,
                             onToggleMultiSelect: () {
                               setState(() => _multiSelect = !_multiSelect);
@@ -1257,7 +1331,7 @@ class CanvasArea extends StatelessWidget {
         // Project name — no hazy bar per device feedback (was black 0.45 scrim).
         // Now a clean text with shadow for legibility, no container bar.
         Positioned(
-          top: topBar == null ? 12 : 56,
+          top: topBar == null ? 12 : 62,
           left: 12,
           right: 96,
           child: IgnorePointer(
@@ -1639,8 +1713,11 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
     required this.showLayers,
     required this.multiSelect,
     required this.gridVisible,
-    required this.collapsed,
-    required this.onToggleCollapsed,
+    required this.vertical,
+    required this.mini,
+    required this.onExpand,
+    required this.onMini,
+    required this.onHide,
     required this.onToggleGrid,
     required this.onToggleMultiSelect,
     required this.onToggleLayers,
@@ -1653,13 +1730,40 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
   final bool multiSelect;
   final bool gridVisible;
 
-  /// When true only the expand handle is shown (the toolbar is collapsible
-  /// and expandable — device feedback).
-  final bool collapsed;
-  final VoidCallback onToggleCollapsed;
+  /// Docked along the canvas edge (left/right) instead of the bottom row.
+  final bool vertical;
+
+  /// Compact essentials strip (undo/redo, zoom +/−, fit, expand chevron).
+  final bool mini;
+
+  final VoidCallback onExpand;
+  final VoidCallback onMini;
+  final VoidCallback onHide;
   final VoidCallback onToggleGrid;
   final VoidCallback onToggleMultiSelect;
   final VoidCallback onToggleLayers;
+
+  /// Renders one toolbar control as a translucent circular icon button so
+  /// the strip can be fully transparent over the canvas and still legible.
+  Widget _tool(BuildContext context, IconData icon, String tooltip,
+      VoidCallback? onPressed,
+      {bool selected = false}) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      isSelected: selected,
+      icon: Icon(icon, size: 20),
+      style: IconButton.styleFrom(
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        minimumSize: const Size(40, 40),
+        backgroundColor: selected
+            ? Theme.of(context).colorScheme.primaryContainer
+            : Colors.black.withValues(alpha: 0.32),
+        foregroundColor: Colors.white,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1668,163 +1772,169 @@ class _SecondaryCanvasToolbar extends StatelessWidget {
       builder: (context, _) {
         final canUndo = controller.canUndo;
         final canRedo = controller.canRedo;
-        final buttons = <Widget>[
-          // Multi-select toggle — Select-tool taps extend the selection
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: IconButton(
-              tooltip: multiSelect ? 'Multi-select on' : 'Multi-select off',
-              onPressed: onToggleMultiSelect,
-              isSelected: multiSelect,
-              icon: Icon(
-                multiSelect ? Icons.done_all : Icons.done_all_outlined,
-                size: 20,
-              ),
-              style: IconButton.styleFrom(
-                padding: EdgeInsets.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                backgroundColor: multiSelect
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : null,
-              ),
+
+        Widget sep() => vertical
+            ? Container(width: 24, height: 1, color: Colors.white24)
+            : Container(width: 1, height: 24, color: Colors.white24);
+
+        final List<Widget> buttons;
+        if (mini) {
+          // Mini level: only the essentials that keep editing responsive.
+          buttons = <Widget>[
+            _tool(context,
+              Icons.undo,
+              'Undo',
+              canUndo
+                  ? () {
+                      controller.undo();
+                      debugLog.info('history_undo', 'Undo via toolbar');
+                    }
+                  : null,
             ),
-          ),
-          // Grid overlay — pairs with Ctrl-snap; same 40×40 style
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: IconButton(
-              tooltip: gridVisible ? 'Hide grid' : 'Show grid',
-              onPressed: onToggleGrid,
-              isSelected: gridVisible,
-              icon: const Icon(Icons.grid_4x4, size: 20),
-              style: IconButton.styleFrom(
-                padding: EdgeInsets.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                backgroundColor: gridVisible
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : null,
-              ),
+            _tool(context,
+              Icons.redo,
+              'Redo',
+              canRedo
+                  ? () {
+                      controller.redo();
+                      debugLog.info('history_redo', 'Redo via toolbar');
+                    }
+                  : null,
             ),
-          ),
-          Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
-          // Undo / Redo — same 40×40 size, equal spacing
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: IconButton(
-              tooltip: 'Undo',
-              onPressed: canUndo ? () { controller.undo(); debugLog.info('history_undo', 'Undo via toolbar'); } : null,
-              icon: const Icon(Icons.undo, size: 20),
-              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            sep(),
+            _tool(context,
+              Icons.remove,
+              'Zoom out',
+              () {
+                zoomController.zoomOut();
+                debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar');
+              },
             ),
-          ),
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: IconButton(
-              tooltip: 'Redo',
-              onPressed: canRedo ? () { controller.redo(); debugLog.info('history_redo', 'Redo via toolbar'); } : null,
-              icon: const Icon(Icons.redo, size: 20),
-              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            _tool(context,
+              Icons.add,
+              'Zoom in',
+              () {
+                zoomController.zoomIn();
+                debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar');
+              },
             ),
-          ),
-          Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
-          // Layers — same size
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: IconButton(
-              tooltip: showLayers ? 'Hide layers' : 'Show layers',
-              onPressed: onToggleLayers,
-              icon: Icon(showLayers ? Icons.layers_clear_outlined : Icons.layers_outlined, size: 20),
-              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            _tool(context,
+              Icons.fit_screen_outlined,
+              'Fit to screen',
+              () {
+                zoomController.fitToScreen();
+                debugLog.info('toolbar_zoom_fit', 'Fit via toolbar');
+              },
             ),
-          ),
-          Container(width: 1, height: 24, color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
-          // Zoom — same 40 size, equal spacing, above holding bar per device feedback
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: IconButton(
-              tooltip: 'Zoom out',
-              onPressed: () { zoomController.zoomOut(); debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar'); },
-              icon: const Icon(Icons.remove, size: 20),
-              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            // Expand back to the full toolbar.
+            _tool(context,
+              vertical ? Icons.chevron_left : Icons.keyboard_arrow_up,
+              'Expand canvas toolbar',
+              onExpand,
             ),
-          ),
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: IconButton(
-              tooltip: 'Zoom in',
-              onPressed: () { zoomController.zoomIn(); debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar'); },
-              icon: const Icon(Icons.add, size: 20),
-              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          ];
+        } else {
+          buttons = <Widget>[
+            _tool(context,
+              multiSelect ? Icons.done_all : Icons.done_all_outlined,
+              multiSelect ? 'Multi-select on' : 'Multi-select off',
+              onToggleMultiSelect,
+              selected: multiSelect,
             ),
-          ),
-          SizedBox(
-            width: 40,
-            height: 40,
-            child: IconButton(
-              tooltip: 'Fit to screen',
-              onPressed: () { zoomController.fitToScreen(); debugLog.info('toolbar_zoom_fit', 'Fit via toolbar'); },
-              icon: const Icon(Icons.fit_screen_outlined, size: 20),
-              style: IconButton.styleFrom(padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            _tool(context,
+              Icons.undo,
+              'Undo',
+              canUndo
+                  ? () {
+                      controller.undo();
+                      debugLog.info('history_undo', 'Undo via toolbar');
+                    }
+                  : null,
             ),
-          ),
-        ];
-        if (collapsed) {
-          return Container(
-            height: 40,
-            color: Theme.of(context).colorScheme.surfaceContainer,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: 'Show canvas toolbar',
-                  onPressed: onToggleCollapsed,
-                  icon: const Icon(Icons.keyboard_arrow_up),
-                  iconSize: 20,
-                ),
-              ],
+            _tool(context,
+              Icons.redo,
+              'Redo',
+              canRedo
+                  ? () {
+                      controller.redo();
+                      debugLog.info('history_redo', 'Redo via toolbar');
+                    }
+                  : null,
             ),
-          );
+            sep(),
+            _tool(context,
+              showLayers ? Icons.layers_clear_outlined : Icons.layers_outlined,
+              showLayers ? 'Hide layers' : 'Show layers',
+              onToggleLayers,
+              selected: showLayers,
+            ),
+            sep(),
+            _tool(context,
+              Icons.remove,
+              'Zoom out',
+              () {
+                zoomController.zoomOut();
+                debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar');
+              },
+            ),
+            _tool(context,
+              Icons.add,
+              'Zoom in',
+              () {
+                zoomController.zoomIn();
+                debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar');
+              },
+            ),
+            _tool(context,
+              Icons.fit_screen_outlined,
+              'Fit to screen',
+              () {
+                zoomController.fitToScreen();
+                debugLog.info('toolbar_zoom_fit', 'Fit via toolbar');
+              },
+            ),
+            _tool(context,
+              Icons.grid_4x4,
+              gridVisible ? 'Hide grid' : 'Show grid',
+              onToggleGrid,
+              selected: gridVisible,
+            ),
+            // Mini level (compress) then fully hide (chevron) — no remnant.
+            _tool(context,
+              Icons.compress,
+              'Mini canvas toolbar',
+              onMini,
+            ),
+            _tool(context,
+              vertical ? Icons.close : Icons.keyboard_arrow_down,
+              'Hide canvas toolbar',
+              onHide,
+            ),
+          ];
         }
-        final expandedButtons = <Widget>[
-          ...buttons,
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: 'Hide canvas toolbar',
-            onPressed: onToggleCollapsed,
-            icon: const Icon(Icons.keyboard_arrow_down),
-            iconSize: 20,
-          ),
-        ];
+
+        final content = vertical
+            ? Column(mainAxisSize: MainAxisSize.min, children: buttons)
+            : Row(mainAxisSize: MainAxisSize.min, children: buttons);
+
         return Container(
-          height: 48,
-          color: Theme.of(context).colorScheme.surfaceContainer,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          // At degenerate/very narrow widths (e.g. the 200px test viewport)
-          // the fixed 40×40 buttons would overflow; keep the toolbar
-          // scrollable there while preserving the even-spaced layout at
-          // real widths.
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              const contentWidth = 40 * 9 + 3 + 16.0; // 9 buttons + 3 dividers + padding
-              if (constraints.maxWidth >= contentWidth) {
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: expandedButtons,
-                );
-              }
-              return SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: expandedButtons),
-              );
-            },
+          margin: EdgeInsets.only(left: vertical ? 0 : 8, right: vertical ? 0 : 8, bottom: vertical ? 0 : 4),
+          decoration: BoxDecoration(
+            // Transparent strip: buttons carry their own translucent
+            // backgrounds, so only the controls are visible over the canvas.
+            color: Colors.black.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(vertical ? 22 : 24),
           ),
+          padding: EdgeInsets.symmetric(
+            horizontal: vertical ? 3 : 4,
+            vertical: vertical ? 4 : 3,
+          ),
+          child: vertical
+              ? content
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: content,
+                ),
         );
       },
     );
@@ -1971,7 +2081,9 @@ enum EditorTopAction {
   diagnostics('Diagnostics export', Icons.bug_report_outlined),
   settings('Settings', Icons.tune),
   immersive('Immersive canvas', Icons.fullscreen),
-  dockInspector('Dock inspector', Icons.vertical_split_outlined);
+  dockInspector('Dock inspector', Icons.vertical_split_outlined),
+  canvasToolbar('Canvas toolbar', Icons.view_sidebar_outlined),
+  dockToolbar('Dock canvas toolbar', Icons.swap_horiz_outlined);
 
   const EditorTopAction(this.label, this.icon);
 
@@ -2003,9 +2115,7 @@ class _TopActionBar extends StatelessWidget {
       Shadow(blurRadius: 6, color: Colors.black87),
       Shadow(blurRadius: 12, color: Colors.black45),
     ];
-    return SafeArea(
-      bottom: false,
-      child: Padding(
+    return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Row(
           children: [
@@ -2036,7 +2146,6 @@ class _TopActionBar extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }
