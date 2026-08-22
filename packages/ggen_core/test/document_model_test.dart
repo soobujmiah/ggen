@@ -66,4 +66,70 @@ void main() {
       throwsArgumentError,
     );
   });
+
+  test('group references are validated fail-closed', () {
+    DocumentNode shape(String id) =>
+        DocumentNode(id: GgenId(id), kind: DocumentNodeKind.shape, name: id);
+    Artboard artboard(List<DocumentNode> nodes) => Artboard(
+      id: GgenId('artboard-1'),
+      name: 'A',
+      width: 800,
+      height: 600,
+      nodes: nodes,
+    );
+    DocumentNode group(List<String> children) => DocumentNode(
+      id: GgenId('group.1'),
+      kind: DocumentNodeKind.group,
+      name: 'G',
+      extensions: <String, Object?>{'children': children},
+    );
+
+    expect(
+      () => artboard(<DocumentNode>[
+        shape('node.1'),
+        shape('node.2'),
+        group(<String>['node.1', 'node.2']),
+      ]),
+      returnsNormally,
+    );
+
+    // Missing child reference fails.
+    expect(
+      () => artboard(<DocumentNode>[
+        shape('node.1'),
+        group(<String>['node.1', 'node.2']),
+      ]),
+      throwsArgumentError,
+    );
+
+    // Duplicate child id fails.
+    expect(
+      () => artboard(<DocumentNode>[
+        shape('node.1'),
+        group(<String>['node.1', 'node.1']),
+      ]),
+      throwsArgumentError,
+    );
+
+    // Empty children list fails.
+    expect(
+      () => artboard(<DocumentNode>[shape('node.1'), group(<String>[])]),
+      throwsArgumentError,
+    );
+
+    // Non-group nodes must not carry children.
+    expect(
+      () => artboard(<DocumentNode>[
+        DocumentNode(
+          id: GgenId('node.1'),
+          kind: DocumentNodeKind.shape,
+          name: 'S',
+          extensions: <String, Object?>{
+            'children': <String>['node.1'],
+          },
+        ),
+      ]),
+      throwsArgumentError,
+    );
+  });
 }

@@ -92,6 +92,7 @@ final class Artboard {
     _validateDimension(width, 'width');
     _validateDimension(height, 'height');
     _requireUniqueIds(nodes.map((DocumentNode node) => node.id), 'node');
+    _validateGroupReferences(nodes);
   }
 
   final GgenId id;
@@ -99,6 +100,50 @@ final class Artboard {
   final double width;
   final double height;
   final List<DocumentNode> nodes;
+
+  /// Group nodes are organizational containers: they hold the ids of other
+  /// nodes in the SAME artboard (single-level, no nesting) while the child
+  /// nodes remain first-class nodes in [nodes] themselves. This validation
+  /// keeps a project from ever carrying a dangling, duplicate or nested
+  /// membership reference; malformed group payloads fail closed at
+  /// construction time (and therefore also on decode).
+  static void _validateGroupReferences(List<DocumentNode> nodes) {
+    final ids = <GgenId>{for (final node in nodes) node.id};
+    for (final node in nodes) {
+      if (node.kind == DocumentNodeKind.group) {
+        final raw = node.extensions['children'];
+        if (raw is! List || raw.isEmpty) {
+          throw ArgumentError(
+            'Group node "${node.id}" must declare a non-empty '
+            '"children" list.',
+          );
+        }
+        final seen = <GgenId>{};
+        for (final entry in raw) {
+          if (entry is! String) {
+            throw ArgumentError(
+              'Group node "${node.id}" children must be node id strings.',
+            );
+          }
+          final childId = GgenId(entry);
+          if (!seen.add(childId)) {
+            throw ArgumentError(
+              'Group node "${node.id}" lists duplicate child "$childId".',
+            );
+          }
+          if (!ids.contains(childId)) {
+            throw ArgumentError(
+              'Group node "${node.id}" references missing child "$childId".',
+            );
+          }
+        }
+      } else if (node.extensions.containsKey('children')) {
+        throw ArgumentError(
+          'Non-group node "${node.id}" must not declare "children".',
+        );
+      }
+    }
+  }
 
   static void _validateDimension(double value, String label) {
     if (!value.isFinite || value <= 0 || value > 1000000) {

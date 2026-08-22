@@ -61,6 +61,7 @@ class StudioController extends ChangeNotifier {
   Future<void> _journalTail = Future<void>.value();
   int _shapeCount = 0;
   int _textCount = 0;
+  int _groupCount = 0;
   ProjectStoreReceipt? _lastReceipt;
 
   DocumentProject get project => _history.current;
@@ -157,7 +158,9 @@ class StudioController extends ChangeNotifier {
     final artboards = project.artboards;
     if (artboards.isEmpty) return false;
     final artboard = artboards.first;
-    final wanted = nodeIds.toSet();
+    // Moving a group moves its members too (they stay in the artboard
+    // list, so the same delta applies to each child node).
+    final wanted = _effectiveNodeSet(nodeIds, artboard.nodes);
 
     var movedAny = false;
     final nextNodes = <DocumentNode>[];
@@ -223,38 +226,101 @@ class StudioController extends ChangeNotifier {
 
   /// Toggles the visibility of [nodeId] in the first artboard through one
   /// undoable tool session. Returns false when the node is not found.
+  ///
+  /// When [nodeId] is a group, the group and every member node flip
+  /// together in the SAME undoable step (one revision).
   bool toggleNodeVisibility(GgenId nodeId) {
-    final result = _replaceNode(
-      nodeId,
-      (node) => DocumentNode(
-        id: node.id,
-        kind: node.kind,
-        name: node.name,
-        visible: !node.visible,
-        locked: node.locked,
-        opacity: node.opacity,
-        extensions: node.extensions,
-      ),
-      'Toggle visibility of ',
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
+    if (nodeIndex < 0) return false;
+    final node = artboard.nodes[nodeIndex];
+    if (!isGroupNode(node)) {
+      return _replaceNode(
+        nodeId,
+        (n) => DocumentNode(
+          id: n.id,
+          kind: n.kind,
+          name: n.name,
+          visible: !n.visible,
+          locked: n.locked,
+          opacity: n.opacity,
+          extensions: n.extensions,
+        ),
+        'Toggle visibility of ',
+      );
+    }
+    final effective = _effectiveNodeSet(<GgenId>[nodeId], artboard.nodes);
+    final nextVisible = !node.visible;
+    final nextNodes = <DocumentNode>[
+      for (final n in artboard.nodes)
+        effective.contains(n.id)
+            ? DocumentNode(
+                id: n.id,
+                kind: n.kind,
+                name: n.name,
+                visible: nextVisible,
+                locked: n.locked,
+                opacity: n.opacity,
+                extensions: n.extensions,
+              )
+            : n,
+    ];
+    return _commitNodeList(
+      artboard,
+      nextNodes,
+      'Toggle visibility of ${node.name}',
     );
-    return result;
   }
 
   /// Toggles the lock state of [nodeId] in the first artboard through one
   /// undoable tool session. Returns false when the node is not found.
+  ///
+  /// When [nodeId] is a group, the group and every member node flip
+  /// together in the SAME undoable step (one revision).
   bool toggleNodeLock(GgenId nodeId) {
-    return _replaceNode(
-      nodeId,
-      (node) => DocumentNode(
-        id: node.id,
-        kind: node.kind,
-        name: node.name,
-        visible: node.visible,
-        locked: !node.locked,
-        opacity: node.opacity,
-        extensions: node.extensions,
-      ),
-      'Toggle lock of ',
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
+    if (nodeIndex < 0) return false;
+    final node = artboard.nodes[nodeIndex];
+    if (!isGroupNode(node)) {
+      return _replaceNode(
+        nodeId,
+        (n) => DocumentNode(
+          id: n.id,
+          kind: n.kind,
+          name: n.name,
+          visible: n.visible,
+          locked: !n.locked,
+          opacity: n.opacity,
+          extensions: n.extensions,
+        ),
+        'Toggle lock of ',
+      );
+    }
+    final effective = _effectiveNodeSet(<GgenId>[nodeId], artboard.nodes);
+    final nextLocked = !node.locked;
+    final nextNodes = <DocumentNode>[
+      for (final n in artboard.nodes)
+        effective.contains(n.id)
+            ? DocumentNode(
+                id: n.id,
+                kind: n.kind,
+                name: n.name,
+                visible: n.visible,
+                locked: nextLocked,
+                opacity: n.opacity,
+                extensions: n.extensions,
+              )
+            : n,
+    ];
+    return _commitNodeList(
+      artboard,
+      nextNodes,
+      'Toggle lock of ${node.name}',
     );
   }
 
@@ -370,13 +436,31 @@ class StudioController extends ChangeNotifier {
     final artboards = project.artboards;
     if (artboards.isEmpty) return false;
     final artboard = artboards.first;
-    final wanted = nodeIds.toSet();
+    // Deleting a group deletes its members too; deleting a member directly
+    // removes it from its group's membership (a group that loses every
+    // member dissolves).
+    final wanted = _effectiveNodeSet(nodeIds, artboard.nodes);
 
-    final nextNodes = <DocumentNode>[
-      for (final node in artboard.nodes)
-        if (!wanted.contains(node.id)) node,
-    ];
-    if (nextNodes.length == artboard.nodes.length) return false;
+    var changed = false;
+    final nextNodes = <DocumentNode>[];
+    for (final node in artboard.nodes) {
+      if (wanted.contains(node.id)) {
+        changed = true;
+        continue;
+      }
+      if (isGroupNode(node)) {
+        final updated = _groupWithPrunedMembers(node, wanted);
+        if (updated == null) {
+          changed = true; // Every member was deleted: the group dissolves.
+          continue;
+        }
+        if (!identical(updated, node)) changed = true;
+        nextNodes.add(updated);
+      } else {
+        nextNodes.add(node);
+      }
+    }
+    if (!changed) return false;
 
     final nextArtboards = <Artboard>[
       Artboard(
@@ -401,6 +485,158 @@ class StudioController extends ChangeNotifier {
     if (_orderedSelection.length != selectionBefore) {
       notifyListeners();
     }
+    return true;
+  }
+
+  // ── Layer groups ──────────────────────────────────────────────────────
+
+  /// Creates a group containing [nodeIds] as members through ONE undoable
+  /// tool session. Members stay first-class nodes (geometry, z-order and
+  /// canvas rendering are untouched); the group node is appended at the top
+  /// of the artboard and carries the member ids in its `children`
+  /// extension. Grouping is single-level: members cannot be groups or
+  /// members of an existing group, and every id must exist in the first
+  /// artboard.
+  ///
+  /// Returns false when the inputs are not groupable; on success the
+  /// selection becomes exactly the new group.
+  bool createGroup(List<GgenId> nodeIds, {String? name}) {
+    if (nodeIds.length < 2) return false;
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final nodes = artboard.nodes;
+    final wanted = nodeIds.toSet();
+    if (wanted.length != nodeIds.length) return false; // Duplicate ids.
+    for (final id in wanted) {
+      if (nodes.every((n) => n.id != id)) return false; // Unknown node.
+    }
+    for (final node in nodes) {
+      if (wanted.contains(node.id)) {
+        if (isGroupNode(node)) return false; // No nested groups.
+      } else {
+        final members = groupChildIds(node);
+        if (members != null && members.any(wanted.contains)) {
+          return false; // Already a member of another group.
+        }
+      }
+    }
+
+    _groupCount++;
+    final trimmedName = name?.trim();
+    final groupName = (trimmedName == null || trimmedName.isEmpty)
+        ? 'Group $_groupCount'
+        : trimmedName;
+    final childValues = <String>[
+      for (final node in nodes)
+        if (wanted.contains(node.id)) node.id.value,
+    ];
+    final group = DocumentNode(
+      id: GgenId('group-$_groupCount'),
+      kind: DocumentNodeKind.group,
+      name: groupName,
+      extensions: <String, Object?>{'children': childValues},
+    );
+    final nextNodes = <DocumentNode>[...nodes, group];
+    _commitNodeList(artboard, nextNodes, 'Group ${nodeIds.length} nodes');
+    _orderedSelection
+      ..clear()
+      ..add(group.id);
+    notifyListeners();
+    return true;
+  }
+
+  /// Removes the group node [groupId]; its members stay in the artboard at
+  /// their current positions and z-order. One undoable step; the selection
+  /// becomes the members (ordered as in the group).
+  ///
+  /// Returns false when [groupId] is missing or is not a group.
+  bool ungroup(GgenId groupId) {
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final index = artboard.nodes.indexWhere((n) => n.id == groupId);
+    if (index < 0) return false;
+    final group = artboard.nodes[index];
+    final members = groupChildIds(group);
+    if (members == null) return false;
+
+    final nextNodes = <DocumentNode>[...artboard.nodes]..removeAt(index);
+    final remaining = <GgenId>[
+      for (final id in members)
+        if (nextNodes.any((n) => n.id == id)) id,
+    ];
+    _commitNodeList(artboard, nextNodes, 'Ungroup ${group.name}');
+    _orderedSelection
+      ..clear()
+      ..addAll(remaining);
+    notifyListeners();
+    return true;
+  }
+
+  /// Expands [ids] with the members of every group in the set, so
+  /// operations address the group and its members together.
+  Set<GgenId> _effectiveNodeSet(List<GgenId> ids, List<DocumentNode> nodes) {
+    final result = <GgenId>{...ids};
+    for (final node in nodes) {
+      if (result.contains(node.id)) {
+        final members = groupChildIds(node);
+        if (members != null) result.addAll(members);
+      }
+    }
+    return result;
+  }
+
+  /// Returns [group] unchanged when no member is in [removed]; an updated
+  /// copy with those members pruned when some are; or null when every
+  /// member was removed (the group dissolves and is dropped).
+  DocumentNode? _groupWithPrunedMembers(
+    DocumentNode group,
+    Set<GgenId> removed,
+  ) {
+    final members = groupChildIds(group);
+    if (members == null) return group;
+    final remaining = <String>[
+      for (final id in members)
+        if (!removed.contains(id)) id.value,
+    ];
+    if (remaining.length == members.length) return group;
+    if (remaining.isEmpty) return null;
+    return DocumentNode(
+      id: group.id,
+      kind: group.kind,
+      name: group.name,
+      visible: group.visible,
+      locked: group.locked,
+      opacity: group.opacity,
+      extensions: <String, Object?>{
+        ...group.extensions,
+        'children': remaining,
+      },
+    );
+  }
+
+  /// Commits [nextNodes] as the first artboard's node list through one
+  /// undoable tool session. Returns true when committed (the callers have
+  /// already validated that the change is meaningful).
+  bool _commitNodeList(
+    Artboard artboard,
+    List<DocumentNode> nextNodes,
+    String description,
+  ) {
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: nextNodes,
+      ),
+      ...project.artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, description);
     return true;
   }
 
@@ -450,6 +686,7 @@ class StudioController extends ChangeNotifier {
     );
     _shapeCount = 0;
     _textCount = 0;
+    _groupCount = 0;
     _orderedSelection.clear();
     _clearSerialized();
     _lastReceipt = null;
@@ -757,4 +994,30 @@ class StudioController extends ChangeNotifier {
     _lastSerialized = '';
     _lastSerializedBytes = 0;
   }
+}
+
+/// Whether [node] is a group node (an organizational container whose
+/// members stay first-class nodes in the artboard).
+bool isGroupNode(DocumentNode node) => node.kind == DocumentNodeKind.group;
+
+/// Returns the member ids of a group node in artboard (z-)order, or null
+/// when [node] is not a group or its `children` payload is malformed.
+/// Presentation code must treat null as "not a valid group" (fail closed);
+/// core construction validates the payload, so null here only appears for
+/// data that predates the group milestone or external sources.
+List<GgenId>? groupChildIds(DocumentNode node) {
+  if (!isGroupNode(node)) return null;
+  final raw = node.extensions['children'];
+  if (raw is! List || raw.isEmpty) return null;
+  final ids = <GgenId>[];
+  for (final entry in raw) {
+    if (entry is! String) return null;
+    try {
+      ids.add(GgenId(entry));
+    } on ArgumentError {
+      return null;
+    }
+  }
+  if (ids.toSet().length != ids.length) return null;
+  return ids;
 }
