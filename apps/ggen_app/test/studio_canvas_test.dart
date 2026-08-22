@@ -230,16 +230,14 @@ void main() {
     );
     expect(white, findsOneWidget);
     final rect = tester.getRect(white);
-    // scale = 471/1080? No: the ARTBOARD is 1080x1920 after the portrait
-    // default change, but the controller under test is StudioController()
-    // whose artboard is 1080x1920 — fit scale = 471/1080 = 0.4361,
-    // artboard screen size 471x837.5, centered: x=0, y=(803-837.5)/2 < 0
-    // (it overflows the canvas vertically and is cropped by the clip).
-    // The important property: the limiting axis spans the full viewport.
-    expect(rect.width, closeTo(471, 1.0));
-    expect(rect.left, closeTo(0, 1.0));
-    expect(rect.height, closeTo((1920 / 1080) * 471, 1.0));
-    expect(rect.top, lessThan(0));
+    // Portrait artboard 1080x1920 in the 471x803 viewport: height is the
+    // limiting axis (803/1920 = 0.41823 < 471/1080), so the artboard spans
+    // the full canvas height and is centered horizontally with equal side
+    // gaps (fit margin 0).
+    expect(rect.height, closeTo(803, 1.0));
+    expect(rect.top, closeTo(0, 1.0));
+    expect(rect.width, closeTo((1080 / 1920) * 803, 1.0));
+    expect(rect.left, closeTo((471 - rect.width) / 2, 1.0));
   });
 
   testWidgets('multiSelectMode makes Select taps additive', (tester) async {

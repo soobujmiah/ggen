@@ -88,7 +88,9 @@ void main() {
     await tester.pumpWidget(const GgenApp());
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(find.text('Inspector'), findsOneWidget);
-    await tester.tap(find.byTooltip('Dock inspector left or right'));
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dock inspector'));
     await tester.pumpAndSettle();
     expect(find.text('Inspector'), findsOneWidget);
   });
@@ -167,7 +169,9 @@ void main() {
     await tester.pumpWidget(GgenApp(controller: controller));
     expect(find.textContaining('1 object'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('New project'));
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New project'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Brand Studio');
     await tester.tap(find.text('Create'));
@@ -462,8 +466,11 @@ void main() {
         // documents directory (not just an in-memory map). Trigger the save
         // and let the real async file write complete inside runAsync, then
         // settle the UI (snackbar).
+        await tester.tap(find.byTooltip('More actions'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Save project'));
+        await tester.pumpAndSettle();
         await tester.runAsync(() async {
-          await tester.tap(find.byTooltip('Save project'));
           await Future<void>.delayed(const Duration(milliseconds: 500));
         });
         await tester.pumpAndSettle();
