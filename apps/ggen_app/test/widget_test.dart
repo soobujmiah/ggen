@@ -468,11 +468,13 @@ void main() {
         // settle the UI (snackbar).
         await tester.tap(find.byTooltip('More actions'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Save project'));
-        await tester.pumpAndSettle();
+        // The save itself performs real File I/O, so the tap and the write
+        // must run inside runAsync (fake-async never completes file I/O).
         await tester.runAsync(() async {
-          await Future<void>.delayed(const Duration(milliseconds: 500));
+          await tester.tap(find.text('Save project'));
+          await Future<void>.delayed(const Duration(milliseconds: 800));
         });
+        await tester.pumpAndSettle();
         await tester.pumpAndSettle();
 
         final projectsDir = Directory('${documents.path}/projects');

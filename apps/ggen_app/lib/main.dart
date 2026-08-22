@@ -611,6 +611,7 @@ class _StudioShellState extends State<StudioShell> {
               _topActionPinned.add(action);
             }
           });
+          setState(() {}); // shell: the bar must reflect the pin immediately
           debugLog.info(
             pinned ? 'top_action_unpin' : 'top_action_pin',
             pinned ? 'Action hidden from top bar' : 'Action pinned to top bar',
@@ -648,6 +649,7 @@ class _StudioShellState extends State<StudioShell> {
                       _topActionOrder[index - 1] = action;
                       _topActionOrder[index] = prev;
                     });
+                    setState(() {});
                     debugLog.info(
                       'top_action_reorder',
                       'Action moved up',
@@ -671,6 +673,7 @@ class _StudioShellState extends State<StudioShell> {
                       _topActionOrder[index + 1] = action;
                       _topActionOrder[index] = next;
                     });
+                    setState(() {});
                     debugLog.info(
                       'top_action_reorder',
                       'Action moved down',
