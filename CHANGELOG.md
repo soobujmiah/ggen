@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-22 — Device-feedback follow-up: status-bar-safe canvas, configurable canvas toolbar
+
+- **Canvas no longer slides under the status bar in normal mode.** The body applies the top `SafeArea` in BOTH modes (immersive hides the bars so the inset is 0 and fullscreen is untouched); the overlay top bar dropped its internal inset (the canvas already starts below the status bar) and the project-name chip now sits at 62 px with clearance — device feedback: the top-bar buttons overlapped the project name and the zoomed canvas went under the status bar in normal mode.
+- **Secondary canvas toolbar is fully configurable**: levels `full` / `mini` (essentials strip: undo, redo, zoom +/−, fit, expand) / `hidden` (NO remnant — hiding gives the canvas the full height, per "হাইড করে লাভ কি" feedback); docks `bottom` (floating strip above the nav bar), `left` and `right` (vertical floating strip over the canvas edge below the top bar). The strip is transparent (buttons carry translucent circular backgrounds); level and dock persist; More actions 'Canvas toolbar' (hidden ↔ full) and 'Dock canvas toolbar' (cycles bottom → left → right); events `canvas_toolbar_toggle` (with mode/dock details) and `canvas_toolbar_dock`.
+- Bottom navigation stays fixed in normal mode; fullscreen keeps only the top bar (its actions are all hideable and rearrangeable via More) — "ফুল স্ক্রিনে সকল বাটন হাইডেবল ও রিঅ্যাকারেবল".
+- Tests updated/added: toolbar hidden→More restore→mini→expand, side dock event + vertical presence. CI validates on GitHub; on-device re-validation pending (fresh APK).
+
 ## 2026-08-22 — Overlay top bar + More menu, collapsible canvas toolbar, portrait default canvas
 
 UI chrome rework per device feedback; widget tests updated/added (app suite grows); CI validates on GitHub; on-device re-validation pending.

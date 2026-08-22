@@ -9,7 +9,8 @@ class WorkspacePreferences {
     this.canvasFirst = true,
     this.inspectorDock = 'right',
     this.lastProjectKey,
-    this.secondaryToolbarCollapsed = false,
+    this.secondaryToolbarMode = 'full',
+    this.secondaryToolbarDock = 'bottom',
     this.topActionOrder = const <String>[],
     this.topActionPinned = const <String>[],
   });
@@ -22,9 +23,12 @@ class WorkspacePreferences {
   /// the last workspace on startup. Null when nothing was saved yet.
   final String? lastProjectKey;
 
-  /// Whether the secondary canvas toolbar (undo/redo/layers/zoom row above
-  /// the navigation bar) starts collapsed on the next launch.
-  final bool secondaryToolbarCollapsed;
+  /// Secondary canvas toolbar state. [secondaryToolbarMode] is one of
+  /// 'full' (all buttons), 'mini' (compact essentials strip) or 'hidden'
+  /// (no remnant at all); [secondaryToolbarDock] is 'bottom', 'left' or
+  /// 'right'. Unknown values fail closed to 'full'/'bottom' on load.
+  final String secondaryToolbarMode;
+  final String secondaryToolbarDock;
 
   /// Canonical order of the top action-bar actions (the More menu order).
   /// Empty means the built-in default order.
@@ -38,7 +42,8 @@ class WorkspacePreferences {
   static const _canvasFirstKey = 'workspace.canvas_first';
   static const _inspectorDockKey = 'workspace.inspector_dock';
   static const _lastProjectKeyPref = 'workspace.last_project_key';
-  static const _toolbarCollapsedKey = 'workspace.secondary_toolbar_collapsed';
+  static const _toolbarModeKey = 'workspace.secondary_toolbar_mode';
+  static const _toolbarDockKey = 'workspace.secondary_toolbar_dock';
   static const _topActionOrderKey = 'workspace.top_action_order';
   static const _topActionPinnedKey = 'workspace.top_action_pinned';
 
@@ -50,8 +55,10 @@ class WorkspacePreferences {
       canvasFirst: prefs.getBool(_canvasFirstKey) ?? true,
       inspectorDock: prefs.getString(_inspectorDockKey) ?? 'right',
       lastProjectKey: savedKey.isEmpty ? null : savedKey,
-      secondaryToolbarCollapsed:
-          prefs.getBool(_toolbarCollapsedKey) ?? false,
+      secondaryToolbarMode:
+          prefs.getString(_toolbarModeKey) ?? 'full',
+      secondaryToolbarDock:
+          prefs.getString(_toolbarDockKey) ?? 'bottom',
       topActionOrder: prefs.getStringList(_topActionOrderKey) ?? const <String>[],
       topActionPinned:
           prefs.getStringList(_topActionPinnedKey) ?? const <String>[],
@@ -68,7 +75,8 @@ class WorkspacePreferences {
     } else {
       await prefs.remove(_lastProjectKeyPref);
     }
-    await prefs.setBool(_toolbarCollapsedKey, secondaryToolbarCollapsed);
+    await prefs.setString(_toolbarModeKey, secondaryToolbarMode);
+    await prefs.setString(_toolbarDockKey, secondaryToolbarDock);
     await prefs.setStringList(_topActionOrderKey, topActionOrder);
     await prefs.setStringList(_topActionPinnedKey, topActionPinned);
   }
@@ -79,7 +87,8 @@ class WorkspacePreferences {
     await prefs.remove(_canvasFirstKey);
     await prefs.remove(_inspectorDockKey);
     await prefs.remove(_lastProjectKeyPref);
-    await prefs.remove(_toolbarCollapsedKey);
+    await prefs.remove(_toolbarModeKey);
+    await prefs.remove(_toolbarDockKey);
     await prefs.remove(_topActionOrderKey);
     await prefs.remove(_topActionPinnedKey);
   }
