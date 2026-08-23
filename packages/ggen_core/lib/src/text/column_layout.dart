@@ -55,9 +55,15 @@ final class ColumnLayout {
     balanced: false,
   );
 
-  static void _check(int columnCount, double gutter, ColumnDirection direction,
-      bool balanced) {
-    if (!columnCount.isFinite || columnCount < 1 || columnCount > maxColumnCount) {
+  static void _check(
+    int columnCount,
+    double gutter,
+    ColumnDirection direction,
+    bool balanced,
+  ) {
+    if (!columnCount.isFinite ||
+        columnCount < 1 ||
+        columnCount > maxColumnCount) {
       throw ArgumentError.value(
         columnCount,
         'columnCount',
@@ -151,7 +157,9 @@ final class ColumnLayout {
     } else if (rawCount is double && rawCount == rawCount.truncateToDouble()) {
       columnCount = rawCount.toInt(); // tolerate 2.0 from lenient encoders
     } else {
-      throw const FormatException('Column layout columnCount must be an integer.');
+      throw const FormatException(
+        'Column layout columnCount must be an integer.',
+      );
     }
 
     // gutter: default 0; reject non-finite / negative.
@@ -162,7 +170,9 @@ final class ColumnLayout {
     } else if (rawGutter is num && rawGutter.isFinite) {
       gutter = rawGutter.toDouble();
     } else {
-      throw const FormatException('Column layout gutter must be a finite number.');
+      throw const FormatException(
+        'Column layout gutter must be a finite number.',
+      );
     }
 
     // direction: default ltr; reject unknown / unsupported.
@@ -173,9 +183,8 @@ final class ColumnLayout {
     } else if (rawDirection is String) {
       direction = ColumnDirection.values.firstWhere(
         (d) => d.name == rawDirection,
-        orElse: () => throw FormatException(
-          'Unknown column direction: $rawDirection.',
-        ),
+        orElse: () =>
+            throw FormatException('Unknown column direction: $rawDirection.'),
       );
     } else {
       throw const FormatException('Column layout direction must be a string.');
@@ -209,8 +218,7 @@ final class ColumnLayout {
       other.balanced == balanced;
 
   @override
-  int get hashCode =>
-      Object.hash(columnCount, gutter, direction, balanced);
+  int get hashCode => Object.hash(columnCount, gutter, direction, balanced);
 
   @override
   String toString() =>
@@ -220,10 +228,7 @@ final class ColumnLayout {
 
 /// One computed column rectangle within a frame, in reading order.
 final class ColumnBounds {
-  const ColumnBounds({
-    required this.index,
-    required this.bounds,
-  });
+  const ColumnBounds({required this.index, required this.bounds});
 
   /// Zero-based column index in reading order (0 = first).
   final int index;

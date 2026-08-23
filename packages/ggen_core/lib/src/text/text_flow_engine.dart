@@ -136,10 +136,7 @@ final class TextFlowColumnResult {
 
 /// One frame's contribution to a text-flow result.
 final class TextFlowFrameResult {
-  const TextFlowFrameResult({
-    required this.frameId,
-    required this.columns,
-  });
+  const TextFlowFrameResult({required this.frameId, required this.columns});
 
   final String frameId;
   final List<TextFlowColumnResult> columns;

@@ -22,7 +22,12 @@ final class FrameRect {
       );
 
   /// Convenience constructor from two opposite corners.
-  factory FrameRect.fromLTRB(double left, double top, double right, double bottom) {
+  factory FrameRect.fromLTRB(
+    double left,
+    double top,
+    double right,
+    double bottom,
+  ) {
     if (!right.isFinite || !bottom.isFinite) {
       throw ArgumentError('right/bottom must be finite.');
     }
@@ -129,8 +134,7 @@ final class FrameGeometry {
   final double innerPadding;
 
   /// Outer frame rectangle.
-  FrameRect get frameRect =>
-      FrameRect.fromLTWH(x, y, frameWidth, frameHeight);
+  FrameRect get frameRect => FrameRect.fromLTWH(x, y, frameWidth, frameHeight);
 
   /// Interior content rectangle after [innerPadding] is removed on all sides.
   FrameRect get contentRect {
@@ -170,6 +174,5 @@ final class FrameGeometry {
       other.innerPadding == innerPadding;
 
   @override
-  int get hashCode =>
-      Object.hash(x, y, frameWidth, frameHeight, innerPadding);
+  int get hashCode => Object.hash(x, y, frameWidth, frameHeight, innerPadding);
 }

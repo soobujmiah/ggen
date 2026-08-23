@@ -41,7 +41,10 @@ void main() {
     });
 
     test('non-finite gutter rejected', () {
-      expect(() => ColumnLayout.create(gutter: double.nan), throwsArgumentError);
+      expect(
+        () => ColumnLayout.create(gutter: double.nan),
+        throwsArgumentError,
+      );
       expect(
         () => ColumnLayout.create(gutter: double.infinity),
         throwsArgumentError,
@@ -67,10 +70,7 @@ void main() {
     });
 
     test('balanced=true rejected (not implemented)', () {
-      expect(
-        () => ColumnLayout.create(balanced: true),
-        throwsArgumentError,
-      );
+      expect(() => ColumnLayout.create(balanced: true), throwsArgumentError);
     });
 
     test('copyWith produces validated new layout', () {
@@ -112,10 +112,7 @@ void main() {
         () => ColumnLayout.decodeJson({'balanced': true}),
         throwsArgumentError,
       );
-      expect(
-        () => ColumnLayout.decodeJson('nope'),
-        throwsFormatException,
-      );
+      expect(() => ColumnLayout.decodeJson('nope'), throwsFormatException);
     });
 
     test('JSON tolerates numeric 2.0 for columnCount', () {

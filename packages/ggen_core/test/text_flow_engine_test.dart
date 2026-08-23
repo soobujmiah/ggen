@@ -86,7 +86,10 @@ void main() {
 
     test('3-column flow preserves order', () {
       final result = engine.flow(
-        story: 'AAAAAAAAAA' 'BBBBBBBBBB' 'CCCCCCCCCC',
+        story:
+            'AAAAAAAAAA'
+            'BBBBBBBBBB'
+            'CCCCCCCCCC',
         frames: [frame('A', w: 90, h: 30, columns: 3)],
         fontSize: fontSize,
       );
@@ -107,10 +110,12 @@ void main() {
         fontSize: fontSize,
       );
       expect(result.frames.single.columns, hasLength(4));
-      expect(
-        result.frames.single.columns.map((c) => c.visibleText),
-        ['AAAA', 'BBBB', 'CCCC', 'DDDD'],
-      );
+      expect(result.frames.single.columns.map((c) => c.visibleText), [
+        'AAAA',
+        'BBBB',
+        'CCCC',
+        'DDDD',
+      ]);
       expect(result.conserves('AAAABBBBCCCCDDDD'), isTrue);
     });
 
@@ -132,19 +137,24 @@ void main() {
   });
 
   group('Terminal overflow', () {
-    test('text longer than capacity reports overflow and marks last column',
-        () {
-      final result = engine.flow(
-        story: '0123456789' '0123456789' 'EXTRA', // 25 chars, capacity ~20
-        frames: [frame('A', w: 60, h: 30, columns: 2)],
-        fontSize: fontSize,
-      );
-      expect(result.hasOverflow, isTrue);
-      expect(result.overflowLength, 5);
-      final last = result.frames.single.columns.last;
-      expect(last.hasOverflow, isTrue);
-      expect(result.conserves('01234567890123456789EXTRA'), isTrue);
-    });
+    test(
+      'text longer than capacity reports overflow and marks last column',
+      () {
+        final result = engine.flow(
+          story:
+              '0123456789'
+              '0123456789'
+              'EXTRA', // 25 chars, capacity ~20
+          frames: [frame('A', w: 60, h: 30, columns: 2)],
+          fontSize: fontSize,
+        );
+        expect(result.hasOverflow, isTrue);
+        expect(result.overflowLength, 5);
+        final last = result.frames.single.columns.last;
+        expect(last.hasOverflow, isTrue);
+        expect(result.conserves('01234567890123456789EXTRA'), isTrue);
+      },
+    );
 
     test('empty trailing columns are not flagged as overflow', () {
       final result = engine.flow(
@@ -163,10 +173,13 @@ void main() {
   });
 
   group('Linked multi-frame + multi-column flow', () {
-    test('Frame A columns fill, then Frame B columns, strict conservation',
-        () {
+    test('Frame A columns fill, then Frame B columns, strict conservation', () {
       final story =
-          'AAAAAAAAAA' 'BBBBBBBBBB' 'CCCCCCCCCC' 'DDDDDDDDDD' 'EEEEEEEEEE';
+          'AAAAAAAAAA'
+          'BBBBBBBBBB'
+          'CCCCCCCCCC'
+          'DDDDDDDDDD'
+          'EEEEEEEEEE';
       // Each frame: 2 cols, 10 chars/col => 20 chars/frame.
       final result = engine.flow(
         story: story,
@@ -181,9 +194,7 @@ void main() {
       expect(result.hasOverflow, isFalse);
       expect(result.consumed, story.length);
       // Verify reading order across frames/columns.
-      final ordered = result.allColumns
-          .map((c) => c.visibleText)
-          .join();
+      final ordered = result.allColumns.map((c) => c.visibleText).join();
       expect(ordered, story);
       // No duplication: unique ranges.
       final ranges = result.allColumns
@@ -194,7 +205,10 @@ void main() {
     });
 
     test('terminal overflow after last linked frame is reported once', () {
-      final story = 'AAAAAAAAAA' 'BBBBBBBBBB' 'TAIL';
+      final story =
+          'AAAAAAAAAA'
+          'BBBBBBBBBB'
+          'TAIL';
       final result = engine.flow(
         story: story,
         frames: [frame('A', w: 60, h: 30, columns: 2)],
@@ -237,10 +251,11 @@ void main() {
         frames: [frame('A', w: 100, h: 10, columns: 3)],
         fontSize: 10,
       );
-      expect(
-        result.frames.single.columns.map((c) => c.visibleText),
-        ['AB', 'CD', 'EF'],
-      );
+      expect(result.frames.single.columns.map((c) => c.visibleText), [
+        'AB',
+        'CD',
+        'EF',
+      ]);
       expect(result.conserves('ABCDEF'), isTrue);
     });
 
@@ -256,8 +271,7 @@ void main() {
   });
 
   group('Transactions with column layout', () {
-    test('column configuration is undo/redo safe via ProjectTransaction',
-        () {
+    test('column configuration is undo/redo safe via ProjectTransaction', () {
       final initial = DocumentProject(
         id: GgenId('p1'),
         name: 'P',
