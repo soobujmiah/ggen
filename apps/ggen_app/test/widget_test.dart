@@ -930,4 +930,245 @@ void main() {
       await tester.pumpAndSettle(); // let the SnackBar timer finish
     });
   });
+
+  group('multi-column text frame layout', () {
+    testWidgets('wide inspector applies columns and gutter, shows guides',
+        (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final controller = StudioController();
+      controller.addTextNode(100, 120,
+          'One two three four five six seven eight nine ten eleven twelve '
+          'thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty');
+      final id = controller.project.artboards.first.nodes.single.id;
+      controller.selectNode(id);
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+
+      expect(controller.revision, 1);
+      // A selected frame always shows column guides (solid border when
+      // selected, dashed otherwise; visible for columns>1 too).
+      expect(find.byKey(ValueKey('ggen_text_frame_guides_${id.value}')),
+          findsOneWidget);
+
+      // Set 2 columns through the controller, then exercise the gutter field
+      // and Apply button through the inspector (sliders are dragged, not
+      // tapped, so this keeps the assertion deterministic while still
+      // exercising the Apply path and the gutter text field).
+      controller.configureTextColumns(id, columnCount: 2, gutter: 0);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('inspector_gutter')),
+        '12',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('inspector_columns_apply')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(textNodeColumnCount(
+          controller.project.artboards.first.nodes.single), 2);
+      expect(
+        textNodeGutter(controller.project.artboards.first.nodes.single),
+        12,
+      );
+
+      // Column 0 text renders as a real Text widget, and the flow engine
+      // computed two column bounds (col1 may be empty if text fits in col0).
+      expect(
+        find.byKey(ValueKey('ggen_text_frame_${id.value}_col0')),
+        findsOneWidget,
+      );
+      final flowed = flowTextFrame(
+          controller.project.artboards.first.nodes.single);
+      expect(flowed, isNotNull);
+      expect(flowed!.allColumns.length, 2);
+      expect(flowed.conserves(
+          controller.project.artboards.first.nodes.single.extensions['text']
+              as String),
+          isTrue);
+
+      // Reset returns to one column.
+      await tester.tap(find.byKey(const ValueKey('inspector_columns_reset')));
+      await tester.pumpAndSettle();
+      expect(textNodeColumnCount(
+          controller.project.artboards.first.nodes.single), 1);
+    });
+
+    testWidgets('column change is one undo/redo step', (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Hello columns');
+      final id = controller.project.artboards.first.nodes.single.id;
+      controller.selectNode(id);
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+      final before = controller.revision;
+
+      // Commit columns through the inspector Apply (gutter field + Apply).
+      await tester.enterText(
+        find.byKey(const ValueKey('inspector_gutter')),
+        '8',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('inspector_columns_apply')),
+      );
+      await tester.pumpAndSettle();
+      expect(controller.revision, before + 1);
+
+      // Volume-down undoes the single column transaction.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.audioVolumeDown);
+      await tester.pumpAndSettle();
+      expect(controller.revision, before);
+      expect(textNodeGutter(
+          controller.project.artboards.first.nodes.single), 0);
+      // Volume-up redoes.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.audioVolumeUp);
+      await tester.pumpAndSettle();
+      expect(textNodeGutter(
+          controller.project.artboards.first.nodes.single), 8);
+    });
+
+    testWidgets('slider changes column count and Apply commits it',
+        (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Slider columns');
+      final id = controller.project.artboards.first.nodes.single.id;
+      controller.selectNode(id);
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+
+      // Drag the slider to the right (exact magnitude is platform-dependent,
+      // so assert it moved off 1 rather than a precise column count), then
+      // Apply and verify the committed count matches the slider's value.
+      final sliderFinder =
+          find.byKey(const ValueKey('inspector_columns_slider'));
+      await tester.drag(sliderFinder, const Offset(120, 0));
+      await tester.pumpAndSettle();
+      final slider = tester.widget<Slider>(sliderFinder);
+      final expected = slider.value.round();
+      expect(expected, greaterThan(1));
+
+      await tester.tap(
+        find.byKey(const ValueKey('inspector_columns_apply')),
+      );
+      await tester.pumpAndSettle();
+      expect(textNodeColumnCount(
+          controller.project.artboards.first.nodes.single), expected);
+    });
+
+    testWidgets(
+        'compact 471px viewport opens column sheet and applies columns',
+        (tester) async {
+      tester.view.physicalSize = const Size(471, 1020);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Mobile column test');
+      final id = controller.project.artboards.first.nodes.single.id;
+      // Select via Select tool + canvas tap.
+      controller.selectNode(id);
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+
+      // The compact Columns destination is enabled (a text frame is selected).
+      final columnsDest = find.text('Columns');
+      expect(columnsDest, findsOneWidget);
+      await tester.ensureVisible(columnsDest);
+      await tester.tap(columnsDest);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('mobile_columns_slider')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('mobile_gutter_field')),
+          findsOneWidget);
+
+      // Enter a gutter and drag the slider to the right, then Apply. The
+      // slider applies live; read its final value rather than asserting a
+      // precise count (drag magnitude is platform-dependent).
+      await tester.enterText(
+        find.byKey(const ValueKey('mobile_gutter_field')),
+        '10',
+      );
+      final sliderFinder =
+          find.byKey(const ValueKey('mobile_columns_slider'));
+      await tester.drag(sliderFinder, const Offset(120, 0));
+      await tester.pumpAndSettle();
+      final expected =
+          tester.widget<Slider>(sliderFinder).value.round();
+      expect(expected, greaterThan(1));
+
+      await tester.tap(find.byKey(const ValueKey('mobile_columns_apply')));
+      await tester.pumpAndSettle();
+
+      final node = controller.project.artboards.first.nodes.single;
+      expect(textNodeColumnCount(node), expected);
+      expect(textNodeGutter(node), 10);
+    });
+
+    testWidgets('overflow tab and guides render when text exceeds frame',
+        (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final controller = StudioController();
+      // Build a deliberately small frame (120x48) holding long text so the
+      // flow reports terminal overflow and the red corner tab is painted.
+      final project = controller.project;
+      final artboard = project.artboards.first;
+      final smallFrame = DocumentNode(
+        id: GgenId('text-small'),
+        kind: DocumentNodeKind.textFrame,
+        name: 'Overflow',
+        extensions: <String, Object?>{
+          'x': 100.0,
+          'y': 120.0,
+          'w': 120.0,
+          'h': 48.0,
+          'size': 16.0,
+          'text': 'One two three four five six seven eight nine ten eleven twelve',
+          'color': 0xFF222222,
+          'columns': 1,
+          'gutter': 0.0,
+        },
+      );
+      final next = project.copyWith(
+        revision: project.revision,
+        artboards: <Artboard>[
+          Artboard(
+            id: artboard.id,
+            name: artboard.name,
+            width: artboard.width,
+            height: artboard.height,
+            nodes: <DocumentNode>[smallFrame],
+          ),
+        ],
+      );
+      final session = controller.beginSession();
+      session.updatePreview(next);
+      controller.commitSession(session, 'Add overflow frame');
+      controller.selectNode(smallFrame.id);
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+
+      final node = controller.project.artboards.first.nodes.single;
+      final result = flowTextFrame(node);
+      expect(result, isNotNull);
+      final story = (node.extensions['text'] as String);
+      expect(result!.conserves(story), isTrue);
+      expect(result.hasOverflow, isTrue,
+          reason: 'the small frame cannot hold the long text');
+      // Guides overlay is present for the selected frame.
+      expect(
+        find.byKey(ValueKey('ggen_text_frame_guides_${node.id.value}')),
+        findsOneWidget,
+      );
+    });
+  });
 }

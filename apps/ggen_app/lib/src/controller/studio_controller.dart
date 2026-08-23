@@ -54,6 +54,18 @@ class StudioController extends ChangeNotifier {
   static const double defaultArtboardWidth = 1080;
   static const double defaultArtboardHeight = 1920;
 
+  /// Default width of a newly created text frame in artboard units. A text
+  /// frame is a reflowable box (not a single-line label); this gives content
+  /// a sensible area to wrap and flow across columns on first creation.
+  static const double defaultTextFrameWidth = 480;
+
+  /// Default height of a newly created text frame in artboard units.
+  static const double defaultTextFrameHeight = 360;
+
+  /// Maximum column count accepted by the column inspector/controller,
+  /// mirroring [ColumnLayout.maxColumnCount] at the app boundary.
+  static const int maxTextFrameColumns = ColumnLayout.maxColumnCount;
+
   final double _artboardWidth;
   final double _artboardHeight;
 
@@ -390,7 +402,10 @@ class StudioController extends ChangeNotifier {
     if (nodeIndex < 0) return false;
     final node = artboard.nodes[nodeIndex];
 
-    // Only shape nodes with x/y/w/h geometry can be resized.
+    // Only shape nodes are resizable through the canvas handle path. Text
+    // frames carry w/h for column geometry but are not resized by the shape
+    // handle action (frame sizing has its own editing path).
+    if (node.kind != DocumentNodeKind.shape) return false;
     if (node.extensions['w'] is! num || node.extensions['h'] is! num) {
       return false;
     }
@@ -532,6 +547,123 @@ class StudioController extends ChangeNotifier {
     session.updatePreview(project.copyWith(artboards: nextArtboards));
     commitSession(session, 'Edit ${node.name}');
     return true;
+  }
+
+  /// Configures the column layout of a text frame through ONE undoable tool
+  /// session.
+  ///
+  /// [columnCount] must be in 1..[maxTextFrameColumns]; [gutter] must be
+  /// finite and >= 0. Legacy text frames (no `w`/`h` payload) receive the
+  /// default frame size the first time they are configured, so columns have a
+  /// real content rectangle to flow within. Returns false when the node is
+  /// missing or not a text frame, and throws [ArgumentError] on invalid input
+  /// (no revision burned in either failure case). A no-op edit returns false.
+  bool configureTextColumns(
+    GgenId nodeId, {
+    required int columnCount,
+    required double gutter,
+  }) {
+    if (columnCount < 1 || columnCount > maxTextFrameColumns) {
+      throw ArgumentError.value(
+        columnCount,
+        'columnCount',
+        'Must be in 1..$maxTextFrameColumns.',
+      );
+    }
+    if (!gutter.isFinite || gutter < 0) {
+      throw ArgumentError.value(gutter, 'gutter', 'Must be finite and >= 0.');
+    }
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
+    if (nodeIndex < 0) return false;
+    final node = artboard.nodes[nodeIndex];
+    if (node.kind != DocumentNodeKind.textFrame) return false;
+
+    final currentW = node.extensions['w'];
+    final currentH = node.extensions['h'];
+    final nextW = currentW is num
+        ? currentW.toDouble()
+        : defaultTextFrameWidth;
+    final nextH = currentH is num
+        ? currentH.toDouble()
+        : defaultTextFrameHeight;
+
+    final currentColumns = _currentColumnCount(node);
+    final currentGutter = _currentGutter(node);
+    if (columnCount == currentColumns &&
+        gutter == currentGutter &&
+        currentW is num &&
+        currentH is num) {
+      return false; // No-op: reject instead of burning a revision.
+    }
+
+    // Fail closed: the requested columns must actually fit the frame.
+    final availableWidth = nextW - (columnCount - 1) * gutter;
+    if (availableWidth <= 0) {
+      throw ArgumentError(
+        'Frame width $nextW is too small for $columnCount columns with '
+        'gutter $gutter.',
+      );
+    }
+
+    final updated = DocumentNode(
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      visible: node.visible,
+      locked: node.locked,
+      opacity: node.opacity,
+      extensions: <String, Object?>{
+        ...node.extensions,
+        'w': nextW,
+        'h': nextH,
+        'columns': columnCount,
+        'gutter': gutter,
+      },
+    );
+    final nextNodes = <DocumentNode>[
+      ...artboard.nodes.sublist(0, nodeIndex),
+      updated,
+      ...artboard.nodes.sublist(nodeIndex + 1),
+    ];
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: nextNodes,
+      ),
+      ...artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, 'Configure ${node.name} columns');
+    return true;
+  }
+
+  /// Resets a text frame to a single column with zero gutter through one
+  /// undoable tool session. Convenience wrapper around [configureTextColumns].
+  bool resetTextColumns(GgenId nodeId) => configureTextColumns(
+    nodeId,
+    columnCount: 1,
+    gutter: 0,
+  );
+
+  /// Returns the stored column count for a text node, defaulting to 1.
+  static int _currentColumnCount(DocumentNode node) {
+    final raw = node.extensions['columns'];
+    if (raw is int && raw >= 1 && raw <= maxTextFrameColumns) return raw;
+    return 1;
+  }
+
+  /// Returns the stored gutter for a text node, defaulting to 0.
+  static double _currentGutter(DocumentNode node) {
+    final raw = node.extensions['gutter'];
+    if (raw is num && raw.isFinite && raw >= 0) return raw.toDouble();
+    return 0;
   }
 
   /// Deletes [nodeId] from the first artboard through one undoable tool
@@ -907,6 +1039,14 @@ class StudioController extends ChangeNotifier {
     final artboards = project.artboards;
     if (artboards.isEmpty) return;
     final artboard = artboards.first;
+    // A text frame is a reflowable box. The tap marks its top-left; position
+    // is clamped to the artboard origin exactly like the legacy single-line
+    // label (the frame may extend past the far edge, matching prior behavior).
+    // Legacy nodes that predate `w`/`h` keep their label-sized fallback in
+    // the canvas.
+    final frameW = defaultTextFrameWidth.clamp(1.0, artboard.width).toDouble();
+    final frameH =
+        defaultTextFrameHeight.clamp(1.0, artboard.height).toDouble();
     final clampedX = artboardX.clamp(0, artboard.width).toDouble();
     final clampedY = artboardY.clamp(0, artboard.height).toDouble();
 
@@ -918,9 +1058,13 @@ class StudioController extends ChangeNotifier {
       extensions: <String, Object?>{
         'x': clampedX,
         'y': clampedY,
+        'w': frameW,
+        'h': frameH,
         'size': size,
         'text': trimmed,
         'color': 0xFF222222,
+        'columns': 1,
+        'gutter': 0.0,
       },
     );
     final nextArtboards = <Artboard>[
@@ -1127,6 +1271,51 @@ class StudioController extends ChangeNotifier {
 /// Whether [node] is a group node (an organizational container whose
 /// members stay first-class nodes in the artboard).
 bool isGroupNode(DocumentNode node) => node.kind == DocumentNodeKind.group;
+
+/// Reads the stored column count for a text node (1 when absent/invalid).
+int textNodeColumnCount(DocumentNode node) {
+  final raw = node.extensions['columns'];
+  if (raw is int && raw >= 1 && raw <= ColumnLayout.maxColumnCount) return raw;
+  return 1;
+}
+
+/// Reads the stored gutter for a text node (0 when absent/invalid).
+double textNodeGutter(DocumentNode node) {
+  final raw = node.extensions['gutter'];
+  if (raw is num && raw.isFinite && raw >= 0) return raw.toDouble();
+  return 0;
+}
+
+/// Builds the canonical [ColumnLayout] for a text node, defaulting legacy
+/// nodes (no stored columns/gutter) to [ColumnLayout.single].
+ColumnLayout textNodeColumnLayout(DocumentNode node) => ColumnLayout.create(
+  columnCount: textNodeColumnCount(node),
+  gutter: textNodeGutter(node),
+);
+
+/// Builds the core [FrameGeometry] for a text node when it carries `w`/`h`;
+/// returns null for legacy label-sized text nodes without a frame rectangle.
+FrameGeometry? textNodeFrameGeometry(DocumentNode node) {
+  final x = node.extensions['x'];
+  final y = node.extensions['y'];
+  final w = node.extensions['w'];
+  final h = node.extensions['h'];
+  if (x is! num || y is! num || w is! num || h is! num) return null;
+  if (!x.isFinite ||
+      !y.isFinite ||
+      !w.isFinite ||
+      !h.isFinite ||
+      w <= 0 ||
+      h <= 0) {
+    return null;
+  }
+  return FrameGeometry(
+    x: x.toDouble(),
+    y: y.toDouble(),
+    frameWidth: w.toDouble(),
+    frameHeight: h.toDouble(),
+  );
+}
 
 /// Returns the member ids of a group node in artboard (z-)order, or null
 /// when [node] is not a group or its `children` payload is malformed.

@@ -154,3 +154,18 @@ Per device feedback; widget tests updated/added; CI validates on GitHub; on-devi
 - Fit-to-screen margin 0 (edge-to-edge on the limiting axis).
 - **Device-feedback follow-up (this turn):** normal mode canvas now starts BELOW the status bar (body `SafeArea` top always applied; in immersive bars are hidden so the canvas still reaches the screen top) — the zoomed canvas can no longer slide under the status bar, and the project-name chip has clearance below the top bar. Secondary canvas toolbar: full/mini/hidden levels (hidden = no remnant), bottom/left/right docks, transparent strip, persistent; More actions 'Canvas toolbar' + 'Dock canvas toolbar'; events `canvas_toolbar_toggle`, `canvas_toolbar_dock`. Bottom nav stays fixed in normal mode; fullscreen keeps only the top bar, whose actions are all hideable/rearrangeable via More.
 - Note: canvas geometry evidence changes — without the AppBar the canvas previously started at the screen top (transparent bar over it); with the top inset always consumed the compact canvas now measures ~471x859 with `safe_top 56` again (status bar below), and fullscreen remains `471x964/safe_top 0`. A fresh device export will record the new geometry.
+
+## 2026-08-24 Multi-column text frame layout & gutter geometry
+
+Implements the multi-column milestone on top of a newly built, platform-neutral text-flow foundation (no such substrate existed at repository head). Core lives in `ggen_core`; the Flutter shell renders, edits and persists it. **Widget/unit verified in CI; not yet exercised on the Redmi Turbo 4 Pro.**
+
+**What shipped**
+- `ggen_core/src/text/frame_geometry.dart`, `column_layout.dart`, `text_flow_engine.dart`: `FrameRect`/`FrameGeometry` (padding-aware content rect), N equal-width columns with gutter (`availableWidth = W − (N−1)gutter`, `columnWidth = availableWidth/N`; fail closed when content is too small), and a greedy left→right/top→bottom flow engine with an exact-character conservation invariant (`consumes + overflow == length`). RTL and newspaper balancing are declared but rejected so they cannot be silently mis-ordered.
+- Core tests: `column_layout_test.dart` (41 tests — geometry, gutter, clipping, hit testing, serialization round-trip, invalid/legacy decode) and `text_flow_engine_test.dart` (29 tests — wrapping, exact character conservation, overflow, explicit newlines, linked multi-frame LTR flow). `flutter analyze` clean; 70 core tests pass (28 baseline).
+- `StudioController.configureTextColumns`/`resetTextColumns` flow through one `ProjectToolSession`/`ProjectTransaction` (one revision, undoable/redoable); invalid input throws before any revision. New text frames get a 480×360 default and are clamped to the artboard. 9 controller tests added (app: 198 total pass).
+- Inspector: **Columns** section (count slider 1–24, gutter field, Reset, Apply) for wide layout; a compact **Columns** bottom sheet (`_ColumnsSheet`) for 471 px. Canvas renders per-column clipped `Text` widgets with column guides and a red overflow tab; shape resize remains shape-only.
+- Serialization: columns/gutter stored as node extensions (`columns`, `gutter`, plus `w`/`h`); no schema bump; legacy single-line text nodes render unchanged until configured.
+
+**Architectural record:** `docs/architecture/multi-column-text-layout.md`.
+
+**Pending on-device:** build an APK and exercise on the Redmi Turbo 4 Pro (`25053RT47C`) — apply 2/3 columns, change gutter, undo/redo, save/reload persistence, overflow tab, compact Columns sheet. No device claim is made here.

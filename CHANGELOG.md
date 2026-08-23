@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-24 — Multi-column text frame layout & gutter geometry
+
+Adds N-column text frames with gutters to GGEN, built on a new platform-neutral text-flow foundation (none existed at head). Core is pure Dart; the Flutter shell renders, edits and persists it. CI/widget verified; **not yet physical-device validated**.
+
+- **`ggen_core/src/text/`**: `FrameRect`/`FrameGeometry` (padding-aware content rectangle), `ColumnLayout` (count 1–24, gutter ≥ 0, LTR only — RTL/balancing declared but rejected) and `ColumnGeometry` (equal columns: `availableWidth = W − (N−1)gutter`; fail closed when the content is too small). `TextFlowEngine` greedily fills columns/linked frames and guarantees exact character conservation (`rendered + overflow == story.length`), with a rendering-free `TextMeasurementProvider` (deterministic monospace provider for core; `TextPainter`-backed in the shell).
+- **Tests**: 70 new core test cases (41 column/geometry/serialization + 29 flow/conservation/multi-frame); `ggen_core analyze` clean.
+- **Shell**: inspector **Columns** section (wide) + compact **Columns** bottom sheet (`_ColumnsSheet`); per-column clipped `Text` widgets with column guides and a red overflow tab; `configureTextColumns`/`resetTextColumns` are one undoable `ProjectToolSession`/`ProjectTransaction` each; new text frames default to 480×360. +9 controller and +5 widget tests (app suite 198 passing).
+- **Persistence**: columns/gutter stored as node extensions with the new `w`/`h`; no schema bump; legacy single-line text nodes render unchanged until configured. Architecture record in `docs/architecture/multi-column-text-layout.md`.
+
 ## 2026-08-23 — Numeric text inspector: content/size/position editing for text frames
 
 The next creative-surface milestone from `docs/phases/phase-2-status.md` (all higher-priority "Next" items at selection time were device-only). Authored in the SKB brain-VM model; compiled and tested by GitHub Actions on the PR (this environment has no Flutter toolchain).

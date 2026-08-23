@@ -155,4 +155,71 @@ void main() {
       );
     },
   );
+
+  group('multi-column text frame extensions', () {
+    ProjectEnvelope envelopeWith(Map<String, Object?> extensions) =>
+        ProjectEnvelope(
+          project: DocumentProject(
+            id: GgenId('project.columns'),
+            name: 'Columns',
+            artboards: <Artboard>[
+              Artboard(
+                id: GgenId('artboard.main'),
+                name: 'Main',
+                width: 1080,
+                height: 1920,
+                nodes: <DocumentNode>[
+                  DocumentNode(
+                    id: GgenId('node.story'),
+                    kind: DocumentNodeKind.textFrame,
+                    name: 'Story',
+                    extensions: extensions,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          schemaVersion: ProjectSchemaVersion(ProjectSchemaVersion.current),
+        );
+
+    test('columns and gutter survive a JSON round-trip', () {
+      final source = envelopeWith(<String, Object?>{
+        'text': 'Two columns of flowing story text.',
+        'size': 18.0,
+        'x': 40.0,
+        'y': 60.0,
+        'w': 480.0,
+        'h': 360.0,
+        'columns': 3,
+        'gutter': 24.0,
+      });
+
+      final encoded = codec().encode(source);
+      final decoded = codec().decode(encoded);
+      final node = decoded.project.artboards.single.nodes.single;
+
+      expect(node.extensions['columns'], 3);
+      expect(node.extensions['gutter'], 24.0);
+      expect(node.extensions['w'], 480.0);
+      expect(node.extensions['h'], 360.0);
+      // Canonical JSON: re-encoding the decoded form reproduces the bytes.
+      expect(codec().encode(decoded), encoded);
+    });
+
+    test('legacy text frame without columns/gutter decodes unchanged', () {
+      final source = envelopeWith(<String, Object?>{
+        'text': 'Legacy single line',
+        'size': 20.0,
+        'x': 10.0,
+        'y': 20.0,
+      });
+
+      final decoded = codec().decode(codec().encode(source));
+      final node = decoded.project.artboards.single.nodes.single;
+
+      expect(node.extensions.containsKey('columns'), isFalse);
+      expect(node.extensions.containsKey('gutter'), isFalse);
+      expect(node.extensions['text'], 'Legacy single line');
+    });
+  });
 }
