@@ -431,6 +431,109 @@ class StudioController extends ChangeNotifier {
     return true;
   }
 
+  /// Inspector action: edits a text frame's content, font size and/or
+  /// position through ONE undoable tool session, so one Apply is a single
+  /// undoable history step.
+  ///
+  /// [text] is trimmed and must contain 1..256 characters (same contract as
+  /// the Text tool); [size] must be finite and positive; [x]/[y] clamp into
+  /// the artboard exactly like `addTextNode`. Node payloads live in the
+  /// node's extensions (`x`, `y`, `size`, `text`) until a later schema
+  /// introduces typed studio payloads.
+  ///
+  /// Throws [ArgumentError] for invalid values (no state change). Returns
+  /// false when nothing was committed: missing node, not a text frame,
+  /// malformed text payload, or a no-op edit (identical values — rejected
+  /// rather than burning a revision).
+  bool updateTextNode(
+    GgenId nodeId, {
+    String? text,
+    double? size,
+    double? x,
+    double? y,
+  }) {
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final nodeIndex = artboard.nodes.indexWhere((n) => n.id == nodeId);
+    if (nodeIndex < 0) return false;
+    final node = artboard.nodes[nodeIndex];
+    if (node.kind != DocumentNodeKind.textFrame) return false;
+
+    final trimmed = text?.trim();
+    if (trimmed != null && (trimmed.isEmpty || trimmed.length > 256)) {
+      throw ArgumentError('Text must contain 1..256 characters.');
+    }
+    if (size != null && (!size.isFinite || size <= 0)) {
+      throw ArgumentError('Text size must be finite and positive.');
+    }
+    if (x != null && !x.isFinite) {
+      throw ArgumentError('Text X must be finite.');
+    }
+    if (y != null && !y.isFinite) {
+      throw ArgumentError('Text Y must be finite.');
+    }
+
+    final currentText = node.extensions['text'];
+    final currentSize = node.extensions['size'];
+    final currentX = node.extensions['x'];
+    final currentY = node.extensions['y'];
+    if (currentText is! String ||
+        currentSize is! num ||
+        currentX is! num ||
+        currentY is! num) {
+      return false; // Malformed text payload fails closed.
+    }
+
+    final nextText = trimmed ?? currentText;
+    final nextSize = size ?? currentSize.toDouble();
+    final nextX =
+        (x ?? currentX.toDouble()).clamp(0, artboard.width).toDouble();
+    final nextY =
+        (y ?? currentY.toDouble()).clamp(0, artboard.height).toDouble();
+    if (nextText == currentText &&
+        nextSize == currentSize.toDouble() &&
+        nextX == currentX.toDouble() &&
+        nextY == currentY.toDouble()) {
+      return false; // No-op edit: reject instead of committing a revision.
+    }
+
+    final updated = DocumentNode(
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      visible: node.visible,
+      locked: node.locked,
+      opacity: node.opacity,
+      extensions: <String, Object?>{
+        ...node.extensions,
+        'text': nextText,
+        'size': nextSize,
+        'x': nextX,
+        'y': nextY,
+      },
+    );
+    final nextNodes = <DocumentNode>[
+      ...artboard.nodes.sublist(0, nodeIndex),
+      updated,
+      ...artboard.nodes.sublist(nodeIndex + 1),
+    ];
+    final nextArtboards = <Artboard>[
+      Artboard(
+        id: artboard.id,
+        name: artboard.name,
+        width: artboard.width,
+        height: artboard.height,
+        nodes: nextNodes,
+      ),
+      ...artboards.skip(1),
+    ];
+    final session = beginSession();
+    session.updatePreview(project.copyWith(artboards: nextArtboards));
+    commitSession(session, 'Edit ${node.name}');
+    return true;
+  }
+
   /// Deletes [nodeId] from the first artboard through one undoable tool
   /// session. Clears the node from the selection when it was selected.
   /// Returns false when the node is not found.

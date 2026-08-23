@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-23 — Numeric text inspector: content/size/position editing for text frames
+
+The next creative-surface milestone from `docs/phases/phase-2-status.md` (all higher-priority "Next" items at selection time were device-only). Authored in the SKB brain-VM model; compiled and tested by GitHub Actions on the PR (this environment has no Flutter toolchain).
+
+- **`StudioController.updateTextNode(nodeId, {text, size, x, y})`**: edits a text frame's content, font size and/or position through ONE undoable tool session — one Apply is exactly one history step, and a single undo restores the complete previous payload. Validation mirrors the Text tool (`text` trimmed, 1..256 characters; `size` finite and positive); `x`/`y` clamp into the artboard like `addTextNode`; malformed text payloads, non-text nodes, missing nodes and no-op edits return false without committing a revision.
+- **Editable inspector text branch** (wide layouts): Content field (multi-line, 1..256 chars) + numeric Size/X/Y fields with explicit Apply, replacing the previous read-only X/Y display and the "use Text tool to recreate" workaround. Invalid input shows a bounded SnackBar and commits nothing. `inspector_text_edit` diagnostics event (text, size, x, y, revision) alongside `inspector_resize`; fields resync from the node after every commit/undo/redo.
+- **Tests**: +5 controller tests (single-step edit + undo/redo, clamping/optional fields, validation rejections, no-op/shape/missing rejection, finite x/y) and +2 widget tests (one-Apply-one-revision through the real inspector with undo resync; SnackBar on invalid size with no commit).
+- Docs: `docs/phases/phase-2-status.md` implemented list + Next item 7; `CURRENT_STATE.md` snapshot refreshed. On-device exercise (Redmi Turbo 4 Pro) deferred to the next device round — no release, GPU/NPU or production-readiness claim.
+
 ## 2026-08-22 — Surface the canonical current-state handoff and source provenance at the top level
 
 Docs-only (no source/behavior change) to close the top-level session-continuity gap: `CURRENT_STATE.md` is the canonical current-state record and session handoff, but it was referenced nowhere in the repository docs and was absent from README's prescribed "Read first" list — so a fresh agent following README would not discover it.

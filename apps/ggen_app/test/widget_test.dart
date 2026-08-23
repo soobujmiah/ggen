@@ -825,4 +825,109 @@ void main() {
       expect(artboard.height, greaterThan(artboard.width));
     });
   });
+
+  group('inspector text editing', () {
+    Future<void> pumpWideWithSelectedText(
+      WidgetTester tester,
+      StudioController controller,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      controller.addTextNode(100, 120, 'Hello GGEN');
+      controller.selectNode(
+        controller.project.artboards.first.nodes.single.id,
+      );
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+      'edits content, size and position through one Apply as a single undoable step',
+      (tester) async {
+        final controller = StudioController();
+        await pumpWideWithSelectedText(tester, controller);
+        expect(controller.revision, 1); // the add only
+
+        // The inspector shows the node's current payload.
+        final contentField = tester.widget<TextField>(
+          find.byKey(const ValueKey('inspector_text_content')),
+        );
+        expect(contentField.controller!.text, 'Hello GGEN');
+
+        await tester.enterText(
+          find.byKey(const ValueKey('inspector_text_content')),
+          'Edited in inspector',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('inspector_text_size')),
+          '36',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('inspector_text_x')),
+          '240',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('inspector_text_y')),
+          '300',
+        );
+        await tester.tap(find.byKey(const ValueKey('inspector_text_apply')));
+        await tester.pumpAndSettle();
+
+        // One Apply = exactly one new revision through one undoable session.
+        expect(controller.revision, 2);
+        final geometry = textNodeGeometry(
+          controller.project.artboards.first.nodes.single,
+        )!;
+        expect(geometry.text, 'Edited in inspector');
+        expect(geometry.size, 36);
+        expect(geometry.x, 240);
+        expect(geometry.y, 300);
+
+        // Undo restores the previous payload and the fields resync.
+        controller.undo();
+        await tester.pumpAndSettle();
+        final restored = textNodeGeometry(
+          controller.project.artboards.first.nodes.single,
+        )!;
+        expect(restored.text, 'Hello GGEN');
+        expect(restored.size, 24);
+        final undoneField = tester.widget<TextField>(
+          find.byKey(const ValueKey('inspector_text_content')),
+        );
+        expect(undoneField.controller!.text, 'Hello GGEN');
+      },
+    );
+
+    testWidgets('invalid input shows a SnackBar and commits nothing', (
+      tester,
+    ) async {
+      final controller = StudioController();
+      await pumpWideWithSelectedText(tester, controller);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('inspector_text_content')),
+        'Valid content',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('inspector_text_size')),
+        'not-a-number',
+      );
+      await tester.tap(find.byKey(const ValueKey('inspector_text_apply')));
+      await tester.pump(); // start the SnackBar animation
+
+      expect(
+        find.text('Enter valid numbers for Size/X/Y'),
+        findsOneWidget,
+      );
+      expect(controller.revision, 1); // nothing committed
+      final geometry = textNodeGeometry(
+        controller.project.artboards.first.nodes.single,
+      )!;
+      expect(geometry.text, 'Hello GGEN');
+      expect(geometry.size, 24);
+
+      await tester.pumpAndSettle(); // let the SnackBar timer finish
+    });
+  });
 }
