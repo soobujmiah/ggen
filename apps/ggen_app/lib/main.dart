@@ -1440,6 +1440,8 @@ class _InspectorContentState extends State<_InspectorContent> {
   late TextEditingController _yCtrl;
   late TextEditingController _wCtrl;
   late TextEditingController _hCtrl;
+  late TextEditingController _textCtrl;
+  late TextEditingController _sizeCtrl;
 
   DocumentNode? _node;
   NodeGeometry? _geom;
@@ -1452,6 +1454,8 @@ class _InspectorContentState extends State<_InspectorContent> {
     _yCtrl = TextEditingController();
     _wCtrl = TextEditingController();
     _hCtrl = TextEditingController();
+    _textCtrl = TextEditingController();
+    _sizeCtrl = TextEditingController();
     _syncFromNode();
     widget.controller.addListener(_syncFromNode);
   }
@@ -1473,6 +1477,8 @@ class _InspectorContentState extends State<_InspectorContent> {
     _yCtrl.dispose();
     _wCtrl.dispose();
     _hCtrl.dispose();
+    _textCtrl.dispose();
+    _sizeCtrl.dispose();
     super.dispose();
   }
 
@@ -1499,6 +1505,8 @@ class _InspectorContentState extends State<_InspectorContent> {
         _yCtrl.text = tgeom.y.toStringAsFixed(1);
         _wCtrl.text = '';
         _hCtrl.text = '';
+        _textCtrl.text = tgeom.text;
+        _sizeCtrl.text = tgeom.size.toStringAsFixed(1);
       }
     });
   }
@@ -1523,6 +1531,55 @@ class _InspectorContentState extends State<_InspectorContent> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Resize failed — node not found or not a shape')));
     } else {
       debugLog.info('inspector_resize', 'Inspector numeric resize', {'x': x, 'y': y, 'w': w, 'h': h});
+    }
+  }
+
+  void _applyTextProperties() {
+    final text = _textCtrl.text.trim();
+    final size = double.tryParse(_sizeCtrl.text.trim());
+    final x = double.tryParse(_xCtrl.text.trim());
+    final y = double.tryParse(_yCtrl.text.trim());
+    if (text.isEmpty || text.length > 256) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Content must be 1..256 characters')),
+      );
+      return;
+    }
+    if (size == null || x == null || y == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter valid numbers for Size/X/Y')),
+      );
+      return;
+    }
+    if (!size.isFinite || size <= 0 || !x.isFinite || !y.isFinite) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Size must be > 0 and numbers must be finite'),
+        ),
+      );
+      return;
+    }
+    final ok = widget.controller.updateTextNode(
+      widget.selectedId,
+      text: text,
+      size: size,
+      x: x,
+      y: y,
+    );
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Edit failed — node not found or nothing changed'),
+        ),
+      );
+    } else {
+      debugLog.info('inspector_text_edit', 'Inspector text edit', {
+        'text': text,
+        'size': size,
+        'x': x,
+        'y': y,
+        'revision': widget.controller.revision,
+      });
     }
   }
 
@@ -1573,15 +1630,54 @@ class _InspectorContentState extends State<_InspectorContent> {
         children: [
           Text(node.name, style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          Text('Text • "${tgeom.text}"', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54)),
+          Text('Text frame', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54)),
           const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('inspector_text_content'),
+            controller: _textCtrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Content',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: _NumberField(label: 'X', controller: _xCtrl)),
+            Expanded(
+              child: _NumberField(
+                fieldKey: const ValueKey('inspector_text_x'),
+                label: 'X',
+                controller: _xCtrl,
+              ),
+            ),
             const SizedBox(width: 8),
-            Expanded(child: _NumberField(label: 'Y', controller: _yCtrl)),
+            Expanded(
+              child: _NumberField(
+                fieldKey: const ValueKey('inspector_text_y'),
+                label: 'Y',
+                controller: _yCtrl,
+              ),
+            ),
           ]),
           const SizedBox(height: 8),
-          Text('Text content and size editing decoupled from geometry; use Text tool to recreate or future text inspector.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11)),
+          _NumberField(
+            fieldKey: const ValueKey('inspector_text_size'),
+            label: 'Size',
+            controller: _sizeCtrl,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const ValueKey('inspector_text_apply'),
+              onPressed: _applyTextProperties,
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Apply'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Content, size and position apply as ONE undoable step; position clamps into the artboard.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11)),
         ],
       );
     }
@@ -1590,14 +1686,24 @@ class _InspectorContentState extends State<_InspectorContent> {
 }
 
 class _NumberField extends StatelessWidget {
-  const _NumberField({required this.label, required this.controller});
+  const _NumberField({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.fieldKey,
+  });
 
   final String label;
   final TextEditingController controller;
 
+  /// Optional key applied to the inner [TextField] (for tests), distinct
+  /// from the widget's own key.
+  final Key? fieldKey;
+
   @override
   Widget build(BuildContext context) {
     return TextField(
+      key: fieldKey,
       controller: controller,
       keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
       decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()),

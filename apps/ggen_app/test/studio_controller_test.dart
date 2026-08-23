@@ -488,6 +488,111 @@ void main() {
     });
   });
 
+  group('update text node', () {
+    test('updateTextNode edits content, size and position in ONE undoable step', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Hello GGEN');
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(controller.revision, 1);
+
+      final ok = controller.updateTextNode(
+        nodeId,
+        text: '  Edited  ',
+        size: 36,
+        x: 240,
+        y: 300,
+      );
+
+      expect(ok, isTrue);
+      expect(controller.revision, 2); // exactly one new revision
+      final geometry =
+          textNodeGeometry(controller.project.artboards.first.nodes.single)!;
+      expect(geometry.text, 'Edited'); // trimmed
+      expect(geometry.size, 36);
+      expect(geometry.x, 240);
+      expect(geometry.y, 300);
+
+      // A single undo restores the previous payload completely.
+      controller.undo();
+      final restored =
+          textNodeGeometry(controller.project.artboards.first.nodes.single)!;
+      expect(restored.text, 'Hello GGEN');
+      expect(restored.size, 24);
+      expect(restored.x, 100);
+      expect(restored.y, 120);
+      controller.redo();
+      expect(
+        textNodeGeometry(controller.project.artboards.first.nodes.single)!
+            .text,
+        'Edited',
+      );
+    });
+
+    test('position clamps into the artboard and fields are optional', () {
+      final controller = StudioController();
+      controller.addTextNode(10, 10, 'hi');
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+
+      // Artboard defaults to 1080x1920: y clamps to the bottom edge.
+      expect(controller.updateTextNode(nodeId, y: 10000), isTrue);
+      final geometry =
+          textNodeGeometry(controller.project.artboards.first.nodes.single)!;
+      expect(geometry.y, 1920);
+      expect(geometry.text, 'hi'); // untouched field
+      expect(geometry.size, 24); // untouched field
+    });
+
+    test('invalid text or size throws without a new revision', () {
+      final controller = StudioController();
+      controller.addTextNode(10, 10, 'hi');
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(() => controller.updateTextNode(nodeId, text: '   '),
+          throwsArgumentError);
+      expect(
+        () => controller.updateTextNode(nodeId, text: 'x' * 300),
+        throwsArgumentError,
+      );
+      expect(
+        () => controller.updateTextNode(nodeId, size: 0),
+        throwsArgumentError,
+      );
+      expect(
+        () => controller.updateTextNode(nodeId, size: double.nan),
+        throwsArgumentError,
+      );
+      expect(controller.revision, 1);
+    });
+
+    test('rejects shapes, missing nodes, no-field and no-op edits', () {
+      final controller = StudioController();
+      controller.addShapeNode(10, 10);
+      controller.addTextNode(10, 10, 'hi');
+      final nodes = controller.project.artboards.first.nodes;
+      final shapeId = nodes[0].id;
+      final textId = nodes[1].id;
+
+      expect(controller.updateTextNode(shapeId, text: 'nope'), isFalse);
+      expect(controller.updateTextNode(GgenId('missing'), text: 'nope'),
+          isFalse);
+      expect(controller.updateTextNode(textId), isFalse); // no fields
+      expect(
+        controller.updateTextNode(textId,
+            text: 'hi', size: 24, x: 10, y: 10), // identical values
+        isFalse,
+      );
+      expect(controller.revision, 2); // only the two adds
+    });
+
+    test('x/y must be finite when provided', () {
+      final controller = StudioController();
+      controller.addTextNode(10, 10, 'hi');
+      final nodeId = controller.project.artboards.first.nodes.single.id;
+      expect(() => controller.updateTextNode(nodeId, x: double.infinity),
+          throwsArgumentError);
+      expect(controller.revision, 1);
+    });
+  });
+
   group('select tool', () {
     test('selectNode sets selectedNodeId and notifies', () {
       final controller = StudioController();
