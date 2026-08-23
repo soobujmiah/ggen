@@ -1230,7 +1230,161 @@ void main() {
       expect(xOf(ids[1]), before1 + 20);
     });
 
-    test('helpers fail closed on malformed group payloads', () {
+  group('text frame columns', () {
+    test('new text frame defaults to one column with zero gutter and w/h', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Hello');
+      final node = controller.project.artboards.first.nodes.single;
+      expect(textNodeColumnCount(node), 1);
+      expect(textNodeGutter(node), 0);
+      final geom = textNodeFrameGeometry(node)!;
+      expect(geom.frameWidth, StudioController.defaultTextFrameWidth);
+      expect(geom.frameHeight, StudioController.defaultTextFrameHeight);
+    });
+
+    test('configureTextColumns is one undoable revision and persists', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Hello');
+      final id = controller.project.artboards.first.nodes.single.id;
+      final before = controller.revision;
+
+      final ok = controller.configureTextColumns(id, columnCount: 3, gutter: 12);
+      expect(ok, isTrue);
+      expect(controller.revision, before + 1);
+
+      final node = controller.project.artboards.first.nodes.single;
+      expect(textNodeColumnCount(node), 3);
+      expect(textNodeGutter(node), 12);
+    });
+
+    test('undo restores prior layout and redo reapplies it', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Hello');
+      final id = controller.project.artboards.first.nodes.single.id;
+      controller.configureTextColumns(id, columnCount: 2, gutter: 8);
+      controller.undo();
+      expect(textNodeColumnCount(
+          controller.project.artboards.first.nodes.single), 1);
+      controller.redo();
+      expect(textNodeColumnCount(
+          controller.project.artboards.first.nodes.single), 2);
+    });
+
+    test('invalid column count or gutter throws without a revision burn', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Hello');
+      final id = controller.project.artboards.first.nodes.single.id;
+      final before = controller.revision;
+      expect(
+        () => controller.configureTextColumns(id, columnCount: 0, gutter: 0),
+        throwsArgumentError,
+      );
+      expect(
+        () => controller.configureTextColumns(id, columnCount: 2, gutter: -4),
+        throwsArgumentError,
+      );
+      expect(() => controller.configureTextColumns(
+          id, columnCount: 2, gutter: double.nan), throwsArgumentError);
+      expect(controller.revision, before);
+    });
+
+    test('excessive gutter for the frame is rejected', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Hello');
+      final id = controller.project.artboards.first.nodes.single.id;
+      expect(
+        () => controller.configureTextColumns(
+            id, columnCount: 3, gutter: 100000),
+        throwsArgumentError,
+      );
+    });
+
+    test('no-op edit returns false and does not burn a revision', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Hello');
+      final id = controller.project.artboards.first.nodes.single.id;
+      controller.configureTextColumns(id, columnCount: 2, gutter: 5);
+      final before = controller.revision;
+      expect(
+        controller.configureTextColumns(id, columnCount: 2, gutter: 5),
+        isFalse,
+      );
+      expect(controller.revision, before);
+    });
+
+    test('resetTextColumns returns to one column', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Hello');
+      final id = controller.project.artboards.first.nodes.single.id;
+      controller.configureTextColumns(id, columnCount: 4, gutter: 10);
+      controller.resetTextColumns(id);
+      final node = controller.project.artboards.first.nodes.single;
+      expect(textNodeColumnCount(node), 1);
+      expect(textNodeGutter(node), 0);
+    });
+
+    test('configure rejects non-text nodes and missing nodes', () {
+      final controller = StudioController();
+      controller.addShapeNode(10, 10);
+      final shapeId = controller.project.artboards.first.nodes.single.id;
+      expect(
+        controller.configureTextColumns(shapeId, columnCount: 2, gutter: 0),
+        isFalse,
+      );
+      expect(
+        controller.configureTextColumns(GgenId('missing'),
+            columnCount: 2, gutter: 0),
+        isFalse,
+      );
+    });
+
+    test('legacy text node without w/h gets default frame size on configure',
+        () {
+      final controller = StudioController();
+      // Manually construct a legacy label-sized node (no w/h/columns).
+      final node = DocumentNode(
+        id: GgenId('legacy'),
+        kind: DocumentNodeKind.textFrame,
+        name: 'Legacy',
+        extensions: <String, Object?>{
+          'x': 50,
+          'y': 60,
+          'size': 24,
+          'text': 'legacy',
+          'color': 0xFF000000,
+        },
+      );
+      final project = controller.project;
+      final artboard = project.artboards.first;
+      final next = DocumentProject(
+        id: project.id,
+        name: project.name,
+        revision: project.revision,
+        artboards: <Artboard>[
+          Artboard(
+            id: artboard.id,
+            name: artboard.name,
+            width: artboard.width,
+            height: artboard.height,
+            nodes: <DocumentNode>[node],
+          ),
+        ],
+      );
+      final session = controller.beginSession();
+      session.updatePreview(next);
+      controller.commitSession(session, 'add legacy');
+
+      final ok = controller.configureTextColumns(
+          GgenId('legacy'), columnCount: 2, gutter: 8);
+      expect(ok, isTrue);
+      final stored = controller.project.artboards.first.nodes.single;
+      final geom = textNodeFrameGeometry(stored)!;
+      expect(geom.frameWidth, StudioController.defaultTextFrameWidth);
+      expect(textNodeColumnCount(stored), 2);
+    });
+  });
+
+  test('helpers fail closed on malformed group payloads', () {
       final plain = DocumentNode(
         id: GgenId('node.x'),
         kind: DocumentNodeKind.shape,

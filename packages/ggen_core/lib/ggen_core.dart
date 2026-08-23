@@ -11,3 +11,6 @@ export 'src/recovery/recovery_contract.dart';
 export 'src/tools/tool_session.dart';
 export 'src/input/input_contract.dart';
 export 'src/serialization/project_codec.dart';
+export 'src/text/frame_geometry.dart';
+export 'src/text/column_layout.dart';
+export 'src/text/text_flow_engine.dart';

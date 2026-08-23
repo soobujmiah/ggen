@@ -7,6 +7,213 @@ import '../controller/studio_controller.dart';
 import 'canvas_viewport.dart';
 import 'canvas_zoom_controller.dart';
 
+/// Flutter `TextPainter`-backed measurement for the core text-flow engine.
+///
+/// Core stays rendering-free; the shell supplies this provider so multi-column
+/// layout uses real platform typography (wrapping, line height) rather than
+/// the monospace stub. Stateless: a [TextPainter] is created per call because
+/// measurement happens during build/layout, not on a retained painter.
+class FlutterTextMeasurement implements TextMeasurementProvider {
+  const FlutterTextMeasurement();
+
+  TextSpan _span(String text, double fontSize) => TextSpan(
+    text: text,
+    style: TextStyle(fontSize: fontSize, height: 1.2),
+  );
+
+  @override
+  int charactersThatFit({
+    required String text,
+    required int start,
+    required double maxWidth,
+    required double fontSize,
+  }) {
+    if (maxWidth <= 0 || fontSize <= 0 || start >= text.length) return 0;
+    final painter = TextPainter(
+      text: _span('', fontSize),
+      textDirection: TextDirection.ltr,
+    );
+    // Binary search for the largest prefix that paints within maxWidth.
+    var lo = 0;
+    var hi = text.length - start;
+    while (lo < hi) {
+      final mid = (lo + hi + 1) >> 1;
+      painter.text = _span(text.substring(start, start + mid), fontSize);
+      painter.layout(maxWidth: double.infinity);
+      if (painter.width <= maxWidth) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    painter.dispose();
+    return lo;
+  }
+
+  @override
+  double measureTextHeight({
+    required String text,
+    required double maxWidth,
+    required double fontSize,
+  }) {
+    if (text.isEmpty || maxWidth <= 0 || fontSize <= 0) return 0;
+    final painter = TextPainter(
+      text: _span(text, fontSize),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: maxWidth);
+    final height = painter.height;
+    painter.dispose();
+    return height;
+  }
+
+  @override
+  double lineHeight(double fontSize) {
+    final painter = TextPainter(
+      text: _span('Mg', fontSize),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: double.infinity);
+    final value = painter.preferredLineHeight;
+    painter.dispose();
+    return value;
+  }
+}
+
+/// Default shell measurement provider for text flow.
+const TextMeasurementProvider kDefaultTextMeasurement =
+    FlutterTextMeasurement();
+
+/// Computes the multi-column flow result for a frame text node, or null when
+/// the node lacks frame geometry or a valid text payload. Presentation code
+/// uses this to render column widgets and guides; it never mutates the node.
+TextFlowResult? flowTextFrame(
+  DocumentNode node, {
+  TextMeasurementProvider measurement = kDefaultTextMeasurement,
+}) {
+  final geom = textNodeFrameGeometry(node);
+  if (geom == null) return null;
+  final layout = textNodeColumnLayout(node);
+  final text = node.extensions['text'];
+  final size = node.extensions['size'];
+  if (text is! String || size is! num) return null;
+  final engine = TextFlowEngine(measurement);
+  return engine.flow(
+    story: text,
+    frames: [
+      TextFlowFrameInput(
+        frameId: node.id.value,
+        geometry: geom,
+        layout: layout,
+      ),
+    ],
+    fontSize: size.toDouble(),
+  );
+}
+
+/// CustomPainter that draws column boundary guides and the terminal overflow
+/// corner tab for a text frame. Text itself is rendered as real [Text] widgets
+/// by the canvas (for testability and correct interaction), not painted here.
+class ColumnGuidesPainter extends CustomPainter {
+  ColumnGuidesPainter({
+    required this.node,
+    required this.selected,
+    required this.flow,
+  });
+
+  final DocumentNode node;
+  final bool selected;
+  final TextFlowResult? flow;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final geom = textNodeFrameGeometry(node);
+    if (geom == null) return;
+    final ColumnGeometry columns;
+    try {
+      columns = ColumnGeometry.layout(
+        layout: textNodeColumnLayout(node),
+        content: geom.contentRect,
+      );
+    } on ArgumentError {
+      return; // Degenerate frame; nothing to draw.
+    }
+
+    // The painter is sized at the frame's top-left (Positioned), so column
+    // coordinates are translated into frame-local space.
+    final guidePaint = Paint()
+      ..color = selected
+          ? const Color(0xFF4E6BFF)
+          : const Color(0xFF4E6BFF).withValues(alpha: 0.45)
+      ..strokeWidth = selected ? 1.5 : 1.0
+      ..style = PaintingStyle.stroke;
+
+    for (final col in columns.columnBounds) {
+      final r = col.bounds;
+      final rect = Rect.fromLTWH(
+        r.left - geom.x,
+        r.top - geom.y,
+        r.width,
+        r.height,
+      );
+      if (selected) {
+        canvas.drawRect(rect, guidePaint);
+      } else {
+        _drawDashedRect(canvas, rect, guidePaint);
+      }
+    }
+
+    final result = flow;
+    if (result != null && result.hasOverflow) {
+      final last = result.allColumns
+          .where((c) => c.visibleEnd > c.visibleStart)
+          .lastOrNull;
+      if (last != null) {
+        final b = last.bounds.bounds;
+        final tab = Paint()..color = const Color(0xFFD93025);
+        final right = b.right - geom.x;
+        final bottom = b.bottom - geom.y;
+        final triangle = Path()
+          ..moveTo(right, bottom)
+          ..lineTo(right - 14, bottom)
+          ..lineTo(right, bottom - 14)
+          ..close();
+        canvas.drawPath(triangle, tab);
+      }
+    }
+  }
+
+  void _drawDashedRect(Canvas canvas, Rect rect, Paint paint) {
+    const dash = 6.0;
+    const gap = 4.0;
+    void dashedLine(Offset a, Offset b) {
+      final dx = b.dx - a.dx;
+      final dy = b.dy - a.dy;
+      final total = (dx.abs() > dy.abs() ? dx.abs() : dy.abs());
+      if (total <= 0) return;
+      final steps = (total / (dash + gap)).floor();
+      for (var i = 0; i < steps; i += 2) {
+        final t0 = i * (dash + gap) / total;
+        final t1 = ((i + 1) * (dash + gap)) / total;
+        canvas.drawLine(
+          Offset(a.dx + dx * t0, a.dy + dy * t0),
+          Offset(a.dx + dx * t1.clamp(0, 1), a.dy + dy * t1.clamp(0, 1)),
+          paint,
+        );
+      }
+    }
+
+    dashedLine(rect.topLeft, rect.topRight);
+    dashedLine(rect.topRight, rect.bottomRight);
+    dashedLine(rect.bottomRight, rect.bottomLeft);
+    dashedLine(rect.bottomLeft, rect.topLeft);
+  }
+
+  @override
+  bool shouldRepaint(covariant ColumnGuidesPainter oldDelegate) =>
+      oldDelegate.node != node ||
+      oldDelegate.selected != selected ||
+      oldDelegate.flow != flow;
+}
+
 /// Original compact-phone canvas: shows the first artboard with pinch-zoom
 /// and pan, routes taps to the active tool (draw, text, select), and detects
 /// multi-touch taps (2 fingers = undo, 3 fingers = redo).
@@ -117,6 +324,10 @@ class _StudioCanvasState extends State<StudioCanvas> {
   final Map<int, _PointerStamp> _downPointers = <int, _PointerStamp>{};
   int _burstPointerCount = 0;
   Offset? _lastDownLocal;
+
+  // Text measurement provider for multi-column frame flow.
+  static const TextMeasurementProvider _textMeasurement =
+      FlutterTextMeasurement();
 
   @override
   void initState() {
@@ -315,7 +526,17 @@ class _StudioCanvasState extends State<StudioCanvas> {
     }
     final text = textNodeGeometry(node);
     if (text != null) {
-      // Approximate bounding box from text length and font size.
+      // Frame text nodes carry an explicit w/h; legacy label-sized nodes fall
+      // back to the approximate single-line bounding box.
+      final frame = textNodeFrameGeometry(node);
+      if (frame != null) {
+        return Rect.fromLTWH(
+          frame.x,
+          frame.y,
+          frame.frameWidth,
+          frame.frameHeight,
+        );
+      }
       final width = text.text.length * text.size * 0.6;
       final height = text.size * 1.4;
       return Rect.fromLTWH(text.x, text.y, width, height);
@@ -726,6 +947,71 @@ class _StudioCanvasState extends State<StudioCanvas> {
     if (node.kind == DocumentNodeKind.textFrame) {
       final geometry = textNodeGeometry(node);
       if (geometry == null) return const <Widget>[];
+
+      // Frame text nodes have an explicit w/h and flow across columns using
+      // the core engine. Each column's slice is a real (clipped) Text widget
+      // so it remains testable and interactive; column guides and the
+      // overflow tab are an overlay. Legacy label-sized nodes (no w/h) keep
+      // the original single-line Text widget for backward compatibility.
+      final frame = textNodeFrameGeometry(node);
+      if (frame != null) {
+        final flow = flowTextFrame(node, measurement: _textMeasurement);
+        final showGuides = isSelected || textNodeColumnCount(node) > 1;
+        final colorValue = node.extensions['color'];
+        final sizeValue = node.extensions['size'];
+        final color = colorValue is int ? Color(colorValue) : Colors.black;
+        final fontSize = sizeValue is num ? sizeValue.toDouble() : 16.0;
+        final widgets = <Widget>[];
+        if (flow != null) {
+          for (final col in flow.allColumns) {
+            if (col.visibleText.isEmpty) continue;
+            final b = col.bounds.bounds;
+            widgets.add(
+              Positioned(
+                key: ValueKey(
+                  'ggen_text_frame_${node.id.value}_col${col.columnIndex}',
+                ),
+                left: frame.x + dragDx + (b.left - frame.x),
+                top: frame.y + dragDy + (b.top - frame.y),
+                width: b.width,
+                height: b.height,
+                child: ClipRect(
+                  child: Text(
+                    col.visibleText,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      color: color,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+        }
+        if (showGuides) {
+          widgets.add(
+            Positioned(
+              left: frame.x + dragDx,
+              top: frame.y + dragDy,
+              width: frame.frameWidth,
+              height: frame.frameHeight,
+              child: IgnorePointer(
+                child: CustomPaint(
+                  key: ValueKey('ggen_text_frame_guides_${node.id.value}'),
+                  painter: ColumnGuidesPainter(
+                    node: node,
+                    selected: isSelected,
+                    flow: flow,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        return widgets;
+      }
+
       final widgets = <Widget>[
         Positioned(
           left: geometry.x + dragDx,
@@ -741,7 +1027,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
         ),
       ];
       if (isSelected) {
-        // Approximate selection border for text nodes.
+        // Approximate selection border for legacy text nodes.
         final width = geometry.text.length * geometry.size * 0.6;
         final height = geometry.size * 1.4;
         widgets.add(

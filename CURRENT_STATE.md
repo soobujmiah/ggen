@@ -1,6 +1,6 @@
 # GGEN Current State
 
-Snapshot date: 2026-08-23
+Snapshot date: 2026-08-24
 Repository: `soobujmiah/ggen`
 Default branch: `main`
 Source of truth: GitHub repository state, tests/CI evidence, and documented physical-device evidence.
@@ -13,7 +13,7 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 
 - Pure-Dart core contracts are implemented and have pinned local verification documented as 27 unit tests passing on 2026-08-20.
 - GitHub Actions governance, reusable core tests and Flutter shell tests are documented green on `main` for the Phase 1 verification set.
-- Phase 2 has responsive layouts, workspace settings/profiles, diagnostics, persistence adapters, canvas interaction, Select/Draw/Text, multi-select, grid, groups, layer-list and numeric-inspector capabilities documented as implemented (the numeric text inspector — content/size/position editing of text frames through one undoable Apply — is CI-verified but not yet exercised on-device).
+- Phase 2 has responsive layouts, workspace settings/profiles, diagnostics, persistence adapters, canvas interaction, Select/Draw/Text, multi-select, grid, groups, layer-list, numeric-inspector and **multi-column text frame layout with gutter geometry** (N equal columns, exact-character text flow, overflow indication, inspector + mobile sheet, one-step undoable transactions, JSON round-trip; core 70 tests / app 198 tests green) documented as implemented — CI/widget verified but not yet exercised on-device.
 - Redmi Turbo 4 Pro evidence exists for current controls and several editing/persistence flows. Device evidence remains scoped to the exact exported diagnostics and does not imply release, GPU/NPU or benchmark validation.
 
 ## Evidence boundary

@@ -746,6 +746,53 @@ class _StudioShellState extends State<StudioShell> {
     );
   }
 
+  /// Opens the compact mobile column-configuration sheet for the selected
+  /// text frame (471px-class viewports have no side inspector). Column count,
+  /// gutter, reset and live canvas guides all apply through one undoable
+  /// controller action per Apply.
+  Future<void> _showColumnsSheet() async {
+    final selected = _studio.selectedNodeId;
+    if (selected == null) return;
+    final node = _studio.project.artboards.first.nodes
+        .firstWhere((n) => n.id == selected);
+    if (node.kind != DocumentNodeKind.textFrame) return;
+    debugLog.info(
+      'columns_sheet',
+      'Column sheet opened',
+      {'columns': textNodeColumnCount(node)},
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _ColumnsSheet(
+        initialColumns: textNodeColumnCount(node),
+        initialGutter: textNodeGutter(node),
+        onLiveConfigure: (columns, gutter) {
+          // Live preview so column guides update on the canvas.
+          _studio.configureTextColumns(
+            selected,
+            columnCount: columns,
+            gutter: gutter,
+          );
+        },
+        onReset: () => _studio.resetTextColumns(selected),
+        onApply: (columns, gutter) {
+          try {
+            _studio.configureTextColumns(
+              selected,
+              columnCount: columns,
+              gutter: gutter,
+            );
+            return true;
+          } on ArgumentError {
+            return false;
+          }
+        },
+      ),
+    );
+  }
+
   /// Opens the layer list as a bottom sheet on compact phones. Selection
   /// taps sync with the controller so the canvas highlights the chosen node.
   void _showLayersSheet() {
@@ -1168,6 +1215,15 @@ class _StudioShellState extends State<StudioShell> {
                           CompactNavigationBar(
                             selectedIndex: _selectedTool,
                             onSelected: _selectTool,
+                            columnsEnabled:
+                                _studio.selectedNodeId != null &&
+                                _studio.project.artboards.isNotEmpty &&
+                                _studio.project.artboards.first.nodes.any(
+                                  (n) =>
+                                      n.id == _studio.selectedNodeId &&
+                                      n.kind == DocumentNodeKind.textFrame,
+                                ),
+                            onConfigureColumns: _showColumnsSheet,
                           ),
                         ],
                       );
@@ -1442,10 +1498,12 @@ class _InspectorContentState extends State<_InspectorContent> {
   late TextEditingController _hCtrl;
   late TextEditingController _textCtrl;
   late TextEditingController _sizeCtrl;
+  late TextEditingController _gutterCtrl;
 
   DocumentNode? _node;
   NodeGeometry? _geom;
   TextNodeGeometry? _textGeom;
+  int _columns = 1;
 
   @override
   void initState() {
@@ -1456,6 +1514,7 @@ class _InspectorContentState extends State<_InspectorContent> {
     _hCtrl = TextEditingController();
     _textCtrl = TextEditingController();
     _sizeCtrl = TextEditingController();
+    _gutterCtrl = TextEditingController(text: '0');
     _syncFromNode();
     widget.controller.addListener(_syncFromNode);
   }
@@ -1479,6 +1538,7 @@ class _InspectorContentState extends State<_InspectorContent> {
     _hCtrl.dispose();
     _textCtrl.dispose();
     _sizeCtrl.dispose();
+    _gutterCtrl.dispose();
     super.dispose();
   }
 
@@ -1488,8 +1548,12 @@ class _InspectorContentState extends State<_InspectorContent> {
     final idx = nodes.indexWhere((n) => n.id == widget.selectedId);
     if (idx < 0) return;
     final node = nodes[idx];
-    final geom = nodeGeometry(node);
-    final tgeom = textNodeGeometry(node);
+    // Route by node KIND: text frames (which may now also carry w/h for
+    // column geometry) must always use the text inspector, never the shape
+    // branch. Shapes use shape geometry; other kinds get neither.
+    final isText = node.kind == DocumentNodeKind.textFrame;
+    final geom = isText ? null : nodeGeometry(node);
+    final tgeom = isText ? textNodeGeometry(node) : null;
     // Always sync from node; field focus handling deferred (numeric inspector is explicit Apply model).
     setState(() {
       _node = node;
@@ -1501,14 +1565,62 @@ class _InspectorContentState extends State<_InspectorContent> {
         _wCtrl.text = geom.width.toStringAsFixed(1);
         _hCtrl.text = geom.height.toStringAsFixed(1);
       } else if (tgeom != null) {
+        final fg = textNodeFrameGeometry(node);
         _xCtrl.text = tgeom.x.toStringAsFixed(1);
         _yCtrl.text = tgeom.y.toStringAsFixed(1);
-        _wCtrl.text = '';
-        _hCtrl.text = '';
+        _wCtrl.text = fg != null ? fg.frameWidth.toStringAsFixed(1) : '';
+        _hCtrl.text = fg != null ? fg.frameHeight.toStringAsFixed(1) : '';
         _textCtrl.text = tgeom.text;
         _sizeCtrl.text = tgeom.size.toStringAsFixed(1);
+        _columns = textNodeColumnCount(node);
+        _gutterCtrl.text = textNodeGutter(node).toStringAsFixed(1);
       }
     });
+  }
+
+  void _applyColumns() {
+    final gutter = double.tryParse(_gutterCtrl.text.trim());
+    if (gutter == null || !gutter.isFinite || gutter < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gutter must be a finite number ≥ 0')),
+      );
+      return;
+    }
+    try {
+      final ok = widget.controller.configureTextColumns(
+        widget.selectedId,
+        columnCount: _columns,
+        gutter: gutter,
+      );
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Column change rejected (no change or node not a text frame)')),
+        );
+      } else {
+        debugLog.info('inspector_columns', 'Inspector text columns applied', {
+          'columns': _columns,
+          'gutter': gutter,
+          'revision': widget.controller.revision,
+        });
+      }
+    } on ArgumentError catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Invalid columns: ${e.message}')),
+      );
+    }
+  }
+
+  void _resetColumns() {
+    setState(() => _columns = 1);
+    _gutterCtrl.text = '0.0';
+    final ok = widget.controller.resetTextColumns(widget.selectedId);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reset rejected — not a text frame')),
+      );
+    } else {
+      debugLog.info('inspector_columns_reset', 'Text columns reset to 1');
+    }
   }
 
   void _applyShapeGeometry() {
@@ -1676,8 +1788,62 @@ class _InspectorContentState extends State<_InspectorContent> {
               label: const Text('Apply'),
             ),
           ),
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+          Text('Columns', style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          Text('Content, size and position apply as ONE undoable step; position clamps into the artboard.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11)),
+          Row(
+            children: [
+              const Text('Count'),
+              Expanded(
+                child: Slider(
+                  key: const ValueKey('inspector_columns_slider'),
+                  value: _columns.toDouble(),
+                  min: 1,
+                  max: StudioController.maxTextFrameColumns.toDouble(),
+                  divisions: StudioController.maxTextFrameColumns - 1,
+                  label: '$_columns',
+                  onChanged: (v) => setState(() => _columns = v.round()),
+                ),
+              ),
+              SizedBox(
+                width: 32,
+                child: Text(
+                  '$_columns',
+                  textAlign: TextAlign.end,
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: _NumberField(
+                  fieldKey: const ValueKey('inspector_gutter'),
+                  label: 'Gutter',
+                  controller: _gutterCtrl,
+                ),
+              ),
+              const SizedBox(width: 6),
+              OutlinedButton(
+                key: const ValueKey('inspector_columns_reset'),
+                onPressed: _resetColumns,
+                child: const Text('Reset'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              key: const ValueKey('inspector_columns_apply'),
+              onPressed: _applyColumns,
+              child: const Text('Apply columns'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Columns fill left→right; overflow flows to a linked frame. One undoable step per Apply.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11)),
         ],
       );
     }
@@ -1705,8 +1871,15 @@ class _NumberField extends StatelessWidget {
     return TextField(
       key: fieldKey,
       controller: controller,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-      decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()),
+      keyboardType: const TextInputType.numberWithOptions(
+        decimal: true,
+        signed: true,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: const OutlineInputBorder(),
+      ),
       onSubmitted: (_) {},
     );
   }
@@ -2051,25 +2224,191 @@ class CompactNavigationBar extends StatelessWidget {
   const CompactNavigationBar({
     required this.selectedIndex,
     required this.onSelected,
+    this.columnsEnabled = false,
+    this.onConfigureColumns,
     super.key,
   });
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
+  /// When a text frame is selected on a compact viewport, exposes a
+  /// mobile-native column-configuration entry (no side inspector exists at
+  /// the 471px-class width).
+  final bool columnsEnabled;
+  final VoidCallback? onConfigureColumns;
+
   @override
   Widget build(BuildContext context) => NavigationBar(
     height: 56,
     selectedIndex: selectedIndex,
-    onDestinationSelected: onSelected,
-    destinations: const [
-      NavigationDestination(
+    onDestinationSelected: (i) {
+      if (i == 3 && columnsEnabled) {
+        onConfigureColumns?.call();
+        return;
+      }
+      onSelected(i);
+    },
+    destinations: [
+      const NavigationDestination(
         icon: Icon(Icons.near_me_outlined),
         label: 'Select',
       ),
-      NavigationDestination(icon: Icon(Icons.brush_outlined), label: 'Draw'),
-      NavigationDestination(icon: Icon(Icons.text_fields), label: 'Text'),
+      const NavigationDestination(icon: Icon(Icons.brush_outlined), label: 'Draw'),
+      const NavigationDestination(icon: Icon(Icons.text_fields), label: 'Text'),
+      NavigationDestination(
+        icon: Icon(
+          Icons.view_column_outlined,
+          color: columnsEnabled ? null : Theme.of(context).disabledColor,
+        ),
+        label: 'Columns',
+      ),
     ],
   );
+}
+
+/// Compact mobile column-configuration sheet (471px-class viewports have no
+/// side inspector). Owns its gutter [TextEditingController] so the controller
+/// outlives the sheet's exit animation.
+class _ColumnsSheet extends StatefulWidget {
+  const _ColumnsSheet({
+    required this.initialColumns,
+    required this.initialGutter,
+    required this.onLiveConfigure,
+    required this.onReset,
+    required this.onApply,
+  });
+
+  final int initialColumns;
+  final double initialGutter;
+  final void Function(int columns, double gutter) onLiveConfigure;
+  final VoidCallback onReset;
+  final bool Function(int columns, double gutter) onApply;
+
+  @override
+  State<_ColumnsSheet> createState() => _ColumnsSheetState();
+}
+
+class _ColumnsSheetState extends State<_ColumnsSheet> {
+  late final TextEditingController _gutterCtrl = TextEditingController(
+    text: widget.initialGutter.toStringAsFixed(1),
+  );
+  late int _columns = widget.initialColumns;
+
+  @override
+  void dispose() {
+    _gutterCtrl.dispose();
+    super.dispose();
+  }
+
+  void _liveConfigure() {
+    final g = double.tryParse(_gutterCtrl.text.trim()) ?? 0;
+    if (g.isFinite && g >= 0) {
+      widget.onLiveConfigure(_columns, g);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 4,
+        bottom: 20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Text columns',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Text('Count'),
+              Expanded(
+                child: Slider(
+                  key: const ValueKey('mobile_columns_slider'),
+                  value: _columns.toDouble(),
+                  min: 1,
+                  max: StudioController.maxTextFrameColumns.toDouble(),
+                  divisions: StudioController.maxTextFrameColumns - 1,
+                  label: '$_columns',
+                  onChanged: (v) {
+                    setState(() => _columns = v.round());
+                    _liveConfigure();
+                  },
+                ),
+              ),
+              SizedBox(width: 32, child: Text('$_columns')),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('mobile_gutter_field'),
+                  controller: _gutterCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  onChanged: (_) => _liveConfigure(),
+                  decoration: const InputDecoration(
+                    labelText: 'Gutter',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                key: const ValueKey('mobile_columns_reset'),
+                onPressed: () {
+                  setState(() => _columns = 1);
+                  _gutterCtrl.text = '0.0';
+                  widget.onReset();
+                },
+                child: const Text('Reset'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                key: const ValueKey('mobile_columns_apply'),
+                onPressed: () {
+                  final g = double.tryParse(_gutterCtrl.text.trim());
+                  if (g == null || !g.isFinite || g < 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Gutter must be finite and ≥ 0'),
+                      ),
+                    );
+                    return;
+                  }
+                  final ok = widget.onApply(_columns, g);
+                  if (!ok) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Invalid columns for this frame (gutter too large).',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.pop(context);
+                },
+                child: const Text('Apply'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Text fills column 1 first, then each next column. A red corner tab marks text that overflows the frame.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Owns its [TextEditingController] so the controller outlives the dialog's
