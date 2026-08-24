@@ -1,388 +1,168 @@
-# AI Gateway Runtime — Architecture & Engineering Specification
+# AI Gateway Runtime — Integration Reference
 
-**Status:** Architecture contract frozen; implementation pending
-**Target:** Android-first, platform-neutral runtime
-**Mode:** Cloud-first; local/custom inference is an optional adapter
-**Release:** Not authorized until all release gates pass
+**Status:** GGEN integration/reference document; canonical runtime ownership = LAI
+**Target:** Android-first, platform-neutral capability contract
+**Release:** This document does not authorize a GGEN runtime implementation or public release
 
 ## 1. Purpose
 
-AI Gateway Runtime is a provider-neutral AI execution layer. Applications and Android tools use one normalized AI interface instead of depending directly on a specific cloud AI vendor.
+This document describes the AI gateway behavior GGEN expects to consume through the cross-repository capability contract. It is an integration/reference specification, not permission to create a second canonical AI runtime inside GGEN.
 
-The gateway must support multiple providers, capability-aware routing, bounded retry, automatic failover, health tracking, structured tool calling, Android permission boundaries, secure secret handling, and auditable execution.
+**Canonical ownership:** LAI owns provider adapters, provider routing/failover, provider credentials, model execution, local CPU/GPU/NPU runtime, device scheduling, Android tool authority, agent execution, runtime audit and execution evidence. GGEN owns user-facing creative/document UX, document/creative state, task intent, context assembly, presentation of AI results and non-AI workflows.
+
+The canonical cross-repository contract is `docs/architecture/GGEN_LAI_INTEGRATION_SPEC.md` in GGEN and the matching LAI integration-boundary documentation. The SKB ownership matrix is the cross-project reference.
 
 ## 2. Architectural invariants
 
-1. Core code is provider-neutral.
-2. Provider-specific request/response translation belongs only in provider adapters.
-3. Failover is policy-driven and bounded; there is no infinite retry.
-4. Invalid requests are not blindly replayed against every provider.
-5. AI generation retry and tool execution retry are separate concerns.
-6. AI never receives Android permissions directly.
-7. Tool calls pass registry, schema, policy, and permission checks before execution.
-8. High-risk tools are disabled by default and may require explicit user confirmation.
-9. Tool output is untrusted data and cannot grant authority or permissions.
-10. Provider credentials never enter model context or ordinary logs.
-11. Important execution decisions are auditable without indiscriminately logging sensitive content.
-12. Local inference is optional and must not contaminate the cloud-provider abstraction.
-13. New providers must be addable without rewriting the core gateway.
-14. Public release is blocked until implementation, tests, security validation, documentation, and reproducible build evidence are complete.
+1. GGEN code remains provider-neutral.
+2. Provider-specific translation and credentials belong to LAI.
+3. GGEN does not implement a second retry/failover router.
+4. GGEN does not own Android permissions or privileged tool execution.
+5. AI tool calls requested by GGEN pass through LAI registry, schema, policy and permission boundaries.
+6. GGEN receives normalized responses/errors and presents them to users.
+7. GGEN remains functional without LAI for manual/non-AI workflows.
+8. Local/cloud/hybrid execution is requested through capability constraints; LAI resolves the execution path.
+9. No hidden shared filesystem paths or runtime internals cross the repository boundary.
+10. Release claims must distinguish contract/documentation from validated implementation.
 
-## 3. High-level flow
+## 3. Expected flow
 
 ```text
-Application / Android Client
-            |
-            v
-       Unified AI API
-            |
-            v
-         Gateway
-            |
-    +-------+--------+
-    |       |        |
- Router  Failover  Health
-    |       |        |
-    +-------+--------+
-            |
-      Provider Layer
-            |
-    +-------+--------+---------+
-    |       |        |         |
-  OpenAI Anthropic Gemini  Custom
-            |
-            v
-       Normalized Response
+GGEN creative/document UX
+          |
+          | versioned capability request
+          v
+     LAI Runtime
+          |
+    +-----+----------+
+    |                |
+ Local runtime   Cloud/custom providers
+ CPU/GPU/NPU
+          |
+          v
+ normalized response + provenance/evidence
+          |
+          v
+         GGEN
 ```
 
-Tool execution:
+Tool execution is LAI-owned:
 
 ```text
-AI Provider
-    |
-    v
-Normalized Tool Call
-    |
-    v
-Tool Runtime
-    |
-    v
-Tool Registry
-    |
-    v
-Schema Validation
-    |
-    v
-Policy / Permission
-    |
-    v
-Android Adapter
-    |
-    v
-Tool Result
-    |
-    v
-AI Provider
+GGEN capability intent
+        |
+        v
+LAI tool registry
+        |
+ schema / policy / permission / confirmation
+        |
+        v
+Android/tool executor
+        |
+        v
+normalized result
 ```
 
-## 4. Core domain contracts
+## 4. Normalized request/response expectations
 
-### AIRequest
+GGEN may send a logical request containing:
 
-The normalized request contains, as applicable:
-
-- messages
-- system instruction
-- model policy
-- tools
-- attachments
-- generation configuration
-- timeout
-- metadata
-
-### AIResponse
-
-The normalized response contains, as applicable:
-
-- content
-- tool calls
-- finish reason
-- usage
-- provider ID
-- model ID
 - request ID
+- capability
+- operation
+- document/media references
+- context
+- execution/privacy constraints
+- streaming/cancellation preference
+- metadata safe for the runtime boundary
 
-Provider SDK objects must not leak into application or core domain code.
+GGEN must not send provider SDK objects, provider secrets, arbitrary Android framework objects, or implicit filesystem paths.
 
-## 5. Provider contract
+The normalized response may contain:
 
-Conceptual interface:
+- request ID
+- status
+- output
+- runtime/provider identity
+- usage where available
+- provenance/evidence
+- warnings
+- typed error
 
-```text
-Provider
- ├── metadata()
- ├── capabilities()
- ├── healthCheck()
- ├── generate(AIRequest)
- └── stream(AIRequest)
-```
+Stable statuses include `success`, `partial`, `failed`, `cancelled`, `unsupported`, `denied`, and `timeout`.
 
-Adapters are responsible for translating normalized requests and responses and normalizing provider failures. An adapter must not select another provider, bypass gateway policy, execute Android tools, or perform unbounded retries.
+## 5. Provider behavior — LAI-owned
 
-Supported provider categories include OpenAI, Anthropic, Gemini, OpenAI-compatible APIs, custom cloud endpoints, and future providers. Local inference may be implemented as another adapter later.
+LAI's provider layer may expose normalized capabilities such as text, vision, tools, streaming and structured output. Provider adapters translate requests/responses and normalize failures.
 
-## 6. Capabilities
+GGEN must not implement provider-specific selection, credential attachment, retries or failover. GGEN may expose user-facing provider preferences and constraints; those become runtime policy inputs to LAI.
 
-Provider/model metadata may declare:
+Provider/runtime failures should be returned as typed normalized errors. GGEN owns the user-facing recovery UX; LAI owns retry/failover and runtime recovery policy.
 
-- text
-- vision
-- tools
-- streaming
-- structured output
-- maximum context size
+## 6. Routing, retry and health — LAI-owned
 
-The router must filter providers by required capabilities before execution.
+Capability filtering, provider health, bounded retry, failover and circuit breaking belong to LAI. GGEN must not independently reproduce these policies.
 
-## 7. Error model
-
-Provider failures are normalized into categories such as:
-
-- AUTHENTICATION
-- RATE_LIMIT
-- TIMEOUT
-- UNAVAILABLE
-- INVALID_REQUEST
-- CAPABILITY_UNSUPPORTED
-- SERVER_ERROR
-- MALFORMED_RESPONSE
-- NETWORK_ERROR
-- UNKNOWN
-
-The error class determines whether retry or failover is appropriate.
-
-## 8. Routing
-
-Initial deterministic ranking:
-
-1. explicit user preference;
-2. required capabilities;
-3. enabled state;
-4. health state;
-5. configured priority.
-
-Future ranking may add latency, cost, reliability, context capacity, model quality, and user policy.
-
-## 9. Retry and failover
-
-Retry is bounded and applies only to retryable failures. Provider `Retry-After` information must be respected when available.
-
-Typical retryable conditions include transient timeout, transient network failure, temporary server failure, and rate limiting subject to provider policy. Invalid requests, invalid credentials, unsupported capabilities, and invalid configuration must not trigger blind repeated retries.
-
-A typical failover path is:
+A typical runtime path is:
 
 ```text
-Provider A -> retryable failure -> bounded retry -> Provider B -> success
+preferred execution -> retryable failure -> bounded retry -> allowed fallback -> normalized terminal result
 ```
 
-All providers failing must produce one normalized terminal failure; the system must never enter an infinite loop.
+`local_only` must never silently leave the device. Non-idempotent side effects must not be blindly retried or failed over.
 
-## 10. Health and circuit breaker
+## 7. Tool runtime — LAI-owned
 
-Provider runtime states:
+A tool has a stable ID/version, description, schemas, risk classification, required permissions and executor. Unknown tools, invalid arguments, denied permissions and expired confirmations fail closed.
 
-- HEALTHY
-- DEGRADED
-- RATE_LIMITED
-- UNAVAILABLE
-- DISABLED
+Tool output is untrusted data and never grants authority.
 
-A circuit breaker may transition:
+GGEN may request a declared tool capability through the integration contract. It does not execute Accessibility, Shizuku or privileged Android operations itself through this gateway document.
 
-```text
-HEALTHY -> DEGRADED -> OPEN -> HALF_OPEN -> HEALTHY
-                                   \\-> OPEN
-```
+## 8. Security and secrets — LAI-owned
 
-The purpose is to stop repeatedly sending traffic to a failing provider and to permit controlled recovery probes.
+Provider credentials belong in LAI's secure runtime secret facility. They must never be stored in GGEN project documents, source, ordinary logs or model context.
 
-## 11. Request tracing
+GGEN should receive only the minimum execution metadata needed for UX and provenance.
 
-Every request receives an internal request ID. Attempts may record provider, model, timing, outcome, error class, and failover reason. Raw credentials and unnecessary sensitive prompt content must not be logged.
+## 9. Evidence
 
-## 12. Tool Runtime
+Runtime evidence must distinguish availability from execution, for example:
 
-A tool has a stable ID and version and declares:
+`API_AVAILABLE → BACKEND_AVAILABLE → BACKEND_ACCEPTED → EXECUTION_COMPLETED → DEVICE_VALIDATED → PERFORMANCE_MEASURED`
 
-- name
-- description
-- input schema
-- output schema
-- risk level
-- required permissions
-- executor
+GGEN must not upgrade LAI evidence. If LAI reports a backend as experimental or unvalidated, GGEN must preserve that status.
 
-Tool execution sequence:
+## 10. Implementation relationship
 
-```text
-Tool Call -> known tool -> schema valid -> policy allowed -> confirmation if required -> execute -> normalized result
-```
+The previous GGEN-local milestone sequence (M1 gateway foundation, provider layer, router/failover, tool runtime, etc.) is **superseded as a GGEN runtime implementation plan**.
 
-Unknown tools, malformed arguments, denied permissions, and expired confirmations must fail closed.
+The correct implementation sequence is:
 
-## 13. Tool risk levels
+1. reconcile/freeze the cross-repository contract;
+2. implement canonical runtime capabilities in LAI;
+3. implement the smallest GGEN client/adapter required to consume them;
+4. validate end-to-end;
+5. expand capabilities only after evidence and security gates pass.
 
-**LOW:** read-only or low-impact operations.
+No GGEN-local provider/runtime implementation should be started from this document.
 
-**MEDIUM:** bounded local state changes.
+## 11. Current status
 
-**HIGH:** external, destructive, privileged, or sensitive actions.
+- GGEN gateway runtime: **NOT IMPLEMENTED / NOT A GGEN OWNERSHIP TARGET**
+- Cross-repository contract: **DOCUMENTED**
+- LAI canonical runtime: follow LAI repository implementation state and evidence
+- Public release: **NOT AUTHORIZED until applicable release gates pass**
 
-High-risk tools are disabled by default during MVP. Any future high-risk capability requires explicit policy, appropriate Android permissions, user confirmation where applicable, validation, and dedicated tests.
+## 12. Required agent reading
 
-## 14. Android boundary
+Before changing AI integration code, an agent must read:
 
-The core runtime remains platform-neutral. Android-specific execution belongs behind an adapter boundary:
+1. `docs/architecture/ggen-lai-boundary.md`
+2. `docs/architecture/GGEN_LAI_INTEGRATION_SPEC.md`
+3. this document
+4. the corresponding LAI integration boundary/runtime documents
+5. SKB `architecture/GGEN_LAI_CAPABILITY_OWNERSHIP_MATRIX.md`
+6. SKB `research/ANDROID_BEST_IN_CLASS_RESEARCH_PROTOCOL.md`
 
-```text
-Core Tool Runtime
-      |
-      v
-Tool Executor Interface
-      |
-      v
-Android Adapter
-   |    |    |
- Android Intent Accessibility other APIs
-```
-
-The first integration should use one low-risk, read-only capability such as `get_device_info()` so the complete tool chain can be validated without destructive side effects.
-
-## 15. Tool-result security
-
-Tool output is data, not authority. Text returned by a tool must not be interpreted as permission, policy, or system instruction. Prompt-injection-like output must remain untrusted.
-
-## 16. Tool retries and idempotency
-
-AI generation retry must not automatically imply tool retry. Side-effecting tools are not automatically retried because a timeout may occur after the external action succeeded. Where a side-effecting tool eventually permits retries, it must use an appropriate idempotency mechanism.
-
-## 17. Secret management
-
-Provider credentials must be kept in a secure secret facility appropriate to the platform. They must never be:
-
-- hard-coded in source;
-- committed to Git;
-- inserted into prompts or model context;
-- returned by tools;
-- written to ordinary logs;
-- included in diagnostics or documentation.
-
-Credential attachment occurs inside the provider adapter after the normalized request has reached the gateway.
-
-## 18. Audit
-
-Auditable events include request creation, provider selection, provider attempts, retries, failovers, tool-call requests, validation, permission decisions, tool execution, and request completion. Audit records must be privacy-aware and secret-safe.
-
-## 19. Threat model
-
-The initial threat model covers prompt injection, malicious tool output, unauthorized tool execution, credential leakage, replayed calls, duplicate side effects, malformed provider responses, malicious tool schemas, excessive permissions, infinite retries, denial-of-service through repeated tool calls, and unsafe Android privileged operations.
-
-## 20. Milestones
-
-### M1 — Foundation
-Project structure, core domain contracts, interfaces, tests, and documentation.
-
-### M2 — Provider Layer
-Provider contract, normalized request/response, capability model, error model, first real adapter, and mock provider.
-
-### M3 — Routing and Failover
-Router, health monitor, bounded retry, failover, circuit breaker, tracing, and failure simulation.
-
-### M4 — Tool Runtime
-Tool registry, schema validation, risk classification, permission engine, confirmation, executor, Android adapter boundary, and one safe Android tool.
-
-### M5 — Security
-Secret management, redaction, permission hardening, threat-model tests, and security regression checks.
-
-### M6 — Multi-provider
-Second real provider, interoperability tests, provider-specific edge cases, and streaming.
-
-### M7 — Advanced routing
-Capability-, latency-, cost-, and reliability-aware routing where evidence justifies it.
-
-### M8 — Android tool expansion
-Additional safe tools and controlled automation only after security gates pass.
-
-### M9 — Agent runtime
-Multi-step tasks, task state, cancellation, workflow orchestration, and long-running operations.
-
-### M10 — Release candidate
-Full integration, security, failure, performance, documentation, and reproducible-build validation.
-
-## 21. Testing requirements
-
-Provider tests must cover success, timeout, rate limit, authentication failure, server failure, network failure, malformed response, and unsupported capability.
-
-Router tests must cover preference, unavailable providers, failover, all-provider failure, bounded retry, circuit opening, cooldown, and recovery.
-
-Tool tests must cover registration, duplicate IDs, unknown tools, schema failure, permission denial, confirmation, timeout, execution failure, and result normalization.
-
-Security tests must cover secret redaction, prompt injection, malicious tool output, unauthorized tool calls, high-risk tool blocking, and duplicate side-effect protection.
-
-## 22. Definition of Done
-
-A milestone is complete only when all applicable items are satisfied:
-
-- implementation complete;
-- unit tests complete;
-- failure tests complete;
-- integration tests complete;
-- security validation complete where applicable;
-- documentation updated;
-- build succeeds;
-- evidence is recorded;
-- commit created;
-- commit pushed to the designated GitHub branch;
-- remote state verified.
-
-## 23. Release policy
-
-No public release is authorized merely because a demo works. Release requires architecture compliance, provider interoperability, failover validation, tool security validation, credential security, Android permission validation, failure testing, performance evidence, documentation review, and reproducible release-build evidence.
-
-## 24. Non-goals for the initial implementation
-
-The MVP does not attempt unrestricted shell execution, unrestricted filesystem access, silent Android control, immediate full autonomous-agent behavior, provider lock-in, or premature local-LLM integration.
-
-## 25. Agent execution contract
-
-The coding agent must implement milestones in order and must not silently change architectural invariants. It must finish and verify one milestone before starting the next.
-
-At each milestone close, the agent must report:
-
-```text
-Milestone
-Status
-Implemented
-Tests
-Failure tests
-Security checks
-Build
-Files changed
-Known limitations
-Architecture deviations
-Commit SHA
-Branch
-Push status
-Remote verification
-Next milestone
-```
-
-GitHub push is mandatory after a completed milestone unless the repository protection policy blocks it. If blocked, the agent must report the exact blocking condition rather than claiming completion.
-
-## 26. Current status
-
-Architecture and engineering contract: **documented**.
-
-Actual implementation of this runtime: **not yet claimed by this document**.
-
-Public release: **not authorized**.
+If these sources disagree, inspect current source/tests/evidence in both repositories before implementing anything.
