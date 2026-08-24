@@ -6,6 +6,22 @@
 
 Research current leaders and convert useful patterns into engineering requirements without blindly copying feature lists. Every capability must also respect the GGEN↔LAI ownership contract.
 
+## Research structure
+
+This file is the **cross-capability synthesis**. Detailed Android benchmark research is maintained separately in `docs/research/android-best-in-class-tool-research.md` so the same large benchmark matrix is not duplicated.
+
+For every capability, agents must research:
+
+1. strongest Android-native/Android-available tools;
+2. strongest professional reference;
+3. strongest relevant open-source implementation;
+4. specialist tools for important sub-capabilities;
+5. feature, UX, architecture, licensing, device and interoperability implications;
+6. GGEN current state and gap;
+7. canonical owner and BUILD/ADAPT/INTEGRATE/PROVIDER/REJECT decision.
+
+The detailed Android benchmark set includes vector, raster, 3D, PDF, document, presentation, spreadsheet/data, OCR, animation, motion graphics, image generation/editing, asset management, typography, whiteboard and collaboration workflows.
+
 ## Creative/document benchmark
 
 ### Canva
@@ -20,7 +36,24 @@ Adobe Express currently combines templates, images, video, PDFs, generative imag
 
 **GGEN lessons:** PDF and creative workflows should interoperate; AI should operate on document structure as well as images; source-document→presentation is a valuable workflow; brand consistency should be first-class; generated output should remain editable.
 
-### Target
+### Android-first benchmarks
+
+The Android-specific benchmark document is authoritative for the detailed app/tool matrix. Important examples include:
+
+- **Vector:** Infinite Design, Concepts, Vector Ink, TouchDraw
+- **Raster/painting:** Infinite Painter, Sketchbook, ibis Paint X, Krita, Clip Studio Paint
+- **3D sculpting:** Nomad Sculpt
+- **3D scene/model/animation:** Prisma3D
+- **PDF:** Xodo, Adobe Acrobat, Foxit, PDFgear
+- **Office/document:** Microsoft 365, WPS Office, Collabora Office
+- **OCR/scanning:** Adobe Scan and Android scanning workflows
+- **Animation/motion:** Alight Motion, FlipaClip, CapCut
+- **File/asset management:** Solid Explorer, Material Files, Files by Google
+- **Whiteboard/infinite canvas:** Concepts and comparable Android workflows
+
+Do not treat these names as a dependency list. They are evidence sources for feature/UX/architecture decisions. See `docs/research/android-best-in-class-tool-research.md` for the detailed matrix and sub-capability decomposition.
+
+## Target
 
 GGEN should combine accessible visual workflows with professional document/creative integration, strong AI-assisted editing, offline/local capability where feasible, inspectable document architecture, Bangla-first UX/typography, and LAI-provided AI runtime independence.
 
@@ -28,7 +61,7 @@ GGEN should combine accessible visual workflows with professional document/creat
 
 Best-in-class behavior includes natural-language image modification, object-aware selection, insert/remove, background generation/removal, upscaling and localized editing. citeturn0search13turn0search6
 
-**Engineering target:** represent edits as editable/auditable operations against assets and selections/masks where possible, not only flattened generated bitmaps.
+**Engineering target:** represent edits as editable/auditable operations against assets and selections/masks where possible, not only flattened generated bitmaps. AI execution remains a LAI capability; GGEN owns the creative interaction and resulting artifact model.
 
 ## Document/PDF requirements
 
@@ -38,48 +71,23 @@ Benchmark workflows include create/edit/organize/convert/export PDF, AI document
 
 ## Android AI runtime benchmark
 
-### llama.cpp
+Runtime benchmarking belongs to LAI. GGEN should consume LAI capability contracts rather than reproduce runtime/provider infrastructure. See the LAI repository's `docs/research/android-best-in-class-runtime-tool-research.md` for the Android runtime/tool benchmark.
 
-llama.cpp provides Android support and an Android binding/sample; its Android documentation covers GGUF metadata loading from Android URIs/private storage and hardware-aware kernels. citeturn1search12
+### llama.cpp / ExecuTorch / ONNX Runtime
 
-**LAI lesson:** retain a lightweight direct native LLM path and explicit user-controlled model storage.
-
-### ExecuTorch
-
-ExecuTorch provides Android Java/Kotlin AAR integration and CPU/XNNPACK, Vulkan GPU, Qualcomm AI Engine, MediaTek and other accelerator backends. It also provides Android LLM runtime components. citeturn1search0turn1search4turn1search1
-
-**LAI lesson:** a backend-neutral runtime contract with replaceable hardware adapters is the correct abstraction; application code should not bind directly to one accelerator SDK.
-
-### ONNX Runtime
-
-ONNX Runtime provides Android Java/Kotlin and C/C++ packages and supports Android builds plus QNN execution-provider integration. citeturn1search2turn1search14
-
-**LAI lesson:** ONNX is an interoperability/backend option, not the universal abstraction for GGUF-centric LLM execution.
-
-## Backend architecture conclusion
-
-```text
-LAI Inference Contract
-        |
-        +-- llama.cpp / GGUF
-        +-- ExecuTorch
-        +-- ONNX Runtime
-        +-- Qualcomm/QNN
-        +-- Vulkan
-        +-- CPU fallback
-```
-
-The scheduler selects based on model format, capabilities, device, memory, thermal state, reliability and measured evidence. Product-level agent logic stays above the backend layer.
+These remain important architecture references for LAI's backend-neutral execution strategy, not GGEN dependencies. citeturn1search12turn1search0turn1search4turn1search2turn1search14
 
 ## Tool/agent target
 
-Android capabilities should be typed tools with stable IDs/versions, schema validation, risk levels, permission requirements, explicit confirmation for consequential operations, bounded execution, normalized results, audit events and idempotency for side-effecting operations where possible.
+GGEN-facing AI actions should be expressed as stable capability contracts. Provider routing, model execution, Android authority, permission enforcement, terminal execution, tool registry and runtime audit remain LAI-owned.
 
 ## Build vs integrate
 
-**Build:** GGEN document/creative model and editor UX; LAI runtime orchestration, Android permission/tool authority, device-aware scheduling, Bangla-first runtime capabilities, and the GGEN↔LAI contract.
+**Build:** GGEN document/creative model and editor UX, creative workflows, artifact presentation and GGEN-side AI capability consumption.
 
-**Adapt/integrate:** AI providers, model runtimes, hardware SDKs, compatible file-format libraries, and external generation services.
+**Adapt/integrate:** compatible file-format libraries, rendering/editing engines, font/media libraries and external creative services where ownership is unnecessary.
+
+**Provider:** consume AI inference, OCR execution, provider routing and Android tools through LAI contracts.
 
 **Never duplicate:** provider routers, Android automation authorities, model schedulers, provider secrets, or runtime permission authorities.
 
@@ -87,4 +95,4 @@ Android capabilities should be typed tools with stable IDs/versions, schema vali
 
 Research does not authorize blind competitor parity. The target is a coherent architecture in which GGEN approaches best-in-class creative/document workflows while LAI supplies reusable AI/device runtime services.
 
-Before implementing any capability, document: current leaders, open-source alternatives, data/file model implications, Android/offline implications, licensing, security/privacy, testability, canonical owner, integration boundary, MVP scope and best-in-class target behavior.
+Before implementing any capability, document: current leaders, Android benchmarks, open-source alternatives, data/file model implications, Android/offline implications, licensing, security/privacy, testability, canonical owner, integration boundary, MVP scope and best-in-class target behavior.
