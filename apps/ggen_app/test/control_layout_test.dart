@@ -27,8 +27,10 @@ void main() {
       expect(classifyWorkspace(800, 360), WorkspaceClass.compactLandscape);
       expect(classifyWorkspace(640, 360), WorkspaceClass.compactLandscape);
       expect(classifyWorkspace(900, 412), WorkspaceClass.compactLandscape);
-      // Borderline: taller than wide on a small screen stays portrait.
-      expect(classifyWorkspace(699, 599), WorkspaceClass.compactPortrait);
+      // Taller than wide on a small screen stays portrait (orientation
+      // decides the landscape class, not the raw width).
+      expect(classifyWorkspace(599, 699), WorkspaceClass.compactPortrait);
+      expect(classifyWorkspace(699, 800), WorkspaceClass.compactPortrait);
     });
   });
 

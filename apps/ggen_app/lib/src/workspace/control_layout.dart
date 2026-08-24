@@ -77,11 +77,10 @@ WorkspaceClass classifyWorkspace(double width, double height) {
 /// [CanvasControl.immersive] exit control always guaranteed present.
 class CanvasControlLayout {
   CanvasControlLayout(Map<ControlRegion, List<CanvasControl>> regions)
-      : _regions = Map<ControlRegion, List<CanvasControl>>.unmodifiable(
-          regions.map(
-            (region, list) => MapEntry(region, List.unmodifiable(list)),
-          ),
-        );
+      : _regions = Map<ControlRegion, List<CanvasControl>>.unmodifiable({
+          for (final entry in regions.entries)
+            entry.key: List<CanvasControl>.unmodifiable(entry.value),
+        });
 
   final Map<ControlRegion, List<CanvasControl>> _regions;
 

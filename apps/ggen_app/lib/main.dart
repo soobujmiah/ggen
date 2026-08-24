@@ -676,8 +676,13 @@ class _StudioShellState extends State<StudioShell> {
   List<ResolvedControlAction> _resolveFullscreenActions(
     List<CanvasControl> controls,
   ) {
-    void log(String event, String message, [Map<String, Object?>? extra]) =>
+    void log(String event, String message, [Map<String, Object?>? extra]) {
+      if (extra == null) {
+        debugLog.info(event, message);
+      } else {
         debugLog.info(event, message, extra);
+      }
+    }
     return [
       for (final control in controls)
         ResolvedControlAction(
@@ -1513,7 +1518,8 @@ class _StudioShellState extends State<StudioShell> {
                   // top bar and the legacy fixed zoom overlay.
                   if (_immersive)
                     for (final region in ControlRegion.values)
-                      if (_fullscreenLayout.regions[region] case final controls
+                      if (_fullscreenLayout.regions[region]
+                          case final controls?
                           when controls.isNotEmpty)
                         _fullscreenCluster(region, controls, constraints),
                 ],
