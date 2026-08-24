@@ -451,15 +451,44 @@ void main() {
       expect(geometry.text, 'Hello GGEN');
     });
 
-    test('text is trimmed and clamped into the artboard', () {
+    test('text is trimmed and placed inside the page content bounds', () {
+      // Page-aware creation (Stage 4.3): the whole frame stays inside the
+      // artboard page, so a tap far outside clamps to the top-left corner
+      // and a tap past the far edge clamps so the frame still fits.
       final controller = StudioController();
       controller.addTextNode(-500, 10000, '  padded  ');
 
       final node = controller.project.artboards.first.nodes.single;
       final geometry = textNodeGeometry(node)!;
       expect(geometry.x, 0);
-      expect(geometry.y, 1920);
+      expect(
+        geometry.y,
+        StudioController.defaultArtboardHeight -
+            StudioController.defaultTextFrameHeight,
+      );
       expect(geometry.text, 'padded');
+    });
+
+    test('a tap near the far edge keeps the frame inside the page', () {
+      final controller = StudioController();
+      controller.addTextNode(
+        StudioController.defaultArtboardWidth - 1,
+        StudioController.defaultArtboardHeight - 1,
+        'edge',
+      );
+
+      final node = controller.project.artboards.first.nodes.single;
+      final geometry = textNodeGeometry(node)!;
+      expect(
+        geometry.x,
+        StudioController.defaultArtboardWidth -
+            StudioController.defaultTextFrameWidth,
+      );
+      expect(
+        geometry.y,
+        StudioController.defaultArtboardHeight -
+            StudioController.defaultTextFrameHeight,
+      );
     });
 
     test('empty or oversized text is rejected', () {
@@ -1417,6 +1446,277 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
+  });
+
+  group('linked text frames', () {
+    (StudioController, GgenId, GgenId) twoFrames() {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'First frame story');
+      controller.addTextNode(620, 120, 'Second frame story');
+      final nodes = controller.project.artboards.first.nodes;
+      return (controller, nodes.first.id, nodes.last.id);
+    }
+
+    DocumentNode nodeOf(StudioController controller, GgenId id) =>
+        controller.project.artboards.first.nodes
+            .firstWhere((n) => n.id == id);
+
+    test('link succeeds and is exactly one undoable revision', () {
+      final (controller, a, b) = twoFrames();
+      final before = controller.revision;
+
+      expect(controller.linkTextFrames(a, b), isTrue);
+      expect(controller.revision, before + 1);
+      expect(textFrameSuccessor(nodeOf(controller, a)), b.value);
+      expect(nodeOf(controller, a).extensions['text'], 'First frame story');
+    });
+
+    test('undo link removes the successor and redo restores it exactly', () {
+      final (controller, a, b) = twoFrames();
+      controller.linkTextFrames(a, b);
+
+      controller.undo();
+      expect(textFrameSuccessor(nodeOf(controller, a)), isNull);
+      expect(controller.revision, 2); // two adds
+
+      controller.redo();
+      expect(textFrameSuccessor(nodeOf(controller, a)), b.value);
+      expect(controller.revision, 3);
+    });
+
+    test('unlink succeeds, undoes and redoes correctly', () {
+      final (controller, a, b) = twoFrames();
+      controller.linkTextFrames(a, b);
+      final before = controller.revision;
+
+      expect(controller.unlinkTextFrame(a), isTrue);
+      expect(controller.revision, before + 1);
+      expect(textFrameSuccessor(nodeOf(controller, a)), isNull);
+
+      controller.undo();
+      expect(textFrameSuccessor(nodeOf(controller, a)), b.value);
+      controller.redo();
+      expect(textFrameSuccessor(nodeOf(controller, a)), isNull);
+    });
+
+    test('no-op link returns false and burns no revision', () {
+      final (controller, a, b) = twoFrames();
+      controller.linkTextFrames(a, b);
+      final before = controller.revision;
+      expect(controller.linkTextFrames(a, b), isFalse);
+      expect(controller.revision, before);
+    });
+
+    test('no-op unlink returns false and burns no revision', () {
+      final (controller, a, _) = twoFrames();
+      final before = controller.revision;
+      expect(controller.unlinkTextFrame(a), isFalse);
+      expect(controller.revision, before);
+    });
+
+    test('self-link throws and leaves no state change', () {
+      final (controller, a, _) = twoFrames();
+      final before = controller.revision;
+      expect(() => controller.linkTextFrames(a, a), throwsArgumentError);
+      expect(controller.revision, before);
+      expect(textFrameSuccessor(nodeOf(controller, a)), isNull);
+    });
+
+    test('cycle A -> B -> A is rejected without partial mutation', () {
+      final (controller, a, b) = twoFrames();
+      controller.linkTextFrames(a, b);
+      final before = controller.revision;
+
+      expect(() => controller.linkTextFrames(b, a), throwsArgumentError);
+      expect(controller.revision, before);
+      expect(textFrameSuccessor(nodeOf(controller, a)), b.value);
+      expect(textFrameSuccessor(nodeOf(controller, b)), isNull);
+    });
+
+    test('longer cycle A -> B -> C -> A is rejected', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'A story');
+      controller.addTextNode(620, 120, 'B story');
+      controller.addTextNode(100, 600, 'C story');
+      final nodes = controller.project.artboards.first.nodes;
+      final (a, b, c) = (nodes[0].id, nodes[1].id, nodes[2].id);
+
+      controller.linkTextFrames(a, b);
+      controller.linkTextFrames(b, c);
+      final before = controller.revision;
+
+      expect(() => controller.linkTextFrames(c, a), throwsArgumentError);
+      expect(controller.revision, before);
+      expect(textFrameSuccessor(nodeOf(controller, c)), isNull);
+    });
+
+    test('ambiguous target (two predecessors) is rejected', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'A story');
+      controller.addTextNode(620, 120, 'B story');
+      controller.addTextNode(100, 600, 'C story');
+      final nodes = controller.project.artboards.first.nodes;
+      final (a, b, c) = (nodes[0].id, nodes[1].id, nodes[2].id);
+
+      controller.linkTextFrames(a, c);
+      final before = controller.revision;
+
+      expect(() => controller.linkTextFrames(b, c), throwsArgumentError);
+      expect(controller.revision, before);
+      expect(textFrameSuccessor(nodeOf(controller, b)), isNull);
+    });
+
+    test('re-linking replaces the successor (old target becomes terminal)',
+        () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'A story');
+      controller.addTextNode(620, 120, 'B story');
+      controller.addTextNode(100, 600, 'C story');
+      final nodes = controller.project.artboards.first.nodes;
+      final (a, b, c) = (nodes[0].id, nodes[1].id, nodes[2].id);
+
+      controller.linkTextFrames(a, b);
+      final before = controller.revision;
+      expect(controller.linkTextFrames(a, c), isTrue);
+      expect(controller.revision, before + 1);
+      expect(textFrameSuccessor(nodeOf(controller, a)), c.value);
+      expect(textFrameSuccessor(nodeOf(controller, b)), isNull);
+    });
+
+    test('linking a terminal frame appends to the chain', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'X story');
+      controller.addTextNode(620, 120, 'A story');
+      controller.addTextNode(100, 600, 'B story');
+      final nodes = controller.project.artboards.first.nodes;
+      final (x, a, b) = (nodes[0].id, nodes[1].id, nodes[2].id);
+
+      controller.linkTextFrames(x, a);
+      controller.linkTextFrames(a, b);
+
+      // The whole artboard resolves as one X -> A -> B chain.
+      final set =
+          TextFlowLinkResolver.fromArtboard(controller.project.artboards.first);
+      expect(
+        set.chains.single.ids,
+        <String>[x.value, a.value, b.value],
+      );
+    });
+
+    test('invalid source or target returns false (no revision)', () {
+      final (controller, a, _) = twoFrames();
+      final before = controller.revision;
+      expect(
+        controller.linkTextFrames(GgenId('ghost'), a),
+        isFalse,
+      );
+      expect(controller.linkTextFrames(a, GgenId('ghost')), isFalse);
+      expect(controller.revision, before);
+    });
+
+    test('linking a shape or a legacy label frame is rejected', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'Frame story');
+      controller.addShapeNode(700, 120);
+      // A legacy label-sized text node (no w/h) through a raw session.
+      final legacyId = GgenId('legacy-label');
+      var session = controller.beginSession();
+      var artboard = controller.project.artboards.first;
+      session.updatePreview(
+        controller.project.copyWith(artboards: <Artboard>[
+          Artboard(
+            id: artboard.id,
+            name: artboard.name,
+            width: artboard.width,
+            height: artboard.height,
+            nodes: <DocumentNode>[
+              ...artboard.nodes,
+              DocumentNode(
+                id: legacyId,
+                kind: DocumentNodeKind.textFrame,
+                name: 'Legacy',
+                extensions: <String, Object?>{
+                  'x': 100.0,
+                  'y': 800.0,
+                  'size': 20.0,
+                  'text': 'Legacy label',
+                  'color': 0xFF222222,
+                },
+              ),
+            ],
+          ),
+        ]),
+      );
+      controller.commitSession(session, 'Add legacy label');
+
+      final nodes = controller.project.artboards.first.nodes;
+      final textId = nodes[0].id;
+      final shapeId = nodes[1].id;
+      final before = controller.revision;
+
+      expect(controller.linkTextFrames(textId, shapeId), isFalse);
+      expect(controller.linkTextFrames(shapeId, textId), isFalse);
+      expect(controller.linkTextFrames(textId, legacyId), isFalse);
+      expect(controller.linkTextFrames(legacyId, textId), isFalse);
+      expect(controller.revision, before);
+    });
+
+    test('deleteNode prunes dangling successor references', () {
+      final (controller, a, b) = twoFrames();
+      controller.linkTextFrames(a, b);
+      final before = controller.revision;
+
+      expect(controller.deleteNode(b), isTrue);
+      expect(controller.revision, before + 1);
+      expect(textFrameSuccessor(nodeOf(controller, a)), isNull);
+      // The artboard link structure resolves cleanly after the delete.
+      final set =
+          TextFlowLinkResolver.fromArtboard(controller.project.artboards.first);
+      expect(set.chains.single.ids, <String>[a.value]);
+    });
+
+    test('deleting a chain source leaves the remainder well-formed', () {
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'A story');
+      controller.addTextNode(620, 120, 'B story');
+      controller.addTextNode(100, 600, 'C story');
+      final nodes = controller.project.artboards.first.nodes;
+      final (a, b, c) = (nodes[0].id, nodes[1].id, nodes[2].id);
+      controller.linkTextFrames(a, b);
+      controller.linkTextFrames(b, c);
+
+      expect(controller.deleteNode(a), isTrue);
+      final set =
+          TextFlowLinkResolver.fromArtboard(controller.project.artboards.first);
+      expect(set.chains.single.ids, <String>[b.value, c.value]);
+    });
+
+    test('nextFrame survives save and restore through the store', () async {
+      final (controller, a, b) = twoFrames();
+      controller.linkTextFrames(a, b);
+      await controller.save();
+      final key = controller.storageKey;
+
+      expect(await controller.restore(key), isTrue);
+      expect(textFrameSuccessor(nodeOf(controller, a)), b.value);
+      final set =
+          TextFlowLinkResolver.fromArtboard(controller.project.artboards.first);
+      expect(set.chains.single.ids, <String>[a.value, b.value]);
+    });
+
+    test('nextFrame survives the canonical codec round trip', () {
+      final (controller, a, b) = twoFrames();
+      controller.linkTextFrames(a, b);
+
+      final json = controller.serialize();
+      final codec = ProjectCodec(limits: ProjectCodecLimits.conservative());
+      final decoded = codec.decode(json);
+      final source = decoded.project.artboards.first.nodes
+          .firstWhere((n) => n.id == a);
+      expect(source.extensions[textFrameNextFrameExtension], b.value);
+      // Canonical: re-encoding the decoded envelope is byte-identical.
+      expect(codec.encode(decoded), json);
     });
   });
 }

@@ -652,6 +652,124 @@ class StudioController extends ChangeNotifier {
     gutter: 0,
   );
 
+  // ── Linked text frames (text flow chains) ─────────────────────────────
+
+  /// Links text frame [sourceId] to text frame [targetId]: the story flowing
+  /// through the source continues into the target.
+  ///
+  /// Persisted through the Stage-2 links-first contract: the successor id
+  /// under the [textFrameNextFrameExtension] extension of the SOURCE node.
+  /// No TextStory, no second link representation.
+  ///
+  /// One successful call is exactly ONE undoable [ProjectTransaction] (one
+  /// user operation = one undo step); [undo] restores the exact prior link
+  /// state and [redo] re-applies it.
+  ///
+  /// Fail-closed contract (no partial mutation, no revision burned):
+  ///  * returns false — source or target missing; either node is not a text
+  ///    frame; either frame lacks a frame rectangle (legacy label-sized text
+  ///    is not linkable); or the link is a no-op (the source already points
+  ///    at exactly this target);
+  ///  * throws [ArgumentError] — self-link, a cycle of any length, or an
+  ///    ambiguous target (the target already has a predecessor).
+  ///
+  /// Re-linking a source that already points elsewhere REPLACES the
+  /// successor (the previous target becomes terminal); that is still one
+  /// validated, atomic, undoable step.
+  bool linkTextFrames(GgenId sourceId, GgenId targetId) {
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final sourceIndex = artboard.nodes.indexWhere((n) => n.id == sourceId);
+    final targetIndex = artboard.nodes.indexWhere((n) => n.id == targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return false;
+    final source = artboard.nodes[sourceIndex];
+    final target = artboard.nodes[targetIndex];
+    if (source.kind != DocumentNodeKind.textFrame ||
+        target.kind != DocumentNodeKind.textFrame) {
+      return false; // Invalid source or target kind.
+    }
+    if (textNodeFrameGeometry(source) == null ||
+        textNodeFrameGeometry(target) == null) {
+      return false; // Legacy label-sized frames are not linkable.
+    }
+    if (sourceId.value == targetId.value) {
+      throw ArgumentError('Self-link rejected: a frame cannot link to itself.');
+    }
+    if (textFrameSuccessor(source) == targetId.value) {
+      return false; // No-op: already linked exactly this way.
+    }
+    // Fail-closed graph validation through the core resolver BEFORE any
+    // mutation: cycles, ambiguous targets and id violations all throw.
+    final frameIds = <String>{
+      for (final node in artboard.nodes)
+        if (node.kind == DocumentNodeKind.textFrame) node.id.value,
+    };
+    final links = <String, String>{
+      for (final node in artboard.nodes)
+        if (node.kind == DocumentNodeKind.textFrame)
+          if (textFrameSuccessor(node) case final String target)
+            node.id.value: target,
+    };
+    links[sourceId.value] = targetId.value;
+    TextFlowLinkResolver.resolve(frameIds: frameIds, links: links);
+
+    final updated = DocumentNode(
+      id: source.id,
+      kind: source.kind,
+      name: source.name,
+      visible: source.visible,
+      locked: source.locked,
+      opacity: source.opacity,
+      extensions: <String, Object?>{
+        ...source.extensions,
+        textFrameNextFrameExtension: targetId.value,
+      },
+    );
+    final nextNodes = <DocumentNode>[
+      ...artboard.nodes.sublist(0, sourceIndex),
+      updated,
+      ...artboard.nodes.sublist(sourceIndex + 1),
+    ];
+    _commitNodeList(artboard, nextNodes, 'Link ${source.name} to ${target.name}');
+    return true;
+  }
+
+  /// Removes the successor link of [sourceId], making the frame terminal
+  /// again. One undoable transaction; fail-closed: returns false when the
+  /// node is missing, is not a text frame, or carries no successor to
+  /// remove (a no-op unlink burns no revision).
+  bool unlinkTextFrame(GgenId sourceId) {
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final index = artboard.nodes.indexWhere((n) => n.id == sourceId);
+    if (index < 0) return false;
+    final node = artboard.nodes[index];
+    if (node.kind != DocumentNodeKind.textFrame) return false;
+    if (!node.extensions.containsKey(textFrameNextFrameExtension)) {
+      return false; // Nothing to unlink.
+    }
+    final extensions = Map<String, Object?>.from(node.extensions)
+      ..remove(textFrameNextFrameExtension);
+    final updated = DocumentNode(
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      visible: node.visible,
+      locked: node.locked,
+      opacity: node.opacity,
+      extensions: extensions,
+    );
+    final nextNodes = <DocumentNode>[
+      ...artboard.nodes.sublist(0, index),
+      updated,
+      ...artboard.nodes.sublist(index + 1),
+    ];
+    _commitNodeList(artboard, nextNodes, 'Unlink ${node.name}');
+    return true;
+  }
+
   /// Returns the stored column count for a text node, defaulting to 1.
   static int _currentColumnCount(DocumentNode node) {
     final raw = node.extensions['columns'];
@@ -702,7 +820,27 @@ class StudioController extends ChangeNotifier {
         if (!identical(updated, node)) changed = true;
         nextNodes.add(updated);
       } else {
-        nextNodes.add(node);
+        // Prune successor links that would dangle after this delete so the
+        // link graph stays well-formed (no partial or stale graph mutation).
+        final targetId = textFrameSuccessor(node);
+        if (targetId != null && wanted.any((id) => id.value == targetId)) {
+          final extensions = Map<String, Object?>.from(node.extensions)
+            ..remove(textFrameNextFrameExtension);
+          nextNodes.add(
+            DocumentNode(
+              id: node.id,
+              kind: node.kind,
+              name: node.name,
+              visible: node.visible,
+              locked: node.locked,
+              opacity: node.opacity,
+              extensions: extensions,
+            ),
+          );
+          changed = true;
+        } else {
+          nextNodes.add(node);
+        }
       }
     }
     if (!changed) return false;
@@ -1039,16 +1177,16 @@ class StudioController extends ChangeNotifier {
     final artboards = project.artboards;
     if (artboards.isEmpty) return;
     final artboard = artboards.first;
-    // A text frame is a reflowable box. The tap marks its top-left; position
-    // is clamped to the artboard origin exactly like the legacy single-line
-    // label (the frame may extend past the far edge, matching prior behavior).
-    // Legacy nodes that predate `w`/`h` keep their label-sized fallback in
-    // the canvas.
+    // A text frame is a reflowable box. The tap marks its intended top-left;
+    // the frame is placed so it fits ENTIRELY inside the artboard page's
+    // content bounds (page-aware creation, the same placement contract as
+    // shape nodes). Legacy nodes that predate `w`/`h` keep their label-sized
+    // fallback in the canvas.
     final frameW = defaultTextFrameWidth.clamp(1.0, artboard.width).toDouble();
     final frameH =
         defaultTextFrameHeight.clamp(1.0, artboard.height).toDouble();
-    final clampedX = artboardX.clamp(0, artboard.width).toDouble();
-    final clampedY = artboardY.clamp(0, artboard.height).toDouble();
+    final (clampedX, clampedY) =
+        clampFrameIntoPage(artboard, artboardX, artboardY, frameW, frameH);
 
     _textCount++;
     final node = DocumentNode(
@@ -1314,6 +1452,47 @@ FrameGeometry? textNodeFrameGeometry(DocumentNode node) {
     y: y.toDouble(),
     frameWidth: w.toDouble(),
     frameHeight: h.toDouble(),
+  );
+}
+
+/// Returns the successor frame id a text frame declares under
+/// [textFrameNextFrameExtension], or null when the key is absent or its
+/// value is not a frame-id string (malformed data fails closed as "no link").
+String? textFrameSuccessor(DocumentNode node) {
+  final raw = node.extensions[textFrameNextFrameExtension];
+  return raw is String ? raw : null;
+}
+
+/// Treats an [artboard] as a zero-margin, zero-bleed page.
+///
+/// GGEN's document model has no separate persisted page object yet: the
+/// artboard IS the page for this milestone. [PageGeometry] remains the
+/// core page contract (margins and bleed stay available for a dedicated
+/// page UI, a later milestone); page-aware placement in the app clamps
+/// against this page's `contentBounds`.
+PageGeometry artboardAsPage(Artboard artboard) => PageGeometry.create(
+  width: artboard.width,
+  height: artboard.height,
+);
+
+/// Clamps a frame's top-left so the WHOLE frame stays inside the artboard
+/// page's content bounds (deterministic; finite inputs). A frame that is
+/// at least as large as the content area is anchored at its top-left.
+(double x, double y) clampFrameIntoPage(
+  Artboard artboard,
+  double x,
+  double y,
+  double width,
+  double height,
+) {
+  final bounds = artboardAsPage(artboard).contentBounds;
+  double axis(double value, double size, double min, double max) {
+    if (size >= max - min) return min;
+    return value.clamp(min, max - size).toDouble();
+  }
+  return (
+    axis(x, width, bounds.left, bounds.right),
+    axis(y, height, bounds.top, bounds.bottom),
   );
 }
 
