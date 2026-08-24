@@ -39,7 +39,20 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 6. Relevant architecture/ADR documents
 7. Relevant source and tests
 
-## Latest working change (2026-08-24 — Vector Studio Milestone 1)
+## Latest working change (2026-08-25 — Fullscreen control regions & landscape device class)
+
+Implements the "fullscreen controls & landscape" plan (`docs/architecture/fullscreen-control-and-landscape-plan.md`): a unified control-placement model for immersive mode and a device-class layout model that stops treating landscape phones as "wide desktop".
+
+**Changes:**
+- New `CanvasControl` / `ControlRegion` / `CanvasControlLayout` model (`apps/ggen_app/lib/src/workspace/control_layout.dart`): 15 placeable controls (undo/redo/zoom/grid/layers/multi-select/columns/new/save/diagnostics/settings/immersive/dock), 6 regions (corners + top/bottom center), deterministic `resolve()` (per-region cap 6, dedupe first-region-wins, **enforced immersive exit control**), pure `nearestRegion` snap math, `toPrefs`/`fromPrefs` round-trip.
+- Fullscreen (immersive) now renders ONLY the user's chosen control clusters per region — the default top bar and the legacy fixed bottom-right zoom overlay are gone. Clusters are width-bounded + horizontally scrollable (can never overflow/clip) and **draggable** (long-press → snap to nearest region → persist; 300 ms delay beats the Tooltip long-press in the gesture arena).
+- New "Customize fullscreen controls" sheet in the More menu: per-control region picker (6 regions + Hidden), region-full rejection with notice, immersive-exit cannot be hidden, Reset to defaults, immediate persistence via `workspace.fullscreen_regions`.
+- `WorkspaceClass` device model replaces the single `width < 700` breakpoint (classified from the **full** view size, not body constraints): `compactLandscape` (e.g. 800×360, 640×360) gets ONE compact `LandscapeBar` (tools | history | zoom | view | context, 48px, scrollable) and the maximum usable canvas; `compactPortrait` (rail + contextual action bar) and `wide` (rail + inspector + status bar + zoom overlay) are unchanged.
+- `WorkspacePreferences` gains `fullscreenRegions` (single JSON key, fail-closed decode, removed on clear/reset); orientation changes preserve tool/grid/selection/zoom state and customization.
+
+**Test gate:** app suite **305/305** with the exact CI pin (Flutter 3.47.0 / Dart 3.13.0) verified locally; new unit suite `control_layout_test.dart` (classify, resolve, cap, dedupe, enforced exit, prefs round-trip, snap math) and new widget suite `fullscreen_landscape_shell_test.dart` (landscape 800×360/640×360 single-bar no-overflow, wide unchanged, immersive default regions, customization persists, orientation-change state, drag-snap persists), plus extended `workspace_preferences_test.dart`; `widget_test.dart` immersive enter/leave and zoom-overlay tests updated to the new fullscreen behavior. CI green on `main` at `fde06ec`: governance ✅, flutter-shell test ✅. `flutter analyze` has no new findings (8 pre-existing baseline items). **No physical-device validation performed; no APK built in this milestone** — device validation (immersive cutout behavior, landscape ergonomics, drag feel) is the next milestone (Slice 3 of the plan).
+
+**Previous entry (2026-08-24 — Vector Studio Milestone 1):**
 
 Implements the Vector Studio Milestone 1 slice (rectangle + ellipse primitives) extending the existing `DocumentNodeKind.shape` model rather than introducing a parallel vector system.
 
