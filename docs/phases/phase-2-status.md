@@ -217,7 +217,7 @@ Responds to the first Redmi Turbo 4 Pro diagnostics round for the Stage-4 APK: R
 
 ## 2026-08-24 Vector Studio Milestone 1 — Rectangle + Ellipse primitives
 
-First professional vector-editing slice: adds ellipse and style (fill + optional stroke) on top of the existing shape-node foundation. No second document model; no LAI/AI dependency; reuses selection, move, resize, multi-select, groups, history, persistence and canvas renderer. **Core 143/143 (Dart 3.14.0-95.2.beta), app 276/276 (Flutter 3.48.0-0.2.pre); `flutter analyze` zero errors. Not device-validated.**
+First professional vector-editing slice: adds ellipse and style (fill + optional stroke) on top of the existing shape-node foundation. No second document model; no LAI/AI dependency; reuses selection, move, resize, multi-select, groups, history, persistence and canvas renderer. **Core 143/143 (Dart 3.13.0, exact CI pin), app 276/276 (Flutter 3.47.0, exact CI pin). CI GREEN on `main` @ `1d9b5c2` (formatting fix on top of `b548052`): governance ✅, core/test (format + `dart analyze --fatal-infos` + `dart test`) ✅, flutter-shell test ✅. `flutter analyze` has zero errors; 8 pre-existing info/warnings remain. Not device-validated; no APK built in this milestone.**
 
 **What shipped**
 - `src/geometry/shape_geometry.dart` (new): `ShapePrimitive` enum (`rectangle`/`ellipse`), `NodeShapeGeometry` value type (x/y/width/height/fill/stroke/strokeWidth/shapeType), `nodeShapeGeometry` fail-closed reader (returns null on malformed payload), `hitTestNode` (shape AABB + text-frame fallback), text-node aliases for legacy callers; backwards-compat `NodeGeometry`/`nodeGeometry`/`textNodeGeometry` typedefs.

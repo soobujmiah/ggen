@@ -1,6 +1,6 @@
 # Vector Studio — Milestone 1
 
-**Status:** IMPLEMENTED (2026-08-24)
+**Status:** IMPLEMENTED, CI VALIDATED (2026-08-24) — physical device NOT VALIDATED, APK NOT BUILT
 **Owner:** GGEN
 **Runtime dependency:** none for manual vector editing
 **AI dependency:** none
