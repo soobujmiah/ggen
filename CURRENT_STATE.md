@@ -43,11 +43,19 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 
 The first Redmi Turbo 4 Pro diagnostics round on the Stage-4 APK reported a RenderFlex overflow (1.2px right), a Text-tool RangeError (`Not in inclusive range 0..2: 3`) and an incoherent accumulated toolbar layout. Branch `feat/mobile-workspace-shell` (from `b926b28`) fixes both bugs at their root (typed `StudioTool` enum eliminates the out-of-range tool index; the top action bar's pinned region is now a bounded scroller) and replaces the compact shell's three competing toolbar surfaces with one canonical layout: stable left tool rail + single bottom contextual action bar; legacy toolbar dock/mode preferences retired fail-closed. App 254/254, core 143/143 on exact CI toolchains; not device-validated. See `docs/architecture/mobile-workspace-shell.md`.
 
+## AI Gateway Runtime documentation
+
+An architecture/engineering specification for a separate provider-agnostic AI Gateway Runtime has been added at `docs/architecture/ai-gateway-runtime.md`. It is documentation/architecture only at this stage and does **not** claim that the Gateway Runtime has been implemented in GGEN. The specification covers provider adapters, normalized AI contracts, capability-aware routing, bounded retry/failover, health/circuit-breaker behavior, structured tool runtime, Android permission boundaries, secret handling, audit, threat model, testing, milestone sequencing, and an agent execution contract. Public release of that runtime is not authorized until its implementation and release gates are independently verified.
+
+The GitHub commit adding the specification is `251a022475c7a6cc61f32996ecae455037b2210e`.
+
 ## Next recommended milestone
 
 **Physical-device validation of the linked text flow (separate milestone):** with the Stage-4 branch merged and CI-green on `main`, install the repository-built debug APK on the Redmi Turbo 4 Pro (`25053RT47C`) and exercise the checklist in `docs/architecture/page-linked-text-flow.md` / the device checklist of the current milestone: create two text frames, configure 2/3 columns + gutter, overflow the first frame, link A → B, confirm the story continues into B with the blue continuation indicator, verify the red terminal-overflow tab appears exactly once, test unlink/invalid-link/undo/redo, save/reload, and confirm no duplicated or lost characters. Do not claim device validation until actual on-device results are recorded.
 
 Then continue Phase 2 from the exact current `main` HEAD: inspect the latest phase-2 status and recent commits, identify the smallest remaining evidence-backed creative-surface milestone, implement only that scope, run relevant CI checks, update phase/status documentation, and close the session with a commit SHA and handoff update.
+
+**AI Gateway Runtime is not the next GGEN implementation milestone.** It remains a separately documented architecture track until an explicit implementation scope/repository boundary is established.
 
 ## Session handoff rule
 
