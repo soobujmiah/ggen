@@ -61,21 +61,33 @@ All important drawing, painting, vector/raster editing, text/layout/template/doc
 
 Modes: `MANUAL`, `LOCAL_AI`, `CLOUD_AI`, `HYBRID`, `AUTO`. Policies: Always Manual, Prefer Local, Prefer Cloud, Auto, Ask Before AI.
 
-## 9. Provider and endpoint abstraction
+## 9. AI capability and endpoint abstraction — LAI runtime boundary
 
-Define capability-driven providers: Local, OpenAI, Gemini, Anthropic, OpenAI-compatible, Custom REST, and Plugin. Capabilities may include text, vision, image generation/editing, OCR, embeddings, audio/video, structured output, tools/agents/workflows.
+GGEN defines **product-facing AI capability requirements**, not the canonical provider/runtime implementation. The stable cross-repository capability contract covers operations such as text, vision, image generation/editing, OCR, embeddings, structured output, tools, agents and workflows.
 
-Custom endpoint configuration: name, URL, secure API key reference, auth, headers, model, request/response mapping, timeout/retry/streaming, capabilities, privacy, and usage limits. Support LAN/self-hosted/remote services. Never commit keys; use platform secure storage.
+The canonical execution layer is **LAI**, which owns local runtime/backends, cloud/custom provider adapters, provider registry/routing/failover, credentials/secrets, model execution/lifecycle, device scheduling, Android tool authority and runtime evidence. GGEN may expose user-facing provider/model preferences and constraints, but those are passed to LAI as normalized policy inputs.
 
-## 10. Central AI router and evidence
+Custom endpoint requirements remain product requirements: name, URL, secure API-key reference, authentication, headers, model, request/response mapping, timeout/retry/streaming, capabilities, privacy and usage limits. Their canonical implementation belongs in LAI; GGEN must not create a second provider registry, credential store, router or runtime.
 
-Route by required capability, quality, privacy, cost, speed, available model/hardware, policy, and task constraints. Pipeline: task → policy/router → selected backend/provider → execute → verify → result/evidence.
+Support LAN/self-hosted/remote services through the LAI contract. Never commit keys or place provider secrets in GGEN projects, source, logs or model context.
 
-Hardware states must distinguish: API available, delegate accepted, operations delegated, execution completed, backend verified, performance measured. Never infer hardware execution from API availability. Every metric must be measured and scoped.
+## 10. AI routing, execution and evidence — LAI-owned
+
+The product must support routing by required capability, quality, privacy, cost, speed, available model/hardware, policy and task constraints. The canonical runtime pipeline is:
+
+`GGEN task intent → versioned capability contract → LAI policy/router → selected runtime/provider → execute → verify → normalized result/evidence → GGEN presentation`
+
+GGEN owns task intent, context assembly, user-facing preferences/constraints, creative workflow and result presentation. LAI owns execution selection, provider routing, retry/failover, backend scheduling, runtime recovery and execution evidence.
+
+Hardware states must distinguish: API available, backend available/accepted, operations delegated, execution completed, backend verified, performance measured. Never infer hardware execution from API availability. Every metric must be measured and scoped.
+
+`LOCAL_ONLY` must never silently leave the device. Non-idempotent operations must not be blindly retried or failed over. GGEN must preserve the maturity/evidence status returned by LAI and must not upgrade experimental or unvalidated runtime claims.
 
 ## 11. Local runtime and Model Lab
 
-Extensible CPU, GPU, NNAPI, QNN/Hexagon, and future backend adapters. Model Lab: import/inspect/validate/benchmark/compare/version/test/deploy/rollback, conversion/optimization/quantization where safe, datasets, fine-tuning/LoRA where appropriate. Protected assets are excluded from destructive Model Lab operations.
+The product requires extensible CPU, GPU, NNAPI, QNN/Hexagon, and future backend capability. **LAI owns the canonical local inference runtime, backend adapters, model execution/lifecycle and device qualification.** GGEN owns user-facing Model Lab workflows, model metadata presentation and creative task integration through the LAI contract.
+
+Model Lab product requirements: import/inspect/validate/benchmark/compare/version/test/deploy/rollback, conversion/optimization/quantization where safe, datasets, fine-tuning/LoRA where appropriate. Protected assets are excluded from destructive Model Lab operations. Runtime model execution must not be duplicated in GGEN.
 
 One image may produce an extracted asset, mask, vectorized asset, reference, dataset sample, component, or AI profile; never falsely call that full neural-network training.
 
@@ -94,21 +106,21 @@ Deep per-tool size/opacity/flow/hardness/spacing/smoothing/stabilization/pressur
 
 Theme/accent/density/font/icon/panel/toolbar/canvas/motion/transparency; custom save/load/reset workspaces; dock/undock/reorder/hide panels; custom toolbar; complete shortcut editor/profiles/import/export/conflict detection; mouse/touch/stylus buttons/gestures/wheel/pressure/tilt/pan/zoom/rotation.
 
-AI settings: default provider/model, local/cloud/privacy/cost/token/context policies, supported sampling controls, image resolution/seed, system/custom/model instructions.
+AI settings: default provider/model, local/cloud/privacy/cost/token/context policies, supported sampling controls, image resolution/seed, system/custom/model instructions. Provider/model selection is a user-facing policy input to LAI, not a GGEN runtime implementation.
 
 ## 14. AI image and document creation
 
-Image generation studio: text/image/reference generation, inpaint/outpaint/background/object replacement/style/variations/batch/resolution/seed/history/comparison with local/cloud providers.
+Image generation studio: text/image/reference generation, inpaint/outpaint/background/object replacement/style/variations/batch/resolution/seed/history/comparison with local/cloud providers through the LAI contract.
 
 Document Studio: multipage layers, text/images/shapes/tables/QR/barcodes/signatures/dynamic fields/headers/footers/margins/bleed/print/color/templates.
 
-Natural-language document generation should produce an editable universal document whenever possible. AI template reconstruction pipeline: image/PDF/scan → OCR → layout/object/typography analysis → asset/field extraction → editable template. Every AI structure remains inspectable and manually correctable.
+Natural-language document generation should produce an editable universal document whenever possible. AI template reconstruction pipeline: image/PDF/scan → OCR → layout/object/typography analysis → asset/field extraction → editable template. Every AI structure remains inspectable and manually correctable. AI execution is LAI-owned; document semantics and result integration are GGEN-owned.
 
 ## 15. Data automation and workflow engine
 
 CSV/XLSX/JSON and extensible structured-data mapping to templates and hundreds/thousands of outputs. Must be bounded, streaming/memory-safe, cancellable, resumable, and explicit about partial completion.
 
-Visual workflows: create/edit/save/duplicate/version/share, run/pause/resume/cancel/schedule. Nodes may load files, process images, OCR, map data, generate documents, add codes, export, and archive. Natural language may generate a reviewable workflow; it must not silently execute risky steps.
+Visual workflows: create/edit/save/duplicate/version/share, run/pause/resume/cancel/schedule. Nodes may load files, process images, OCR, map data, generate documents, add codes, export, and archive. Natural language may generate a reviewable workflow; it must not silently execute risky steps. Where a workflow node invokes AI or privileged Android execution, it consumes LAI capabilities rather than embedding provider/runtime authority.
 
 ## 16. Universal document and format model
 
@@ -120,7 +132,7 @@ Progressive format ecosystem: PDF/DOCX/ODT/RTF/TXT/Markdown/HTML/EPUB; PNG/JPEG/
 
 Asset library for templates, images, logos, signatures, fonts, brushes, colors, gradients, patterns, models, backgrounds, components, symbols, workflows, presets, with search/tags/folders/favorites/metadata/version/preview/deduplication.
 
-Stable plugin system for tools, panels, import/export, AI providers/models, templates/brushes/filters/workflow nodes/automation/formats without normal core modification. Plugins are capability-scoped, versioned, validated, and sandboxed where platform permits.
+Stable plugin system for tools, panels, import/export, AI providers/models, templates/brushes/filters/workflow nodes/automation/formats without normal core modification. Plugins are capability-scoped, versioned, validated, and sandboxed where platform permits. AI provider plugins integrate with LAI's provider/runtime boundary; they do not create a second canonical GGEN provider router.
 
 ## 18. Privacy and security
 
@@ -132,7 +144,7 @@ Imported files are untrusted. Enforce archive byte/entry/uncompressed/compressio
 
 Non-blocking UI, background task runtime, incremental/progressive rendering, safe parallelism, caches, cancellation, memory awareness, backend-specific real metrics. Record preprocessing/inference/postprocessing/total separately with backend/model/resolution/memory/device/thermal context.
 
-Tests must cover document/vector/raster geometry, protected assets, model contracts, providers/router/evidence, OCR, export formats, batch limits/cancellation/recovery, import/ZIP/path/schema security, workflows, settings/tool customization/plugins, UI/accessibility, and physical-device acceleration/performance.
+Tests must cover document/vector/raster geometry, protected assets, model contracts, provider/router/evidence contracts, OCR, export formats, batch limits/cancellation/recovery, import/ZIP/path/schema security, workflows, settings/tool customization/plugins, UI/accessibility, and physical-device acceleration/performance. Runtime/provider execution tests belong primarily to LAI; GGEN tests verify contract consumption and user-facing integration behavior.
 
 ## 20. Development phases
 
@@ -141,8 +153,8 @@ Tests must cover document/vector/raster geometry, protected assets, model contra
 2. Graphics: vector/raster/canvas/layers/selection/type/brush/mask.
 3. BG adapter: segmentation/background/enhancement/evidence-aware backends.
 4. RGEN adapter: protected templates, document engines, bounded batch/data mapping.
-5. Local AI: registry/router and CPU/GPU/NNAPI/QNN adapters.
-6. Cloud/custom AI providers and secure credentials.
+5. **AI integration contract + GGEN client boundary; canonical local runtime/backend work occurs in LAI.**
+6. **Canonical LAI cloud/custom AI providers, credentials, routing/failover and runtime expansion; GGEN consumes them through the contract.**
 7. AI creative tools and editable template reconstruction.
 8. Workflow editor/runtime/AI generation/batch/scheduling.
 9. Universal export adapters.
@@ -152,9 +164,11 @@ Tests must cover document/vector/raster geometry, protected assets, model contra
 
 Do not copy reference UI/design; modify protected assets; claim unsupported capability; fabricate metrics; claim GPU/NPU without evidence; make AI mandatory; lock to one provider/backend/format; create a monolith; implement major features without docs; silently degrade conversion; expose keys; trust imports; freeze UI for background work; rewrite proven reference logic without technical reason; or ship significant features without tests/documentation.
 
+Additionally: do not implement duplicate AI provider registries, routing/failover, credential stores, local inference runtimes, Android tool authorities, permission systems or runtime audit systems in GGEN when LAI is the canonical owner.
+
 ## 22. Final product definition
 
-A unified, independently designed professional environment for manual vector/raster/3D/font creation, AI generation/editing, documents/PDF/templates/reconstruction, RGEN-compatible protected production documents, structured batch generation, models and hardware backends, cloud/custom AI, workflows, broad export, deep customization, plugins, complete offline/manual use, and optional provider-agnostic AI.
+A unified, independently designed professional environment for manual vector/raster/3D/font creation, AI generation/editing, documents/PDF/templates/reconstruction, RGEN-compatible protected production documents, structured batch generation, models and hardware backends, cloud/custom AI, workflows, broad export, deep customization, plugins, complete offline/manual use, and optional provider-agnostic AI. AI execution is consumed through the independent LAI runtime boundary rather than duplicated inside GGEN.
 
 ## 23. Premium font creation and typography
 
