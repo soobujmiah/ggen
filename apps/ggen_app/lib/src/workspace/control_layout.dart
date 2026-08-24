@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 /// Every action that can be placed on the canvas as a persistent control,

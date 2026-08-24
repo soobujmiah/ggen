@@ -424,9 +424,11 @@ class _StudioShellState extends State<StudioShell> {
           : InspectorDock.right;
       _topActionOrder = _sanitizeActionOrder(prefs.topActionOrder);
       _topActionPinned = _sanitizePinned(prefs.topActionPinned);
-      _fullscreenLayout = CanvasControlLayout.fromPrefs(
-        prefs.fullscreenRegions,
-      );
+      // Empty stored config means "never customized": keep the built-in
+      // defaults. Only a non-empty stored map replaces them.
+      _fullscreenLayout = prefs.fullscreenRegions.isEmpty
+          ? CanvasControlLayout.defaults().resolve()
+          : CanvasControlLayout.fromPrefs(prefs.fullscreenRegions);
     });
     debugLog.info('workspace_restore', 'Workspace preferences restored', {
       'inspector_visible': _showInspector,
@@ -773,6 +775,11 @@ class _StudioShellState extends State<StudioShell> {
       region,
       LongPressDraggable<ControlRegion>(
         data: region,
+        // 300ms beats the Tooltip long-press trigger (kLongPressTimeout) in
+        // the gesture arena, so holding a cluster always starts the move
+        // (and never pops the tooltip) — deterministic on device and in
+        // widget tests.
+        delay: const Duration(milliseconds: 300),
         feedback: Material(
           elevation: 6,
           borderRadius: BorderRadius.circular(22),

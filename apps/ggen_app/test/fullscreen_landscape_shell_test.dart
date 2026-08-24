@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ggen_app/main.dart';
+import 'package:ggen_app/src/controller/studio_controller.dart';
 import 'package:ggen_app/src/workspace/control_layout.dart';
 import 'package:ggen_app/src/workspace/workspace_bars.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,16 +24,25 @@ void main() {
     debugLog.clear();
   });
 
-  Future<void> pumpAt(WidgetTester tester, Size logical) async {
+  Future<void> pumpAt(
+    WidgetTester tester,
+    Size logical, {
+    StudioController? controller,
+  }) async {
     tester.view.physicalSize = logical;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(const GgenApp());
+    await tester.pumpWidget(GgenApp(controller: controller));
     await tester.pumpAndSettle();
   }
 
   Future<void> enterImmersive(WidgetTester tester) async {
     await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    // The More sheet is capped at 9/16 of the screen height, so on short
+    // viewports (e.g. 800×600 landscape) the Immersive row sits below the
+    // fold; reveal it before tapping.
+    await tester.ensureVisible(find.text('Immersive canvas'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Immersive canvas'));
     await tester.pumpAndSettle();
@@ -177,29 +187,26 @@ void main() {
 
     testWidgets('fullscreen undo is disabled without history and enabled '
         'after an edit', (tester) async {
-      await pumpAt(tester, const Size(471, 1020));
+      final controller = StudioController();
+      await pumpAt(
+        tester,
+        const Size(471, 1020),
+        controller: controller,
+      );
       await enterImmersive(tester);
       // Undo without history: button visible but disabled.
-      final undoButton = tester.widget<IconButton>(
+      IconButton undoButton() => tester.widget<IconButton>(
         find.ancestor(
           of: find.byTooltip('Undo'),
           matching: find.byType(IconButton),
         ),
       );
-      expect(undoButton.onPressed, isNull);
+      expect(undoButton().onPressed, isNull);
 
-      // Add a shape via the controller through the canvas, then undo works.
-      final controller = (tester.widget<GgenApp>(find.byType(GgenApp)))
-          .controller!;
+      // Add a shape through the injected controller, then undo works.
       controller.addShapeNode(10, 10);
       await tester.pumpAndSettle();
-      final enabledUndo = tester.widget<IconButton>(
-        find.ancestor(
-          of: find.byTooltip('Undo'),
-          matching: find.byType(IconButton),
-        ),
-      );
-      expect(enabledUndo.onPressed, isNotNull);
+      expect(undoButton().onPressed, isNotNull);
     });
 
     testWidgets('dragging a fullscreen cluster snaps and persists the region',
