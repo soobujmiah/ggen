@@ -891,4 +891,144 @@ void main() {
       expect(zoom.consumeScale(), isNull);
     });
   });
+
+  group('linked frame rendering', () {
+    /// The guide painter for [frameId] (present for every frame of a
+    /// multi-frame chain, and for selected/multi-column frames).
+    ColumnGuidesPainter painterOf(WidgetTester tester, String frameId) =>
+        tester
+            .widget<CustomPaint>(
+              find.byKey(ValueKey('ggen_text_frame_guides_$frameId')),
+            )
+            .painter as ColumnGuidesPainter;
+
+    /// The core engine's expectation for the linked pair — the canvas must
+    /// render EXACTLY these slices (integration contract with ggen_core).
+    (String aSlice, String bSlice, bool hasOverflow) expectedSlices(
+      DocumentProject project,
+    ) {
+      final artboard = project.artboards.first;
+      final na = artboard.nodes[0];
+      final nb = artboard.nodes[1];
+      final story =
+          (na.extensions['text'] as String) + (nb.extensions['text'] as String);
+      final engine = TextFlowEngine(kDefaultTextMeasurement);
+      final result = engine.flow(
+        story: story,
+        frames: <TextFlowFrameInput>[
+          TextFlowFrameInput(
+            frameId: na.id.value,
+            geometry: textNodeFrameGeometry(na)!,
+            layout: textNodeColumnLayout(na),
+          ),
+          TextFlowFrameInput(
+            frameId: nb.id.value,
+            geometry: textNodeFrameGeometry(nb)!,
+            layout: textNodeColumnLayout(nb),
+          ),
+        ],
+        fontSize: (na.extensions['size'] as num).toDouble(),
+      );
+      return (
+        result.frames[0].columns.map((c) => c.visibleText).join(),
+        result.frames[1].columns.map((c) => c.visibleText).join(),
+        result.hasOverflow,
+      );
+    }
+
+    testWidgets('linked frames render the core slices, never the whole story',
+        (tester) async {
+      final controller = StudioController();
+      // A overflows its default 480x360 frame; B holds a little text of its
+      // own. 241 + 2 = 243 code units in the concatenated story.
+      controller.addTextNode(0, 0, 'a' * 241);
+      controller.addTextNode(560, 0, 'ZZ');
+      final nodes = controller.project.artboards.first.nodes;
+      final a = nodes[0].id.value;
+      final b = nodes[1].id.value;
+      controller.linkTextFrames(nodes[0].id, nodes[1].id);
+
+      await tester.pumpWidget(_wrap(controller, drawEnabled: false));
+      await tester.pumpAndSettle();
+
+      final (aSlice, bSlice, hasOverflow) =
+          expectedSlices(controller.project);
+
+      // A's overflow spilled into B: B's slice starts with A's tail
+      // (A's text is all 'a') and ends with B's own text. A never renders
+      // B's characters.
+      expect(aSlice.length, lessThan(241));
+      expect(bSlice, startsWith('a'));
+      expect(bSlice, endsWith('ZZ'));
+      expect(aSlice, isNot(contains('ZZ')));
+      expect(hasOverflow, isFalse);
+
+      expect(find.text(aSlice), findsOneWidget);
+      expect(find.text(bSlice), findsOneWidget);
+      // No duplication: the concatenated story is never one rendered frame.
+      expect(find.text('a' * 241 + 'ZZ'), findsNothing);
+
+      // A is full and continues: blue continuation indicator, red withheld.
+      final pa = painterOf(tester, a);
+      expect(pa.continuation, isTrue);
+      expect(pa.flow?.hasOverflow ?? true, isFalse);
+      // B is the terminal frame and did NOT overflow: no indicator at all.
+      final pb = painterOf(tester, b);
+      expect(pb.continuation, isFalse);
+      expect(pb.flow?.hasOverflow ?? true, isFalse);
+    });
+
+    testWidgets('terminal overflow renders the red tab only on the last frame',
+        (tester) async {
+      final controller = StudioController();
+      controller.addTextNode(0, 0, 'a' * 256);
+      controller.addTextNode(560, 0, 'b' * 256);
+      final nodes = controller.project.artboards.first.nodes;
+      final a = nodes[0].id.value;
+      final b = nodes[1].id.value;
+      controller.linkTextFrames(nodes[0].id, nodes[1].id);
+
+      await tester.pumpWidget(_wrap(controller, drawEnabled: false));
+      await tester.pumpAndSettle();
+
+      final (aSlice, bSlice, hasOverflow) =
+          expectedSlices(controller.project);
+      expect(hasOverflow, isTrue);
+      expect(find.text(aSlice), findsOneWidget);
+      expect(find.text(bSlice), findsOneWidget);
+
+      final pa = painterOf(tester, a);
+      expect(pa.continuation, isTrue);
+      expect(pa.flow?.hasOverflow ?? true, isFalse); // no red tab on A
+      final pb = painterOf(tester, b);
+      expect(pb.continuation, isFalse);
+      expect(pb.flow?.hasOverflow ?? true, isTrue); // red tab on B, once
+    });
+
+    testWidgets('unlinked frames keep the legacy standalone rendering',
+        (tester) async {
+      final controller = StudioController();
+      controller.addTextNode(0, 0, 'a' * 256);
+      controller.addTextNode(560, 0, 'ZZ');
+      final nodes = controller.project.artboards.first.nodes;
+      final a = nodes[0].id.value;
+      // Select A so its (legacy) guide painter renders.
+      controller.selectNode(nodes[0].id);
+
+      await tester.pumpWidget(_wrap(controller, drawEnabled: false));
+      await tester.pumpAndSettle();
+
+      // B renders its OWN text untouched — nothing flowed into it.
+      expect(find.text('ZZ'), findsOneWidget);
+
+      final pa = painterOf(tester, a);
+      expect(pa.continuation, isFalse);
+      expect(pa.flow?.hasOverflow ?? true, isTrue); // red overflow tab
+      // B is isolated: no guide painter (not selected, single column).
+      expect(
+        find.byKey(ValueKey('ggen_text_frame_guides_${nodes[1].id.value}')),
+        findsNothing,
+      );
+    });
+  });
 }

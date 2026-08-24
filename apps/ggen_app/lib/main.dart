@@ -13,6 +13,7 @@ import 'src/controller/studio_controller.dart';
 import 'src/canvas/studio_canvas.dart';
 import 'src/canvas/canvas_zoom_controller.dart';
 import 'src/layers/layer_list.dart';
+import 'src/text_flow/linked_text_flow.dart';
 import 'src/storage/file_project_store.dart';
 import 'src/storage/file_recovery_journal.dart';
 
@@ -766,6 +767,8 @@ class _StudioShellState extends State<StudioShell> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => _ColumnsSheet(
+        controller: _studio,
+        selectedId: selected,
         initialColumns: textNodeColumnCount(node),
         initialGutter: textNodeGutter(node),
         onLiveConfigure: (columns, gutter) {
@@ -1472,7 +1475,17 @@ class _InspectorPanelState extends State<InspectorPanel> {
               const SizedBox(height: 12),
               Text('Objects: ${controller.objectCount}  •  Rev ${controller.revision}', style: theme.textTheme.bodySmall?.copyWith(color: Colors.white54)),
             ] else ...[
-              _InspectorContent(controller: controller, selectedId: selectedId),
+              // The text-frame inspector (content + columns + text flow) can
+              // be taller than a compact window; keep it reachable by
+              // scrolling instead of overflowing the panel.
+              Expanded(
+                child: SingleChildScrollView(
+                  child: _InspectorContent(
+                    controller: controller,
+                    selectedId: selectedId,
+                  ),
+                ),
+              ),
             ],
           ],
         ),
@@ -1504,6 +1517,9 @@ class _InspectorContentState extends State<_InspectorContent> {
   NodeGeometry? _geom;
   TextNodeGeometry? _textGeom;
   int _columns = 1;
+  String? _successorId;
+  String? _successorName;
+  List<DocumentNode> _linkCandidates = const <DocumentNode>[];
 
   @override
   void initState() {
@@ -1574,8 +1590,61 @@ class _InspectorContentState extends State<_InspectorContent> {
         _sizeCtrl.text = tgeom.size.toStringAsFixed(1);
         _columns = textNodeColumnCount(node);
         _gutterCtrl.text = textNodeGutter(node).toStringAsFixed(1);
+        final successorId = textFrameSuccessor(node);
+        _successorId = successorId;
+        String? name;
+        if (successorId != null) {
+          final si = nodes.indexWhere((n) => n.id.value == successorId);
+          name = si >= 0 ? nodes[si].name : successorId;
+        }
+        _successorName = name;
+        _linkCandidates = artboards.isEmpty
+            ? const <DocumentNode>[]
+            : linkCandidates(artboards.first, node.id);
+      } else {
+        _successorId = null;
+        _successorName = null;
+        _linkCandidates = const <DocumentNode>[];
       }
     });
+  }
+
+  void _linkTextFlow(GgenId targetId) {
+    try {
+      final ok = widget.controller.linkTextFrames(widget.selectedId, targetId);
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Link rejected — frames not linkable or no change.'),
+          ),
+        );
+        return;
+      }
+      debugLog.info('inspector_flow_link', 'Inspector linked text frames', {
+        'source': widget.selectedId.value,
+        'target': targetId.value,
+        'revision': widget.controller.revision,
+      });
+    } on ArgumentError catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Link rejected: ${e.message}')),
+      );
+    }
+  }
+
+  void _unlinkTextFlow() {
+    final ok = widget.controller.unlinkTextFrame(widget.selectedId);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unlink rejected — no link to remove.')),
+      );
+      return;
+    }
+    debugLog.info(
+      'inspector_flow_unlink',
+      'Inspector unlinked text frame',
+      {'source': widget.selectedId.value, 'revision': widget.controller.revision},
+    );
   }
 
   void _applyColumns() {
@@ -1844,6 +1913,37 @@ class _InspectorContentState extends State<_InspectorContent> {
           ),
           const SizedBox(height: 8),
           Text('Columns fill left→right; overflow flows to a linked frame. One undoable step per Apply.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11)),
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+          Text('Text flow', style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          if (_successorId != null) ...[
+            Text('Flows into: ${_successorName ?? _successorId}'),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              key: const ValueKey('inspector_flow_unlink'),
+              onPressed: _unlinkTextFlow,
+              child: const Text('Unlink'),
+            ),
+          ] else if (_linkCandidates.isEmpty)
+            Text(
+              'No other text frame to link to.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11),
+            )
+          else
+            for (final candidate in _linkCandidates)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: OutlinedButton.icon(
+                  key: ValueKey('inspector_flow_link_${candidate.id.value}'),
+                  onPressed: () => _linkTextFlow(candidate.id),
+                  icon: const Icon(Icons.link, size: 16),
+                  label: Text(candidate.name),
+                ),
+              ),
+          const SizedBox(height: 8),
+          Text('Linking makes overflowing text continue into the next frame. One undoable step per action.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11)),
         ],
       );
     }
@@ -2271,6 +2371,8 @@ class CompactNavigationBar extends StatelessWidget {
 /// outlives the sheet's exit animation.
 class _ColumnsSheet extends StatefulWidget {
   const _ColumnsSheet({
+    required this.controller,
+    required this.selectedId,
     required this.initialColumns,
     required this.initialGutter,
     required this.onLiveConfigure,
@@ -2278,6 +2380,10 @@ class _ColumnsSheet extends StatefulWidget {
     required this.onApply,
   });
 
+  /// The sheet live-observes the controller so the Text flow section
+  /// (link/unlink) reflects the project without reopening.
+  final StudioController controller;
+  final GgenId selectedId;
   final int initialColumns;
   final double initialGutter;
   final void Function(int columns, double gutter) onLiveConfigure;
@@ -2295,9 +2401,47 @@ class _ColumnsSheetState extends State<_ColumnsSheet> {
   late int _columns = widget.initialColumns;
 
   @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onController);
+  }
+
+  @override
   void dispose() {
+    widget.controller.removeListener(_onController);
     _gutterCtrl.dispose();
     super.dispose();
+  }
+
+  void _onController() {
+    if (mounted) setState(() {});
+  }
+
+  void _link(GgenId targetId) {
+    try {
+      final ok =
+          widget.controller.linkTextFrames(widget.selectedId, targetId);
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Link rejected — frames not linkable or no change.'),
+          ),
+        );
+      }
+    } on ArgumentError catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Link rejected: ${e.message}')),
+      );
+    }
+  }
+
+  void _unlink() {
+    final ok = widget.controller.unlinkTextFrame(widget.selectedId);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unlink rejected — no link to remove.')),
+      );
+    }
   }
 
   void _liveConfigure() {
@@ -2405,9 +2549,80 @@ class _ColumnsSheetState extends State<_ColumnsSheet> {
             'Text fills column 1 first, then each next column. A red corner tab marks text that overflows the frame.',
             style: TextStyle(color: Colors.white54, fontSize: 12),
           ),
+          const SizedBox(height: 16),
+          const Text(
+            'Text flow',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          ..._textFlowSection(),
         ],
       ),
     );
+  }
+
+  /// The live link/unlink controls for the selected frame. Derived from the
+  /// controller on every build (the sheet listens), so the state reflects
+  /// the project without reopening.
+  List<Widget> _textFlowSection() {
+    final artboards = widget.controller.project.artboards;
+    if (artboards.isEmpty) {
+      return const <Widget>[
+        Text('No artboard.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+      ];
+    }
+    final artboard = artboards.first;
+    final nodeIndex =
+        artboard.nodes.indexWhere((n) => n.id == widget.selectedId);
+    if (nodeIndex < 0) {
+      return const <Widget>[
+        Text('Selected frame not found.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+      ];
+    }
+    final node = artboard.nodes[nodeIndex];
+    final successorId = textFrameSuccessor(node);
+    if (successorId != null) {
+      final si = artboard.nodes.indexWhere((n) => n.id.value == successorId);
+      final name = si >= 0 ? artboard.nodes[si].name : successorId;
+      return <Widget>[
+        Text('Flows into: $name'),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          key: const ValueKey('mobile_flow_unlink'),
+          onPressed: _unlink,
+          child: const Text('Unlink'),
+        ),
+      ];
+    }
+    final candidates = linkCandidates(artboard, node.id);
+    if (candidates.isEmpty) {
+      return const <Widget>[
+        Text(
+          'No other text frame to link to.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      ];
+    }
+    return <Widget>[
+      Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          for (final candidate in candidates)
+            OutlinedButton.icon(
+              key: ValueKey('mobile_flow_link_${candidate.id.value}'),
+              onPressed: () => _link(candidate.id),
+              icon: const Icon(Icons.link, size: 16),
+              label: Text(candidate.name),
+            ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      const Text(
+        'Linking makes overflowing text continue into the next frame. A blue arrow marks the frame where the story continues; the red tab marks the final overflow. One undoable step per action.',
+        style: TextStyle(color: Colors.white54, fontSize: 12),
+      ),
+    ];
   }
 }
 

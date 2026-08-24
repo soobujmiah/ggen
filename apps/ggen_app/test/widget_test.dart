@@ -1171,4 +1171,120 @@ void main() {
       );
     });
   });
+
+  group('linked text flow UI', () {
+    testWidgets(
+        'wide inspector links and unlinks a text frame with one undo step each',
+        (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'First story');
+      controller.addTextNode(560, 120, 'Second story');
+      final nodes = controller.project.artboards.first.nodes;
+      final a = nodes[0].id;
+      final b = nodes[1].id;
+      controller.selectNode(a);
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+
+      // The Text flow section offers the other frame as a link candidate.
+      expect(find.text('Text flow'), findsOneWidget);
+      expect(
+        find.byKey(ValueKey('inspector_flow_link_${b.value}')),
+        findsOneWidget,
+      );
+      final before = controller.revision;
+
+      // Link: one undoable revision; the section flips to the linked state.
+      // The flow section can sit below the fold of the scrollable inspector.
+      await tester
+          .ensureVisible(find.byKey(ValueKey('inspector_flow_link_${b.value}')));
+      await tester.tap(find.byKey(ValueKey('inspector_flow_link_${b.value}')));
+      await tester.pumpAndSettle();
+      expect(controller.revision, before + 1);
+      expect(textFrameSuccessor(nodeOf(controller, a)), b.value);
+      expect(find.text('Flows into: ${nodes[1].name}'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('inspector_flow_unlink')),
+        findsOneWidget,
+      );
+
+      // Undo removes the link (one step); redo restores it.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.audioVolumeDown);
+      await tester.pumpAndSettle();
+      expect(textFrameSuccessor(nodeOf(controller, a)), isNull);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.audioVolumeUp);
+      await tester.pumpAndSettle();
+      expect(textFrameSuccessor(nodeOf(controller, a)), b.value);
+
+      // Unlink: one undoable revision back to the unlinked state.
+      final beforeUnlink = controller.revision;
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('inspector_flow_unlink')));
+      await tester.tap(find.byKey(const ValueKey('inspector_flow_unlink')));
+      await tester.pumpAndSettle();
+      expect(controller.revision, beforeUnlink + 1);
+      expect(textFrameSuccessor(nodeOf(controller, a)), isNull);
+      expect(
+        find.byKey(ValueKey('inspector_flow_link_${b.value}')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'compact Columns sheet shows live link/unlink controls for text frames',
+        (tester) async {
+      tester.view.physicalSize = const Size(471, 1020);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final controller = StudioController();
+      controller.addTextNode(100, 120, 'First story');
+      controller.addTextNode(560, 120, 'Second story');
+      final nodes = controller.project.artboards.first.nodes;
+      final a = nodes[0].id;
+      final b = nodes[1].id;
+      controller.selectNode(a);
+      await tester.pumpWidget(GgenApp(controller: controller));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Columns'));
+      await tester.pumpAndSettle();
+
+      // The sheet offers the link action next to the column controls.
+      expect(find.byKey(const ValueKey('mobile_columns_slider')),
+          findsOneWidget);
+      expect(
+        find.byKey(ValueKey('mobile_flow_link_${b.value}')),
+        findsOneWidget,
+      );
+      final before = controller.revision;
+
+      // Linking from the sheet updates the sheet live (it stays open).
+      await tester.tap(find.byKey(ValueKey('mobile_flow_link_${b.value}')));
+      await tester.pumpAndSettle();
+      expect(controller.revision, before + 1);
+      expect(textFrameSuccessor(nodeOf(controller, a)), b.value);
+      expect(find.text('Flows into: ${nodes[1].name}'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('mobile_flow_unlink')),
+        findsOneWidget,
+      );
+
+      // Unlink from the sheet returns to the candidate list, live.
+      await tester.tap(find.byKey(const ValueKey('mobile_flow_unlink')));
+      await tester.pumpAndSettle();
+      expect(textFrameSuccessor(nodeOf(controller, a)), isNull);
+      expect(
+        find.byKey(ValueKey('mobile_flow_link_${b.value}')),
+        findsOneWidget,
+      );
+    });
+  });
 }
+
+/// Finds [id] in the first artboard (widget-test convenience).
+DocumentNode nodeOf(StudioController controller, GgenId id) =>
+    controller.project.artboards.first.nodes
+        .firstWhere((n) => n.id == id);
