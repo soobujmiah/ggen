@@ -1,140 +1,96 @@
-# AI Gateway Runtime — Agent Implementation Handoff
+# AI Gateway Runtime — GGEN Integration Handoff
 
 ## Objective
 
-Implement the AI Gateway Runtime described in `docs/architecture/ai-gateway-runtime.md`.
+Integrate GGEN with the **canonical LAI AI/runtime platform** through the versioned capability contract. This document no longer authorizes implementation of a provider/runtime stack inside GGEN.
 
-The product goal is a cloud-first, provider-agnostic AI runtime for Android where an application can use OpenAI, Anthropic, Gemini, OpenAI-compatible APIs, and future custom endpoints through one normalized interface. If one eligible provider fails, the runtime must automatically retry/fail over according to bounded policy. AI models may request registered Android tools, but tools execute only through the runtime's schema, policy, permission, and Android adapter boundaries.
+## Critical ownership correction
 
-## Important repository boundary
+The former GGEN-local AI Gateway implementation sequence is **superseded**.
 
-This is a separate architecture track from GGEN's existing Phase 2 creative-surface implementation. Do not rewrite or destabilize the existing GGEN editor/canvas architecture to implement this runtime. Before adding implementation packages, inspect the repository's current module/build structure and choose the smallest isolated location consistent with existing conventions. If the current repository structure cannot safely host the runtime without architectural coupling, document the proposed boundary before implementing it.
+- **LAI** owns provider adapters, provider routing/failover, credentials, model execution, local CPU/GPU/NPU runtime, device scheduling, Android tool authority, agent runtime, runtime security/audit and execution evidence.
+- **GGEN** owns creative/document UX, document/creative state, AI task intent, context assembly, user-facing execution preferences/constraints, and incorporation/presentation of AI results.
+- The repositories remain independent.
+- GGEN must not embed llama.cpp, Vulkan, QNN, provider SDK stacks, Android automation authority or a duplicate canonical gateway merely to obtain AI capabilities.
 
 ## Required reading
 
 1. `AI_ASSISTANT.md`
 2. `CURRENT_STATE.md`
 3. `MASTER_SPEC.md`
-4. `docs/architecture/ai-gateway-runtime.md`
-5. Relevant current architecture/ADR documents
+4. `docs/architecture/ggen-lai-boundary.md`
+5. `docs/architecture/GGEN_LAI_INTEGRATION_SPEC.md`
+6. `docs/architecture/ai-gateway-runtime.md`
+7. SKB `architecture/GGEN_LAI_CAPABILITY_OWNERSHIP_MATRIX.md`
+8. SKB `research/ANDROID_BEST_IN_CLASS_RESEARCH_PROTOCOL.md`
+9. corresponding LAI runtime/integration documents
 
-## Frozen invariants
+## Correct execution order
 
-- Core must remain provider-neutral.
-- Provider-specific API types belong only in adapters.
-- Requests and responses use normalized core contracts.
-- Retry is bounded; infinite retry is forbidden.
-- Invalid requests are not blindly replayed across providers.
-- Provider failover is policy-driven and capability-aware.
-- Health state and circuit breaking must prevent repeated traffic to failed providers.
-- AI cannot grant itself Android permissions.
-- Tool calls require registry lookup, schema validation, policy/permission evaluation, and confirmation where required.
-- High-risk tools are disabled by default during MVP.
-- Tool output is untrusted data.
-- Tool execution retry is separate from AI generation retry.
-- Secrets never enter model context, source control, or ordinary logs.
-- Public release is forbidden until release gates are explicitly passed.
+### P0 — Contract reconciliation
 
-## Execution order
+Before coding:
 
-### M1 — Foundation
+- inspect current GGEN and LAI source/tests/docs;
+- search SKB for existing knowledge and duplicate specifications;
+- reconcile capability IDs, request/response/error schemas, privacy constraints, evidence semantics, streaming and cancellation;
+- record contradictions and resolve them from implementation/evidence rather than document age;
+- confirm one canonical owner per capability.
 
-Implement only the minimum domain contracts and test infrastructure:
+### P1 — LAI runtime
 
-- AIRequest
-- AIResponse
-- Provider
-- ProviderCapabilities
-- ProviderHealth
-- ProviderError
-- RoutingPolicy
-- Tool
-- ToolResult
-- package/module boundaries
-- unit-test scaffolding
+Implementation of provider/runtime infrastructure occurs in LAI. GGEN agents must not start a parallel implementation here.
 
-Do not implement Android automation or a large UI in M1.
+### P2 — GGEN client integration
 
-### M1 acceptance
+Only after the LAI contract is sufficiently stable, implement the smallest GGEN-side client/adapter needed to:
 
-All of the following must pass:
+- discover supported capabilities;
+- send normalized requests;
+- consume streaming/cancellation where supported;
+- consume typed errors;
+- preserve provenance/evidence;
+- present user-facing recovery UX.
 
-- project builds;
-- core contracts compile;
-- provider abstraction exists;
-- normalized request/response exist;
-- capability model exists;
-- router policy contract exists;
-- tool contract exists;
-- security boundary is represented;
-- unit tests execute;
-- architecture documentation remains consistent.
+The adapter must not contain provider routing, credentials, Android permission decisions or runtime scheduling.
 
-### M2 — Provider Layer
+### P3 — End-to-end validation
 
-After M1 is green:
+Validate the smallest supported capabilities first, including:
 
-- implement provider adapter boundary;
-- implement normalized translation;
-- implement one real cloud provider adapter;
-- implement mock provider;
-- normalize provider errors;
-- add capability checks;
-- add provider adapter tests.
+- text generation;
+- OCR;
+- cancellation;
+- unavailable runtime/provider;
+- local-only policy;
+- malformed request;
+- unsupported capability;
+- timeout/retry semantics;
+- provenance/evidence preservation.
 
-### M3 — Router / Failover
-
-Only after M2 is green:
-
-- provider selection;
-- health monitor;
-- bounded retry;
-- failover;
-- circuit breaker;
-- request/attempt tracing;
-- failure simulation.
-
-### M4 — Tool Runtime
-
-Only after M3 is green:
-
-- registry;
-- schema validation;
-- risk levels;
-- permission policy;
-- user confirmation;
-- executor boundary;
-- one low-risk Android read-only tool;
-- tool timeout;
-- normalized results;
-- audit events.
-
-### M5+ — Security and expansion
-
-Follow the architecture document exactly for M5–M10. Do not skip security gates to reach feature parity.
-
-## Git workflow — mandatory
-
-For every completed milestone:
-
-1. inspect `git status` and diff;
-2. run relevant unit/integration tests;
-3. run the repository's exact pinned build/CI-equivalent checks where available;
-4. update implementation/status documentation;
-5. commit the milestone;
-6. push the commit to the designated GitHub branch;
-7. verify the remote branch contains the commit;
-8. record commit SHA and verification evidence in the handoff/status documentation.
-
-Do not claim a milestone complete without a commit SHA and remote verification.
+Expand to image generation/editing, embeddings, tools and agent capabilities only when the contract and LAI implementation are validated.
 
 ## Scope discipline
 
-Do not add speculative providers, unnecessary dependencies, autonomous agent behavior, unrestricted shell execution, unrestricted filesystem access, privileged Android actions, or UI polish merely because they might be useful later.
+Do not add speculative providers, unnecessary dependencies, autonomous agent behavior, unrestricted shell/filesystem access, privileged Android actions, or UI polish under the name of gateway implementation.
 
-When a requirement is ambiguous, prefer the smallest implementation that satisfies the frozen contract and document the decision.
+Do not destabilize GGEN's working creative/editor implementation to create runtime infrastructure that belongs to LAI.
 
-## Milestone report format
+## Git workflow — mandatory
+
+For every completed GGEN integration milestone:
+
+1. inspect status and diff;
+2. run relevant tests/build/CI-equivalent checks;
+3. update documentation/status;
+4. commit;
+5. push to the designated branch;
+6. verify the remote branch contains the commit;
+7. record SHA and verification evidence.
+
+Do not claim completion without remote verification.
+
+## Milestone report
 
 ```text
 Milestone:
@@ -143,35 +99,22 @@ Status:
 Implemented:
 - ...
 
+Contract version:
+LAI capability(s):
 Tests:
-- ...
-
 Failure tests:
-- ...
-
 Security checks:
-- ...
-
 Build:
-- ...
-
 Files changed:
-- ...
-
 Known limitations:
-- ...
-
 Architecture deviations:
-- NONE / DETAILS
-
 Commit SHA:
 Remote branch:
 Push status:
 Remote verification:
-
 Next milestone:
 ```
 
 ## First action
 
-Start with M1 only. Inspect the existing repository/module structure first, choose an isolated implementation boundary, implement the minimum contracts, run the full applicable M1 test/build gates, update documentation, commit, push, and verify the remote SHA. Stop after M1 and report evidence before beginning M2.
+Do **not** implement the former GGEN M1 gateway foundation. First perform P0 contract reconciliation against current GGEN + LAI source/docs/tests and the SKB ownership matrix. If the contract is already sufficiently reconciled, proceed only to the smallest GGEN client integration task explicitly justified by current LAI evidence.
