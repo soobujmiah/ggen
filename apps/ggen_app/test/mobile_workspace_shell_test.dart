@@ -137,7 +137,7 @@ void main() {
 
         // Switch tools repeatedly (device checklist: rapid switching).
         for (final tooltip in <String>[
-          'Draw',
+          'Rectangle',
           'Text',
           'Select',
           'Text',
@@ -171,7 +171,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
 
-      for (final tooltip in <String>['Text', 'Select', 'Draw', 'Select']) {
+      for (final tooltip in <String>['Text', 'Select', 'Rectangle', 'Select']) {
         await tester.tap(find.byTooltip(tooltip), warnIfMissed: false);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: 'switch to $tooltip');
@@ -276,7 +276,7 @@ void main() {
         (tester) async {
       final controller = StudioController();
       await pumpShell(tester, controller: controller);
-      await tester.tap(find.byTooltip('Draw'));
+      await tester.tap(find.byTooltip('Rectangle'));
       await tester.pumpAndSettle();
       expect(find.byTooltip('Multi-select off'), findsNothing);
       expect(find.byTooltip('Columns'), findsNothing);
@@ -386,12 +386,13 @@ void main() {
       );
       expect(selectButton.isSelected, isTrue);
 
-      await tester.tap(find.byTooltip('Draw'));
+      await tester.tap(find.byTooltip('Rectangle'));
       await tester.pumpAndSettle();
+      // When selected the rail shows the filled (selectedIcon) variant.
       final drawButton = tester.widget<IconButton>(
         find.descendant(
           of: find.byKey(MobileToolRail.railKey),
-          matching: find.widgetWithIcon(IconButton, Icons.brush),
+          matching: find.widgetWithIcon(IconButton, Icons.rectangle),
         ),
       );
       expect(drawButton.isSelected, isTrue);

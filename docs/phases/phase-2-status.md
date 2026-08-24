@@ -214,3 +214,26 @@ Responds to the first Redmi Turbo 4 Pro diagnostics round for the Stage-4 APK: R
 **Architectural record:** `docs/architecture/mobile-workspace-shell.md`.
 
 **Pending on-device:** build a fresh `android-build.yml` debug APK and re-run the device round on the Redmi Turbo 4 Pro (`25053RT47C`): confirm the overflow banner and RangeError no longer appear, exercise the tool rail/action bar/contextual Columns, immersive mode, reset, save/reload and the linked-flow checklist. No device claim is made here.
+
+## 2026-08-24 Vector Studio Milestone 1 — Rectangle + Ellipse primitives
+
+First professional vector-editing slice: adds ellipse and style (fill + optional stroke) on top of the existing shape-node foundation. No second document model; no LAI/AI dependency; reuses selection, move, resize, multi-select, groups, history, persistence and canvas renderer. **Core 143/143 (Dart 3.14.0-95.2.beta), app 276/276 (Flutter 3.48.0-0.2.pre); `flutter analyze` zero errors. Not device-validated.**
+
+**What shipped**
+- `src/geometry/shape_geometry.dart` (new): `ShapePrimitive` enum (`rectangle`/`ellipse`), `NodeShapeGeometry` value type (x/y/width/height/fill/stroke/strokeWidth/shapeType), `nodeShapeGeometry` fail-closed reader (returns null on malformed payload), `hitTestNode` (shape AABB + text-frame fallback), text-node aliases for legacy callers; backwards-compat `NodeGeometry`/`nodeGeometry`/`textNodeGeometry` typedefs.
+- `ggen_core` Artboard: `_validateShapeGeometry` fail-closed validation for x/y/w/h/fill/stroke/stroke_width/shape_type when any geometry key is present; bare shape placeholders remain accepted.
+- `StudioController`: `_addPrimitive` shared primitive creation, `addEllipseNode`, `updateShapeStyle` (one undoable step; clearStroke option; no-op detection). Writes canonical `fill` plus legacy `color` for backwards compatibility; `shape_type` persisted on every shape. Default insertion size kept at 64 px (legacy constant) to preserve on-device muscle memory and existing tests.
+- `StudioCanvas`: `ellipseEnabled` tool flag; canvas painters refactored into `_ShapePainter`/`_SelectionPainter` CustomPainters rendering fill + stroke for both rectangles (drawRect) and ellipses (drawOval); selection outline distinguishes primitive. Ellipse taps route to `addEllipseNode`.
+- Tool rail: `StudioTool.ellipse` added (enum member named `draw` retained for Rectangle wire-name stability); icon `Icons.circle_outlined`/`Icons.circle`; labels `Select`/`Rectangle`/`Ellipse`/`Text`. Both `MobileToolRail` and wide `NavigationRail` auto-derive destinations from `StudioTool.values` so no index-range regression is possible.
+- Inspector shape panel: Fill swatch row, Stroke toggle with color swatches and ± stroke-width stepper (0.5–24); changes apply immediately as one undoable style step via `updateShapeStyle`. Geometry Apply button renamed to "Apply geometry"; style actions fire through the same session history.
+- Tests: +22 in `test/vector_studio_m1_test.dart` — primitive creation (rect/ellipse geometry + shape_type), style independence (fill/stroke/width per shape), persistence round-trip for rect (fill+stroke) and ellipse, fail-closed validation (NaN x, non-positive w, non-int fill, negative stroke_width), bare-shape-placeholder compat, legacy `color`-only compat, runtime null-reader on malformed payload, undo/redo for add/style/resize, and wire ↔ enum mapping (unknown wire falls back to rectangle for forward compatibility). Existing 254 app + 143 core tests updated only where necessary (5 tooltip references migrated from "Draw"/brush to "Rectangle"/rectangle icon; node-name expectation preserved as "Shape N"); no test weakened.
+
+**Key contracts**
+- Extension keys: `x`/`y`/`w`/`h` (num, finite, positive), `fill` (int ARGB, canonical; legacy `color` also written), `shape_type` ("rectangle"|"ellipse"; absent → rectangle for legacy compat), `stroke` (int ARGB; absent/null → no stroke), `stroke_width` (num ≥ 0; required when stroke present).
+- Fail-closed at three layers: core Artboard construction, app `nodeShapeGeometry` reader (null on malformed), and `updateShapeStyle` (ArgumentError + no-op detection).
+- Unknown `shape_type` wires degrade to rectangle at render time (fail-safe, not crash).
+
+**Non-goals honored**
+- No Bezier, booleans, SVG path authoring, gradients, patterns, text-on-path, vectorization, AI runtime, or Illustrator parity. No parallel `VectorDocument`/`VectorEngine`/`ShapeManager`/`VectorStore` architecture introduced; all changes extend the existing `DocumentNodeKind.shape` + extensions model.
+
+**Pending on-device:** build a fresh APK and exercise on the Redmi Turbo 4 Pro — select Rectangle/Ellipse, create primitives, fill/stroke edits via inspector, move/resize, undo/redo, save/reload persistence, both primitive shapes render distinctly, no RenderFlex or RangeError regressions with the 4th tool. No device claim is made here.

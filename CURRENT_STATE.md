@@ -39,9 +39,22 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 6. Relevant architecture/ADR documents
 7. Relevant source and tests
 
-## Latest working change (2026-08-24, after the first device round)
+## Latest working change (2026-08-24 — Vector Studio Milestone 1)
 
-The first Redmi Turbo 4 Pro diagnostics round on the Stage-4 APK reported a RenderFlex overflow (1.2px right), a Text-tool RangeError (`Not in inclusive range 0..2: 3`) and an incoherent accumulated toolbar layout. Branch `feat/mobile-workspace-shell` (from `b926b28`) fixes both bugs at their root (typed `StudioTool` enum eliminates the out-of-range tool index; the top action bar's pinned region is now a bounded scroller) and replaces the compact shell's three competing toolbar surfaces with one canonical layout: stable left tool rail + single bottom contextual action bar; legacy toolbar dock/mode preferences retired fail-closed. App 254/254, core 143/143 on exact CI toolchains; not device-validated. See `docs/architecture/mobile-workspace-shell.md`.
+Implements the Vector Studio Milestone 1 slice (rectangle + ellipse primitives) extending the existing `DocumentNodeKind.shape` model rather than introducing a parallel vector system.
+
+**Changes:**
+- New `ShapePrimitive` enum (`rectangle`/`ellipse`) and `NodeShapeGeometry` value type with fill, optional stroke, stroke_width and shape_type (`apps/ggen_app/lib/src/geometry/shape_geometry.dart`).
+- Core fail-closed validation in `ggen_core` `Artboard._validateShapeGeometry` for x/y/w/h/fill/stroke/stroke_width/shape_type; bare shape placeholders (no geometry keys) remain accepted for backwards compatibility.
+- `StudioController._addPrimitive`, `addShapeNode`, `addEllipseNode`, `updateShapeStyle` (one-step undoable transactions); writes canonical `fill` + legacy `color` for compat.
+- Canvas `_ShapePainter`/`_SelectionPainter` CustomPainters that draw fill + stroke for rect/ellipse and render selection outlines; ellipse creation path routed through `ellipseEnabled`.
+- Tool rail: `StudioTool.ellipse` added (enum name `draw` retained for Rectangle wire stability); tooltips updated; NavigationRail/MobileToolRail auto-derive destinations from `StudioTool.values`.
+- Inspector shape panel: fill swatch row, stroke toggle, stroke-color swatch row, stroke-width ± stepper; changes apply through `updateShapeStyle` as one undoable step.
+- 22 new tests in `apps/ggen_app/test/vector_studio_m1_test.dart` covering creation, style independence, persistence round-trip, fail-closed malformed geometry, undo/redo, rendering primitive mapping, and legacy color-only compat.
+
+**Test gate:** core 143/143, app 276/276 (254 baseline + 22 new) passing locally on Flutter beta 3.48.0-0.2.pre / Dart 3.14.0-95.2.beta. `flutter analyze` has zero errors; remaining info/warnings are pre-existing. No device validation performed.
+
+**Previous entry (mobile workspace shell):** The first Redmi Turbo 4 Pro diagnostics round on the Stage-4 APK reported a RenderFlex overflow (1.2px right), a Text-tool RangeError (`Not in inclusive range 0..2: 3`) and an incoherent accumulated toolbar layout. Branch `feat/mobile-workspace-shell` (from `b926b28`) fixes both bugs at their root (typed `StudioTool` enum eliminates the out-of-range tool index; the top action bar's pinned region is now a bounded scroller) and replaces the compact shell's three competing toolbar surfaces with one canonical layout: stable left tool rail + single bottom contextual action bar; legacy toolbar dock/mode preferences retired fail-closed. That baseline remains green (app 254/254 before M1 extension). See `docs/architecture/mobile-workspace-shell.md`.
 
 ## AI Gateway Runtime documentation
 

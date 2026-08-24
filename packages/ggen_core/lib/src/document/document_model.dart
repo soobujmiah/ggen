@@ -107,6 +107,11 @@ final class Artboard {
   /// keeps a project from ever carrying a dangling, duplicate or nested
   /// membership reference; malformed group payloads fail closed at
   /// construction time (and therefore also on decode).
+  ///
+  /// Shape nodes are validated for finite, positive x/y/w/h geometry, a
+  /// valid finite fill color, and (when present) a non-negative
+  /// stroke_width. Malformed shape geometry fails closed rather than
+  /// silently producing NaN-rendered artboards.
   static void _validateGroupReferences(List<DocumentNode> nodes) {
     final ids = <GgenId>{for (final node in nodes) node.id};
     for (final node in nodes) {
@@ -142,6 +147,70 @@ final class Artboard {
           'Non-group node "${node.id}" must not declare "children".',
         );
       }
+      if (node.kind == DocumentNodeKind.shape) {
+        _validateShapeGeometry(node);
+      }
+    }
+  }
+
+  static void _validateShapeGeometry(DocumentNode node) {
+    double? asFiniteDouble(Object? v) {
+      if (v is num) {
+        final d = v.toDouble();
+        return d.isFinite ? d : null;
+      }
+      return null;
+    }
+    // Legacy placeholder shape nodes may carry no geometry keys at all
+    // (e.g. tests create bare DocumentNode(kind: shape) for group-reference
+    // checks). Only validate when at least one geometry/style key is
+    // present, in which case the full payload must be well-formed.
+    final hasAnyShapeKey = node.extensions.keys.any((String k) =>
+        k == 'x' || k == 'y' || k == 'w' || k == 'h' ||
+        k == 'fill' || k == 'color' ||
+        k == 'stroke' || k == 'stroke_width' || k == 'shape_type');
+    if (!hasAnyShapeKey) return;
+    final x = asFiniteDouble(node.extensions['x']);
+    final y = asFiniteDouble(node.extensions['y']);
+    final w = asFiniteDouble(node.extensions['w']);
+    final h = asFiniteDouble(node.extensions['h']);
+    if (x == null || y == null || w == null || h == null) {
+      throw ArgumentError(
+        'Shape node "${node.id}" must declare finite numeric x/y/w/h.',
+      );
+    }
+    if (w <= 0 || h <= 0) {
+      throw ArgumentError(
+        'Shape node "${node.id}" w/h must be positive.',
+      );
+    }
+    final fillKey = node.extensions.containsKey('fill') ? 'fill' : 'color';
+    final fill = node.extensions[fillKey];
+    if (fill is! int) {
+      throw ArgumentError(
+        'Shape node "${node.id}" must declare an integer fill/color.',
+      );
+    }
+    final sw = node.extensions['stroke_width'];
+    if (sw != null) {
+      final swd = asFiniteDouble(sw);
+      if (swd == null || swd < 0) {
+        throw ArgumentError(
+          'Shape node "${node.id}" stroke_width must be finite and >= 0.',
+        );
+      }
+    }
+    final stroke = node.extensions['stroke'];
+    if (stroke != null && stroke is! int) {
+      throw ArgumentError(
+        'Shape node "${node.id}" stroke must be an integer color when present.',
+      );
+    }
+    final st = node.extensions['shape_type'];
+    if (st != null && st is! String) {
+      throw ArgumentError(
+        'Shape node "${node.id}" shape_type must be a string when present.',
+      );
     }
   }
 

@@ -4,15 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:ggen_core/ggen_core.dart';
 
 import '../controller/studio_controller.dart';
+import '../geometry/shape_geometry.dart';
 import '../text_flow/linked_text_flow.dart';
 import 'canvas_viewport.dart';
 import 'canvas_zoom_controller.dart';
 
-// The text-flow measurement and standalone-flow helpers live in the
-// text_flow module; re-exported so existing canvas consumers (tests, the
-// legacy label path) keep their import.
+// Re-exports so existing consumers (tests, main.dart) that imported
+// geometry helpers from studio_canvas.dart continue to work.
+export '../geometry/shape_geometry.dart';
 export '../text_flow/linked_text_flow.dart'
-    show FlutterTextMeasurement, kDefaultTextMeasurement, flowTextFrame;
+    show FlutterTextMeasurement, kDefaultTextMeasurement, flowTextFrame, linkCandidates;
 
 /// CustomPainter that draws column boundary guides plus the flow indicator
 /// tab for a text frame. Text itself is rendered as real [Text] widgets
@@ -157,6 +158,7 @@ class StudioCanvas extends StatefulWidget {
     required this.controller,
     required this.drawEnabled,
     required this.onNodeAdded,
+    this.ellipseEnabled = false,
     this.selectMode = false,
     this.textEnabled = false,
     this.showZoomOverlay = true,
@@ -175,6 +177,7 @@ class StudioCanvas extends StatefulWidget {
 
   final StudioController controller;
   final bool drawEnabled;
+  final bool ellipseEnabled;
   final VoidCallback onNodeAdded;
 
   /// When true, the Select tool is active: taps hit-test nodes and drags
@@ -451,15 +454,15 @@ class _StudioCanvasState extends State<StudioCanvas> {
   /// Returns the artboard-space bounding rectangle for a node, or null when
   /// the node carries no geometry payload.
   Rect? _nodeRect(DocumentNode node) {
-    final shape = nodeGeometry(node);
+    final shape = nodeShapeGeometry(node);
     if (shape != null) {
       return Rect.fromLTWH(shape.x, shape.y, shape.width, shape.height);
     }
-    final text = textNodeGeometry(node);
+    final text = textNodeSimpleGeometry(node);
     if (text != null) {
       // Frame text nodes carry an explicit w/h; legacy label-sized nodes fall
       // back to the approximate single-line bounding box.
-      final frame = textNodeFrameGeometry(node);
+      final frame = textNodeFrameRect(node);
       if (frame != null) {
         return Rect.fromLTWH(
           frame.x,
@@ -521,7 +524,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
                   final nodes = artboards.first.nodes;
                   final idx = nodes.indexWhere((n) => n.id == selectedId);
                   if (idx >= 0) {
-                    final geom = nodeGeometry(nodes[idx]);
+                    final geom = nodeShapeGeometry(nodes[idx]);
                     if (geom != null) {
                       final handles = resizeHandleRects(geom, _viewport);
                       for (final entry in handles.entries) {
@@ -694,6 +697,12 @@ class _StudioCanvasState extends State<StudioCanvas> {
                   artboardPoint.dy,
                 );
                 widget.onNodeAdded();
+              } else if (widget.ellipseEnabled) {
+                widget.controller.addEllipseNode(
+                  artboardPoint.dx,
+                  artboardPoint.dy,
+                );
+                widget.onNodeAdded();
               } else if (widget.selectMode) {
                 // Select tool: hit-test and report (never opens the text
                 // dialog — regression pinned by the shell test). Shift,
@@ -811,7 +820,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
     final nodes = artboards.first.nodes;
     final nodeIndex = nodes.indexWhere((n) => n.id == selectedId);
     if (nodeIndex < 0) return const <Widget>[];
-    final geometry = nodeGeometry(nodes[nodeIndex]);
+    final geometry = nodeShapeGeometry(nodes[nodeIndex]);
     if (geometry == null) return const <Widget>[];
 
     // Apply live drag offset if this node is being moved.
@@ -844,7 +853,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
     }
 
     final handles = resizeHandleRects(
-      NodeGeometry(x: x, y: y, width: w, height: h, color: 0),
+      NodeShapeGeometry(x: x, y: y, width: w, height: h, fill: 0),
       _viewport,
     );
     const hs = kHandleSize;
@@ -898,7 +907,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
         : 0.0;
 
     if (node.kind == DocumentNodeKind.textFrame) {
-      final geometry = textNodeGeometry(node);
+      final geometry = textNodeSimpleGeometry(node);
       if (geometry == null) return const <Widget>[];
 
       // Frame text nodes have an explicit w/h and flow across columns using
@@ -1021,7 +1030,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
       }
       return widgets;
     }
-    final geometry = nodeGeometry(node);
+    final geometry = nodeShapeGeometry(node);
     if (geometry == null) return const <Widget>[];
     final widgets = <Widget>[
       Positioned(
@@ -1029,10 +1038,9 @@ class _StudioCanvasState extends State<StudioCanvas> {
         top: geometry.y + dragDy,
         width: geometry.width,
         height: geometry.height,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Color(geometry.color),
-            borderRadius: BorderRadius.circular(2),
+        child: IgnorePointer(
+          child: CustomPaint(
+            painter: _ShapePainter(geometry: geometry),
           ),
         ),
       ),
@@ -1045,14 +1053,8 @@ class _StudioCanvasState extends State<StudioCanvas> {
           width: geometry.width + 4,
           height: geometry.height + 4,
           child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: const Color(0xFF4E6BFF),
-                  width: 2,
-                ),
-                borderRadius: BorderRadius.circular(4),
-              ),
+            child: CustomPaint(
+              painter: _SelectionPainter(shapeType: geometry.shapeType),
             ),
           ),
         ),
@@ -1062,103 +1064,81 @@ class _StudioCanvasState extends State<StudioCanvas> {
   }
 }
 
-/// Studio geometry payload stored in a node's extensions: `x`, `y`, `w`, `h`
-/// in artboard units plus `color` as an ARGB int. Null when the node carries
-/// no geometry (nodes from other sources render as the artboard only).
-NodeGeometry? nodeGeometry(DocumentNode node) {
-  final x = node.extensions['x'];
-  final y = node.extensions['y'];
-  final w = node.extensions['w'];
-  final h = node.extensions['h'];
-  final color = node.extensions['color'];
-  if (x is! num ||
-      y is! num ||
-      w is! num ||
-      h is! num ||
-      color is! int) {
-    return null;
+/// Paints a shape node with its fill and (optional) stroke. Uses a
+/// [CustomPainter] so ellipses are rendered as real ovals (not rounded
+/// rectangles) and strokes are centered on the geometry edge.
+class _ShapePainter extends CustomPainter {
+  _ShapePainter({required this.geometry});
+
+  final NodeShapeGeometry geometry;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, geometry.width, geometry.height);
+    final fillPaint = Paint()
+      ..color = Color(geometry.fill)
+      ..style = PaintingStyle.fill;
+    final strokePaint = geometry.hasStroke
+        ? (Paint()
+          ..color = Color(geometry.stroke!)
+          ..strokeWidth = geometry.strokeWidth
+          ..style = PaintingStyle.stroke
+          ..isAntiAlias = true)
+        : null;
+    switch (geometry.shapeType) {
+      case ShapePrimitive.rectangle:
+        canvas.drawRect(rect, fillPaint);
+        if (strokePaint != null) canvas.drawRect(rect, strokePaint);
+      case ShapePrimitive.ellipse:
+        canvas.drawOval(rect, fillPaint);
+        if (strokePaint != null) canvas.drawOval(rect, strokePaint);
+    }
   }
-  return NodeGeometry(
-    x: x.toDouble(),
-    y: y.toDouble(),
-    width: w.toDouble(),
-    height: h.toDouble(),
-    color: color,
-  );
+
+  @override
+  bool shouldRepaint(covariant _ShapePainter oldDelegate) =>
+      oldDelegate.geometry.x != geometry.x ||
+      oldDelegate.geometry.y != geometry.y ||
+      oldDelegate.geometry.width != geometry.width ||
+      oldDelegate.geometry.height != geometry.height ||
+      oldDelegate.geometry.fill != geometry.fill ||
+      oldDelegate.geometry.stroke != geometry.stroke ||
+      oldDelegate.geometry.strokeWidth != geometry.strokeWidth ||
+      oldDelegate.geometry.shapeType != geometry.shapeType;
 }
 
-/// Text-frame payload: `x`, `y`, `size`, `text`, `color`.
-TextNodeGeometry? textNodeGeometry(DocumentNode node) {
-  final x = node.extensions['x'];
-  final y = node.extensions['y'];
-  final size = node.extensions['size'];
-  final text = node.extensions['text'];
-  final color = node.extensions['color'];
-  if (x is! num || y is! num || size is! num || text is! String || color is! int) {
-    return null;
+/// Paints the selection outline around a shape (matching the primitive's
+/// outline so a selected ellipse gets an oval selection ring, not a
+/// rectangle).
+class _SelectionPainter extends CustomPainter {
+  _SelectionPainter({required this.shapeType});
+
+  final ShapePrimitive shapeType;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Inset by 2 (half the 2px stroke width) so the outline sits on the
+    // outside of the shape without drawing on top of its fill.
+    final rect = Rect.fromLTWH(2, 2, size.width - 4, size.height - 4);
+    final paint = Paint()
+      ..color = const Color(0xFF4E6BFF)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true;
+    switch (shapeType) {
+      case ShapePrimitive.rectangle:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+          paint,
+        );
+      case ShapePrimitive.ellipse:
+        canvas.drawOval(rect, paint);
+    }
   }
-  return TextNodeGeometry(
-    x: x.toDouble(),
-    y: y.toDouble(),
-    size: size.toDouble(),
-    text: text,
-    color: color,
-  );
-}
 
-/// Hit-tests a node's bounding rect against an artboard-space point.
-/// Returns true when the point falls inside the node's geometry.
-bool hitTestNode(DocumentNode node, Offset artboardPoint) {
-  final shape = nodeGeometry(node);
-  if (shape != null) {
-    return Rect.fromLTWH(
-      shape.x,
-      shape.y,
-      shape.width,
-      shape.height,
-    ).contains(artboardPoint);
-  }
-  final text = textNodeGeometry(node);
-  if (text != null) {
-    final width = text.text.length * text.size * 0.6;
-    final height = text.size * 1.4;
-    return Rect.fromLTWH(text.x, text.y, width, height).contains(
-      artboardPoint,
-    );
-  }
-  return false;
-}
-
-final class NodeGeometry {
-  const NodeGeometry({
-    required this.x,
-    required this.y,
-    required this.width,
-    required this.height,
-    required this.color,
-  });
-
-  final double x;
-  final double y;
-  final double width;
-  final double height;
-  final int color;
-}
-
-final class TextNodeGeometry {
-  const TextNodeGeometry({
-    required this.x,
-    required this.y,
-    required this.size,
-    required this.text,
-    required this.color,
-  });
-
-  final double x;
-  final double y;
-  final double size;
-  final String text;
-  final int color;
+  @override
+  bool shouldRepaint(covariant _SelectionPainter oldDelegate) =>
+      oldDelegate.shapeType != shapeType;
 }
 
 /// Which resize handle is being dragged.
@@ -1179,7 +1159,7 @@ const double kHandleSize = 10;
 /// Returns the screen-space rects for all 8 resize handles of a node with
 /// the given artboard-space geometry at the given viewport transform.
 Map<ResizeHandle, Rect> resizeHandleRects(
-  NodeGeometry geometry,
+  NodeShapeGeometry geometry,
   CanvasViewport viewport,
 ) {
   final topLeft = viewport.toScreen(Offset(geometry.x, geometry.y));

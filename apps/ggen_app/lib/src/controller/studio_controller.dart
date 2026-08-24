@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:ggen_core/ggen_core.dart';
 
+import '../geometry/shape_geometry.dart';
 import '../storage/memory_project_store.dart';
 import '../storage/memory_recovery_journal.dart';
 import '../storage/payload_journal.dart';
@@ -1090,7 +1091,7 @@ class StudioController extends ChangeNotifier {
   /// Opens a reversible tool session against the current project snapshot.
   ProjectToolSession beginSession() => ProjectToolSession(project);
 
-  /// Palette for the Draw tool's initial shapes (ARGB).
+  /// Palette for the Draw / Rectangle / Ellipse tools' initial fills (ARGB).
   static const List<int> shapePalette = <int>[
     0xFF4E6BFF,
     0xFFFF6B6B,
@@ -1102,13 +1103,50 @@ class StudioController extends ChangeNotifier {
     0xFFE056FD,
   ];
 
-  /// Draw-tool action: adds one shape node to the first artboard through a
-  /// reversible tool session, so it is exactly one undoable transaction.
+  /// Default size (in artboard units) for a tap-created primitive.
   ///
-  /// The tap point is clamped into the artboard; node geometry lives in the
-  /// node's extensions (`x`, `y`, `w`, `h`, `color`) until a later schema
-  /// introduces typed studio payloads.
-  void addShapeNode(double artboardX, double artboardY, {double size = 64}) {
+  /// Kept at 64 (pre-M1 constant) so existing tests and on-device muscle
+  /// memory stay stable; Milestone 1 ships with this value and future work
+  /// may scale it with canvas zoom.
+  static const double defaultPrimitiveSize = 64;
+
+  /// Returns the next fill color in the rotating palette.
+  int _nextFillColor() => shapePalette[_shapeCount % shapePalette.length];
+
+  /// Draw-tool action: adds one **rectangle** shape node to the first
+  /// artboard through a reversible tool session, so it is exactly one
+  /// undoable transaction.
+  ///
+  /// Geometry lives in the node's extensions (`x`, `y`, `w`, `h`, `fill`,
+  /// `shape_type`) until a later schema introduces typed studio payloads.
+  /// The legacy `color` key is also written for backwards compatibility with
+  /// any code that still reads it.
+  void addShapeNode(double artboardX, double artboardY, {double size = defaultPrimitiveSize}) {
+    _addPrimitive(
+      artboardX,
+      artboardY,
+      size: size,
+      primitive: ShapePrimitive.rectangle,
+    );
+  }
+
+  /// Ellipse-tool action: adds one ellipse shape node. One undoable step.
+  void addEllipseNode(double artboardX, double artboardY, {double size = defaultPrimitiveSize}) {
+    _addPrimitive(
+      artboardX,
+      artboardY,
+      size: size,
+      primitive: ShapePrimitive.ellipse,
+    );
+  }
+
+  /// Shared primitive creation used by both the Rectangle and Ellipse tools.
+  void _addPrimitive(
+    double artboardX,
+    double artboardY, {
+    required double size,
+    required ShapePrimitive primitive,
+  }) {
     if (!artboardX.isFinite ||
         !artboardY.isFinite ||
         !size.isFinite ||
@@ -1118,7 +1156,7 @@ class StudioController extends ChangeNotifier {
     final artboards = project.artboards;
     if (artboards.isEmpty) return;
     final artboard = artboards.first;
-    final effectiveSize = size.clamp(1, artboard.width).toDouble();
+    final effectiveSize = size.clamp(8, artboard.width).toDouble();
     final clampedX = artboardX
         .clamp(0, artboard.width - effectiveSize)
         .toDouble();
@@ -1127,16 +1165,21 @@ class StudioController extends ChangeNotifier {
         .toDouble();
 
     _shapeCount++;
+    final fill = _nextFillColor();
     final node = DocumentNode(
       id: GgenId('node-$_shapeCount'),
       kind: DocumentNodeKind.shape,
+      // Both rectangles and ellipses are shape nodes to the layer model;
+      // primitive distinction lives in extensions.shape_type.
       name: 'Shape $_shapeCount',
       extensions: <String, Object?>{
         'x': clampedX,
         'y': clampedY,
         'w': effectiveSize,
         'h': effectiveSize,
-        'color': shapePalette[_shapeCount % shapePalette.length],
+        'fill': fill,
+        'color': fill, // legacy compat
+        'shape_type': primitive.wire,
       },
     );
     final nextArtboards = <Artboard>[
@@ -1151,7 +1194,105 @@ class StudioController extends ChangeNotifier {
     ];
     final session = beginSession();
     session.updatePreview(project.copyWith(artboards: nextArtboards));
-    commitSession(session, 'Add shape $_shapeCount');
+    commitSession(session, 'Add ${primitive.wire} $_shapeCount');
+  }
+
+  /// Updates the fill and/or stroke of the selected shape node (in the
+  /// first artboard) through ONE undoable tool session.
+  ///
+  /// * Pass [fill] to change the fill color (required).
+  /// * Pass [stroke] (or null to clear the stroke) and a non-negative
+  ///   [strokeWidth] to set / change the outline.
+  ///
+  /// Returns false when the node is missing, not a shape, carries malformed
+  /// geometry, or the change is a no-op.
+  bool updateShapeStyle(
+    GgenId nodeId, {
+    int? fill,
+    int? stroke,
+    double? strokeWidth,
+    bool clearStroke = false,
+  }) {
+    final artboards = project.artboards;
+    if (artboards.isEmpty) return false;
+    final artboard = artboards.first;
+    final idx = artboard.nodes.indexWhere((n) => n.id == nodeId);
+    if (idx < 0) return false;
+    final node = artboard.nodes[idx];
+    if (node.kind != DocumentNodeKind.shape) return false;
+    final geom = nodeShapeGeometry(node);
+    if (geom == null) return false;
+
+    final newFill = fill ?? geom.fill;
+    int? newStroke;
+    double newStrokeWidth;
+    if (clearStroke) {
+      newStroke = null;
+      newStrokeWidth = 0;
+    } else if (stroke != null || strokeWidth != null) {
+      newStroke = stroke ?? geom.stroke;
+      newStrokeWidth = (strokeWidth ?? (geom.hasStroke ? geom.strokeWidth : 2.0)).toDouble();
+      if (!newStrokeWidth.isFinite || newStrokeWidth < 0) {
+        throw ArgumentError('Stroke width must be finite and non-negative.');
+      }
+      if (newStroke == null) {
+        // Stroke width was provided but no color — default to black.
+        newStroke = 0xFF000000;
+      }
+    } else {
+      newStroke = geom.stroke;
+      newStrokeWidth = geom.strokeWidth;
+    }
+
+    final nextExtensions = <String, Object?>{
+      ...node.extensions,
+      'fill': newFill,
+      'color': newFill, // keep legacy key in sync
+    };
+    if (newStroke != null && newStrokeWidth > 0) {
+      nextExtensions['stroke'] = newStroke;
+      nextExtensions['stroke_width'] = newStrokeWidth;
+    } else {
+      nextExtensions.remove('stroke');
+      nextExtensions.remove('stroke_width');
+    }
+
+    final updated = DocumentNode(
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      visible: node.visible,
+      locked: node.locked,
+      opacity: node.opacity,
+      extensions: nextExtensions,
+    );
+
+    // No-op check — avoid burning a revision when nothing changed.
+    if (_extensionsEqual(updated.extensions, node.extensions)) return false;
+
+    final nextNodes = <DocumentNode>[
+      ...artboard.nodes.sublist(0, idx),
+      updated,
+      ...artboard.nodes.sublist(idx + 1),
+    ];
+    return _commitNodeList(artboard, nextNodes, 'Style ${node.name}');
+  }
+
+  /// Returns true when two extension maps contain identical primitive
+  /// values (for the keys this controller writes). Used to avoid no-op
+  /// revisions when styling a node.
+  static bool _extensionsEqual(Map<String, Object?> a, Map<String, Object?> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      final other = b[entry.key];
+      if (entry.value is double && other is num) {
+        if ((entry.value as double) != other.toDouble()) return false;
+      } else if (entry.value != other) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Text-tool action: adds one text frame to the first artboard through a

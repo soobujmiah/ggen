@@ -256,7 +256,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.objectCount, 0);
-    await tester.tap(find.text('Draw'));
+    await tester.tap(find.text('Rectangle'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(StudioCanvas));

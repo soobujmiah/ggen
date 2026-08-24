@@ -951,6 +951,7 @@ class _StudioShellState extends State<StudioShell> {
                           projectName: _studio.project.name,
                           controller: _studio,
                           drawEnabled: _tool == StudioTool.draw,
+                          ellipseEnabled: _tool == StudioTool.ellipse,
                           selectMode: _tool == StudioTool.select,
                           textEnabled: _tool == StudioTool.text,
                           immersive: _immersive,
@@ -1195,6 +1196,7 @@ class CanvasArea extends StatelessWidget {
     required this.controller,
     required this.drawEnabled,
     required this.onNodeAdded,
+    this.ellipseEnabled = false,
     this.selectMode = false,
     this.textEnabled = false,
     this.immersive = false,
@@ -1216,6 +1218,7 @@ class CanvasArea extends StatelessWidget {
   final String projectName;
   final StudioController controller;
   final bool drawEnabled;
+  final bool ellipseEnabled;
   final VoidCallback onNodeAdded;
   final bool selectMode;
   final bool textEnabled;
@@ -1273,6 +1276,7 @@ class CanvasArea extends StatelessWidget {
               child: StudioCanvas(
                 controller: controller,
                 drawEnabled: drawEnabled,
+                ellipseEnabled: ellipseEnabled,
                 onNodeAdded: onNodeAdded,
                 selectMode: selectMode,
                 textEnabled: textEnabled,
@@ -1425,12 +1429,24 @@ class _InspectorContentState extends State<_InspectorContent> {
   late TextEditingController _gutterCtrl;
 
   DocumentNode? _node;
-  NodeGeometry? _geom;
+  NodeShapeGeometry? _geom;
   TextNodeGeometry? _textGeom;
   int _columns = 1;
   String? _successorId;
   String? _successorName;
   List<DocumentNode> _linkCandidates = const <DocumentNode>[];
+
+  // Shape-style editor state (applied through one undoable controller call).
+  int _editFill = 0xFF4E6BFF;
+  bool _editHasStroke = false;
+  int _editStroke = 0xFF000000;
+  double _editStrokeWidth = 2.0;
+
+  static const List<int> _palette = <int>[
+    0xFF4E6BFF, 0xFFFF6B6B, 0xFFFFD93D, 0xFF6BCB77,
+    0xFFB983FF, 0xFFFF9F68, 0xFF4ECDC4, 0xFFE056FD,
+    0xFF000000, 0xFFFFFFFF, 0xFF888888, 0xFF222222,
+  ];
 
   @override
   void initState() {
@@ -1491,6 +1507,10 @@ class _InspectorContentState extends State<_InspectorContent> {
         _yCtrl.text = geom.y.toStringAsFixed(1);
         _wCtrl.text = geom.width.toStringAsFixed(1);
         _hCtrl.text = geom.height.toStringAsFixed(1);
+        _editFill = geom.fill;
+        _editHasStroke = geom.hasStroke;
+        _editStroke = geom.stroke ?? 0xFF000000;
+        _editStrokeWidth = geom.hasStroke ? geom.strokeWidth : 2.0;
       } else if (tgeom != null) {
         final fg = textNodeFrameGeometry(node);
         _xCtrl.text = tgeom.x.toStringAsFixed(1);
@@ -1626,6 +1646,27 @@ class _InspectorContentState extends State<_InspectorContent> {
     }
   }
 
+  void _applyShapeStyle() {
+    final ok = widget.controller.updateShapeStyle(
+      widget.selectedId,
+      fill: _editFill,
+      stroke: _editHasStroke ? _editStroke : null,
+      strokeWidth: _editStrokeWidth,
+      clearStroke: !_editHasStroke,
+    );
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Style update failed — node not a shape or no change')),
+      );
+    } else {
+      debugLog.info('inspector_style', 'Inspector shape style applied', {
+        'fill': _editFill,
+        'stroke': _editHasStroke ? _editStroke : null,
+        'stroke_width': _editStrokeWidth,
+      });
+    }
+  }
+
   void _applyTextProperties() {
     final text = _textCtrl.text.trim();
     final size = double.tryParse(_sizeCtrl.text.trim());
@@ -1708,9 +1749,81 @@ class _InspectorContentState extends State<_InspectorContent> {
             child: FilledButton.icon(
               onPressed: _applyShapeGeometry,
               icon: const Icon(Icons.check, size: 16),
-              label: const Text('Apply'),
+              label: const Text('Apply geometry'),
             ),
           ),
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+          Text('Fill', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          _ColorSwatchRow(
+            selected: _editFill,
+            colors: _palette,
+            onSelected: (c) {
+              setState(() => _editFill = c);
+              _applyShapeStyle();
+            },
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text('Stroke', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Switch(
+                value: _editHasStroke,
+                onChanged: (v) {
+                  setState(() => _editHasStroke = v);
+                  _applyShapeStyle();
+                },
+              ),
+            ],
+          ),
+          if (_editHasStroke) ...[
+            const SizedBox(height: 4),
+            _ColorSwatchRow(
+              selected: _editStroke,
+              colors: _palette,
+              onSelected: (c) {
+                setState(() => _editStroke = c);
+                _applyShapeStyle();
+              },
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Text('Width'),
+                const SizedBox(width: 8),
+                IconButton(
+                  iconSize: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                  onPressed: _editStrokeWidth > 0.5 ? () {
+                    setState(() => _editStrokeWidth = (_editStrokeWidth - 1).clamp(0.5, 24));
+                    _applyShapeStyle();
+                  } : null,
+                  icon: const Icon(Icons.remove),
+                ),
+                SizedBox(
+                  width: 48,
+                  child: Text(
+                    _editStrokeWidth.toStringAsFixed(1),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                IconButton(
+                  iconSize: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                  onPressed: _editStrokeWidth < 24 ? () {
+                    setState(() => _editStrokeWidth = (_editStrokeWidth + 1).clamp(0.5, 24));
+                    _applyShapeStyle();
+                  } : null,
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 8),
           Text('Hold Shift for proportional, Ctrl for 8-unit snap on canvas handles.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54, fontSize: 11)),
         ],
@@ -2460,6 +2573,48 @@ class _TopActionBar extends StatelessWidget {
             ),
           ],
         ),
+    );
+  }
+}
+
+/// Small horizontal swatch row used in the inspector for fill/stroke color
+/// selection. Tap applies immediately (one undoable style update).
+class _ColorSwatchRow extends StatelessWidget {
+  const _ColorSwatchRow({
+    required this.selected,
+    required this.colors,
+    required this.onSelected,
+  });
+
+  final int selected;
+  final List<int> colors;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: <Widget>[
+        for (final c in colors)
+          GestureDetector(
+            onTap: () => onSelected(c),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: Color(c),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: c == selected
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.white24,
+                  width: c == selected ? 2.5 : 1,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
