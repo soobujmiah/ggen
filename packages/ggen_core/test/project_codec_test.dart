@@ -222,4 +222,98 @@ void main() {
       expect(node.extensions['text'], 'Legacy single line');
     });
   });
+
+  group('linked text frame extensions', () {
+    ProjectEnvelope envelopeWithNodes(List<DocumentNode> nodes) =>
+        ProjectEnvelope(
+          project: DocumentProject(
+            id: GgenId('project.links'),
+            name: 'Links',
+            artboards: <Artboard>[
+              Artboard(
+                id: GgenId('artboard.main'),
+                name: 'Main',
+                width: 1080,
+                height: 1920,
+                nodes: nodes,
+              ),
+            ],
+          ),
+          schemaVersion: ProjectSchemaVersion(ProjectSchemaVersion.current),
+        );
+
+    test('nextFrame survives a JSON round trip', () {
+      final source = envelopeWithNodes(<DocumentNode>[
+        DocumentNode(
+          id: GgenId('node.a'),
+          kind: DocumentNodeKind.textFrame,
+          name: 'A',
+          extensions: <String, Object?>{
+            'text': 'First story half',
+            'size': 18.0,
+            'x': 40.0,
+            'y': 60.0,
+            'w': 480.0,
+            'h': 360.0,
+            'columns': 1,
+            'gutter': 0.0,
+            textFrameNextFrameExtension: 'node.b',
+          },
+        ),
+        DocumentNode(
+          id: GgenId('node.b'),
+          kind: DocumentNodeKind.textFrame,
+          name: 'B',
+          extensions: <String, Object?>{
+            'text': 'Second story half',
+            'size': 18.0,
+            'x': 560.0,
+            'y': 60.0,
+            'w': 480.0,
+            'h': 360.0,
+            'columns': 1,
+            'gutter': 0.0,
+          },
+        ),
+      ]);
+
+      final encoded = codec().encode(source);
+      final decoded = codec().decode(encoded);
+      final nodes = decoded.project.artboards.single.nodes;
+
+      expect(nodes[0].extensions[textFrameNextFrameExtension], 'node.b');
+      expect(
+        nodes[1].extensions.containsKey(textFrameNextFrameExtension),
+        isFalse,
+      );
+      // Canonical JSON: re-encoding the decoded form reproduces the bytes.
+      expect(codec().encode(decoded), encoded);
+      // The round-tripped links resolve through the Stage-2 contract.
+      final links = TextFlowLinkResolver.fromArtboard(
+        decoded.project.artboards.single,
+      );
+      expect(links.chains.single.ids, <String>['node.a', 'node.b']);
+    });
+
+    test('legacy documents without link metadata decode unchanged', () {
+      final source = envelopeWithNodes(<DocumentNode>[
+        DocumentNode(
+          id: GgenId('node.legacy'),
+          kind: DocumentNodeKind.textFrame,
+          name: 'Legacy',
+          extensions: <String, Object?>{
+            'text': 'No links here',
+            'size': 20.0,
+            'x': 10.0,
+            'y': 20.0,
+          },
+        ),
+      ]);
+
+      final decoded = codec().decode(codec().encode(source));
+      final node = decoded.project.artboards.single.nodes.single;
+      expect(node.extensions.containsKey(textFrameNextFrameExtension), isFalse);
+      expect(node.extensions['text'], 'No links here');
+    });
+  });
 }
