@@ -14,6 +14,8 @@ import 'src/canvas/studio_canvas.dart';
 import 'src/canvas/canvas_zoom_controller.dart';
 import 'src/layers/layer_list.dart';
 import 'src/text_flow/linked_text_flow.dart';
+import 'src/workspace/studio_tool.dart';
+import 'src/workspace/workspace_bars.dart';
 import 'src/storage/file_project_store.dart';
 import 'src/storage/file_recovery_journal.dart';
 
@@ -161,8 +163,6 @@ class _StudioShellState extends State<StudioShell> {
   bool _showLayers = false;
   bool _multiSelect = false;
   bool _showGrid = true;
-  String _toolbarMode = 'full'; // 'full' | 'mini' | 'hidden'
-  String _toolbarDock = 'bottom'; // 'bottom' | 'left' | 'right'
   List<EditorTopAction> _topActionOrder = List<EditorTopAction>.of(
     EditorTopAction.values,
   );
@@ -171,15 +171,19 @@ class _StudioShellState extends State<StudioShell> {
   bool _canvasFirst = true;
   bool _workspaceSettingsOpen = false;
   InspectorDock _inspectorDock = InspectorDock.right;
-  int _selectedTool = 0;
 
-  static const List<String> _toolNames = <String>['Select', 'Draw', 'Text'];
+  /// The active primary tool. Typed ([StudioTool]) rather than a raw index:
+  /// the on-device RangeError ("Not in inclusive range 0..2: 3") happened
+  /// because the old 4-destination bottom NavigationBar forwarded its raw
+  /// destination index (3 = the contextual Columns entry) into a 3-entry
+  /// tool-name list. A [StudioTool] value cannot be out of range.
+  StudioTool _tool = StudioTool.select;
 
-  void _selectTool(int index) {
-    setState(() => _selectedTool = index);
-    debugLog.info('tool_select', 'Tool destination selected', {
-      'index': index,
-      'tool': _toolNames[index],
+  void _selectTool(StudioTool tool) {
+    setState(() => _tool = tool);
+    debugLog.info('tool_select', 'Tool selected', {
+      'index': tool.index,
+      'tool': tool.label,
     });
   }
 
@@ -411,10 +415,6 @@ class _StudioShellState extends State<StudioShell> {
       _inspectorDock = prefs.inspectorDock == 'left'
           ? InspectorDock.left
           : InspectorDock.right;
-      final mode = prefs.secondaryToolbarMode;
-      final dock = prefs.secondaryToolbarDock;
-      _toolbarMode = (mode == 'mini' || mode == 'hidden') ? mode : 'full';
-      _toolbarDock = (dock == 'left' || dock == 'right') ? dock : 'bottom';
       _topActionOrder = _sanitizeActionOrder(prefs.topActionOrder);
       _topActionPinned = _sanitizePinned(prefs.topActionPinned);
     });
@@ -422,8 +422,6 @@ class _StudioShellState extends State<StudioShell> {
       'inspector_visible': _showInspector,
       'canvas_first': _canvasFirst,
       'inspector_dock': _inspectorDock.name,
-      'canvas_toolbar_mode': _toolbarMode,
-      'canvas_toolbar_dock': _toolbarDock,
       'top_action_pinned': _topActionPinned.length,
     });
   }
@@ -468,8 +466,6 @@ class _StudioShellState extends State<StudioShell> {
     inspectorVisible: _showInspector,
     canvasFirst: _canvasFirst,
     inspectorDock: _inspectorDock.name,
-    secondaryToolbarMode: _toolbarMode,
-    secondaryToolbarDock: _toolbarDock,
     topActionOrder: <String>[for (final a in _topActionOrder) a.name],
     topActionPinned: <String>[
       for (final a in _topActionOrder)
@@ -562,10 +558,6 @@ class _StudioShellState extends State<StudioShell> {
           'Inspector dock changed',
           {'dock': _inspectorDock.name},
         );
-      case EditorTopAction.canvasToolbar:
-        _setToolbarMode(_toolbarMode == 'hidden' ? 'full' : 'hidden');
-      case EditorTopAction.dockToolbar:
-        _cycleToolbarDock();
     }
   }
 
@@ -697,36 +689,6 @@ class _StudioShellState extends State<StudioShell> {
         ],
       ),
     );
-  }
-
-  void _setToolbarMode(String mode) {
-    setState(() => _toolbarMode = mode);
-    debugLog.info(
-      'canvas_toolbar_toggle',
-      _toolbarMode == 'hidden'
-          ? 'Canvas toolbar hidden'
-          : _toolbarMode == 'mini'
-          ? 'Canvas toolbar mini'
-          : 'Canvas toolbar expanded',
-      {'mode': _toolbarMode, 'dock': _toolbarDock},
-    );
-    unawaited(_persistWorkspace());
-  }
-
-  void _cycleToolbarDock() {
-    setState(() {
-      _toolbarDock = switch (_toolbarDock) {
-        'left' => 'right',
-        'right' => 'bottom',
-        _ => 'left',
-      };
-    });
-    debugLog.info(
-      'canvas_toolbar_dock',
-      'Canvas toolbar docked ${_toolbarDock == 'bottom' ? 'to the bottom' : _toolbarDock == 'left' ? 'to the left' : 'to the right'}',
-      {'dock': _toolbarDock},
-    );
-    unawaited(_persistWorkspace());
   }
 
   void _setImmersive(bool value) {
@@ -898,8 +860,6 @@ class _StudioShellState extends State<StudioShell> {
         canvasFirst: _canvasFirst,
         inspectorDock: _inspectorDock.name,
         lastProjectKey: receipt.key.value,
-        secondaryToolbarMode: _toolbarMode,
-        secondaryToolbarDock: _toolbarDock,
         topActionOrder: <String>[for (final a in _topActionOrder) a.name],
         topActionPinned: <String>[
           for (final a in _topActionOrder)
@@ -967,9 +927,17 @@ class _StudioShellState extends State<StudioShell> {
                 children: [
                   Row(
                     children: [
+                      // Canonical mobile workspace: a stable vertical tool
+                      // rail on the left (phone portrait) — primary tools
+                      // never move between edges.
+                      if (showPanels && compact)
+                        MobileToolRail(
+                          activeTool: _tool,
+                          onSelected: _selectTool,
+                        ),
                       if (showPanels && !compact)
                         ToolRail(
-                          selectedIndex: _selectedTool,
+                          selectedTool: _tool,
                           onSelected: _selectTool,
                         ),
                       if (showPanels &&
@@ -982,9 +950,9 @@ class _StudioShellState extends State<StudioShell> {
                           size: constraints.biggest,
                           projectName: _studio.project.name,
                           controller: _studio,
-                          drawEnabled: _selectedTool == 1,
-                          selectMode: _selectedTool == 0,
-                          textEnabled: _selectedTool == 2,
+                          drawEnabled: _tool == StudioTool.draw,
+                          selectMode: _tool == StudioTool.select,
+                          textEnabled: _tool == StudioTool.text,
                           immersive: _immersive,
                           multiSelectMode: _multiSelect,
                           gridVisible: _showGrid,
@@ -1131,42 +1099,6 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                       ),
                     ),
-                  // Side-docked secondary canvas toolbar (left/right),
-                  // floating over the canvas below the top bar.
-                  if (!_immersive &&
-                      _toolbarDock != 'bottom' &&
-                      _toolbarMode != 'hidden')
-                    Positioned(
-                      left: _toolbarDock == 'left' ? 6 : null,
-                      right: _toolbarDock == 'right' ? 6 : null,
-                      top: 64,
-                      child: _SecondaryCanvasToolbar(
-                        controller: _studio,
-                        zoomController: _zoomController,
-                        showLayers: _showLayers,
-                        multiSelect: _multiSelect,
-                        gridVisible: _showGrid,
-                        vertical: true,
-                        mini: _toolbarMode == 'mini',
-                        onExpand: () => _setToolbarMode('full'),
-                        onMini: () => _setToolbarMode('mini'),
-                        onHide: () => _setToolbarMode('hidden'),
-                        onToggleGrid: _toggleGrid,
-                        onToggleMultiSelect: () {
-                          setState(() => _multiSelect = !_multiSelect);
-                          debugLog.info(
-                            'multi_select_toggle',
-                            _multiSelect
-                                ? 'Multi-select enabled'
-                                : 'Multi-select disabled',
-                          );
-                        },
-                        onToggleLayers: () {
-                          _showLayersSheet();
-                          debugLog.info('layers_toggle', 'Layers via toolbar');
-                        },
-                      ),
-                    ),
                 ],
                 ),
               );
@@ -1178,57 +1110,41 @@ class _StudioShellState extends State<StudioShell> {
                   builder: (context, constraints) {
                     final isCompact = constraints.maxWidth < 700;
                     if (isCompact) {
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Secondary canvas toolbar — only when docked to
-                          // the bottom and not hidden (device feedback: a
-                          // hidden toolbar must leave no remnant).
-                          if (_toolbarDock == 'bottom' && _toolbarMode != 'hidden')
-                          _SecondaryCanvasToolbar(
-                            controller: _studio,
-                            zoomController: _zoomController,
-                            showLayers: _showLayers,
-                            multiSelect: _multiSelect,
-                            gridVisible: _showGrid,
-                            vertical: false,
-                            mini: _toolbarMode == 'mini',
-                            onExpand: () => _setToolbarMode('full'),
-                            onMini: () => _setToolbarMode('mini'),
-                            onHide: () => _setToolbarMode('hidden'),
-                            onToggleGrid: _toggleGrid,
-                            onToggleMultiSelect: () {
-                              setState(() => _multiSelect = !_multiSelect);
-                              debugLog.info(
-                                'multi_select_toggle',
-                                _multiSelect
-                                    ? 'Multi-select enabled'
-                                    : 'Multi-select disabled',
-                              );
-                            },
-                            onToggleLayers: () {
-                              // Toolbar only shown when isCompact, so always sheet
-                              _showLayersSheet();
-                              debugLog.info('layers_toggle', 'Layers via toolbar');
-                            },
-                          ),
-                          const Divider(height: 1),
-                          // Settings moved into the top-bar More menu (device
-                          // feedback); the bottom bar is tools-only now.
-                          CompactNavigationBar(
-                            selectedIndex: _selectedTool,
-                            onSelected: _selectTool,
-                            columnsEnabled:
-                                _studio.selectedNodeId != null &&
-                                _studio.project.artboards.isNotEmpty &&
-                                _studio.project.artboards.first.nodes.any(
-                                  (n) =>
-                                      n.id == _studio.selectedNodeId &&
-                                      n.kind == DocumentNodeKind.textFrame,
-                                ),
-                            onConfigureColumns: _showColumnsSheet,
-                          ),
-                        ],
+                      // Canonical mobile workspace: ONE bottom surface — the
+                      // contextual action bar (history/zoom/view groups plus
+                      // state-dependent actions). Primary tools live on the
+                      // left rail; there is no second competing toolbar.
+                      return ContextualActionBar(
+                        controller: _studio,
+                        zoomController: _zoomController,
+                        activeTool: _tool,
+                        gridVisible: _showGrid,
+                        multiSelect: _multiSelect,
+                        columnsEnabled:
+                            _studio.selectedNodeId != null &&
+                            _studio.project.artboards.isNotEmpty &&
+                            _studio.project.artboards.first.nodes.any(
+                              (n) =>
+                                  n.id == _studio.selectedNodeId &&
+                                  n.kind == DocumentNodeKind.textFrame,
+                            ),
+                        onToggleGrid: _toggleGrid,
+                        onToggleMultiSelect: () {
+                          setState(() => _multiSelect = !_multiSelect);
+                          debugLog.info(
+                            'multi_select_toggle',
+                            _multiSelect
+                                ? 'Multi-select enabled'
+                                : 'Multi-select disabled',
+                          );
+                        },
+                        onShowLayers: () {
+                          _showLayersSheet();
+                          debugLog.info('layers_toggle', 'Layers via action bar');
+                        },
+                        onConfigureColumns: _showColumnsSheet,
+                        onDiagnostic: (event) =>
+                            debugLog.info(event, 'Action bar control used'),
                       );
                     }
                     return StatusBar(
@@ -1243,36 +1159,31 @@ class _StudioShellState extends State<StudioShell> {
   }
 }
 
+/// Wide-layout tool rail. Renders from the same [StudioTool] metadata as
+/// the compact [MobileToolRail], so both surfaces always agree on tool
+/// identity, order and icons.
 class ToolRail extends StatelessWidget {
   const ToolRail({
-    required this.selectedIndex,
+    required this.selectedTool,
     required this.onSelected,
     super.key,
   });
 
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
+  final StudioTool selectedTool;
+  final ValueChanged<StudioTool> onSelected;
 
   @override
   Widget build(BuildContext context) => NavigationRail(
-    selectedIndex: selectedIndex,
-    onDestinationSelected: onSelected,
+    selectedIndex: selectedTool.index,
+    onDestinationSelected: (i) => onSelected(StudioTool.values[i]),
     labelType: NavigationRailLabelType.all,
-    destinations: const [
-      NavigationRailDestination(
-        icon: Icon(Icons.near_me_outlined),
-        selectedIcon: Icon(Icons.near_me),
-        label: Text('Select'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.brush_outlined),
-        selectedIcon: Icon(Icons.brush),
-        label: Text('Draw'),
-      ),
-      NavigationRailDestination(
-        icon: Icon(Icons.text_fields),
-        label: Text('Text'),
-      ),
+    destinations: [
+      for (final tool in StudioTool.values)
+        NavigationRailDestination(
+          icon: Icon(tool.icon),
+          selectedIcon: Icon(tool.selectedIcon),
+          label: Text(tool.label),
+        ),
     ],
   );
 }
@@ -2085,287 +1996,6 @@ class _CanvasFirstSwitchState extends State<_CanvasFirstSwitch> {
   );
 }
 
-class _SecondaryCanvasToolbar extends StatelessWidget {
-  const _SecondaryCanvasToolbar({
-    required this.controller,
-    required this.zoomController,
-    required this.showLayers,
-    required this.multiSelect,
-    required this.gridVisible,
-    required this.vertical,
-    required this.mini,
-    required this.onExpand,
-    required this.onMini,
-    required this.onHide,
-    required this.onToggleGrid,
-    required this.onToggleMultiSelect,
-    required this.onToggleLayers,
-    super.key,
-  });
-
-  final StudioController controller;
-  final CanvasZoomController zoomController;
-  final bool showLayers;
-  final bool multiSelect;
-  final bool gridVisible;
-
-  /// Docked along the canvas edge (left/right) instead of the bottom row.
-  final bool vertical;
-
-  /// Compact essentials strip (undo/redo, zoom +/−, fit, expand chevron).
-  final bool mini;
-
-  final VoidCallback onExpand;
-  final VoidCallback onMini;
-  final VoidCallback onHide;
-  final VoidCallback onToggleGrid;
-  final VoidCallback onToggleMultiSelect;
-  final VoidCallback onToggleLayers;
-
-  /// Renders one toolbar control as a translucent circular icon button so
-  /// the strip can be fully transparent over the canvas and still legible.
-  Widget _tool(BuildContext context, IconData icon, String tooltip,
-      VoidCallback? onPressed,
-      {bool selected = false}) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      isSelected: selected,
-      icon: Icon(icon, size: 20),
-      style: IconButton.styleFrom(
-        padding: EdgeInsets.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: const Size(40, 40),
-        backgroundColor: selected
-            ? Theme.of(context).colorScheme.primaryContainer
-            : Colors.black.withValues(alpha: 0.32),
-        foregroundColor: Colors.white,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: Listenable.merge([controller, zoomController]),
-      builder: (context, _) {
-        final canUndo = controller.canUndo;
-        final canRedo = controller.canRedo;
-
-        Widget sep() => vertical
-            ? Container(width: 24, height: 1, color: Colors.white24)
-            : Container(width: 1, height: 24, color: Colors.white24);
-
-        final List<Widget> buttons;
-        if (mini) {
-          // Mini level: only the essentials that keep editing responsive.
-          buttons = <Widget>[
-            _tool(context,
-              Icons.undo,
-              'Undo',
-              canUndo
-                  ? () {
-                      controller.undo();
-                      debugLog.info('history_undo', 'Undo via toolbar');
-                    }
-                  : null,
-            ),
-            _tool(context,
-              Icons.redo,
-              'Redo',
-              canRedo
-                  ? () {
-                      controller.redo();
-                      debugLog.info('history_redo', 'Redo via toolbar');
-                    }
-                  : null,
-            ),
-            sep(),
-            _tool(context,
-              Icons.remove,
-              'Zoom out',
-              () {
-                zoomController.zoomOut();
-                debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar');
-              },
-            ),
-            _tool(context,
-              Icons.add,
-              'Zoom in',
-              () {
-                zoomController.zoomIn();
-                debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar');
-              },
-            ),
-            _tool(context,
-              Icons.fit_screen_outlined,
-              'Fit to screen',
-              () {
-                zoomController.fitToScreen();
-                debugLog.info('toolbar_zoom_fit', 'Fit via toolbar');
-              },
-            ),
-            // Expand back to the full toolbar.
-            _tool(context,
-              vertical ? Icons.chevron_left : Icons.keyboard_arrow_up,
-              'Expand canvas toolbar',
-              onExpand,
-            ),
-          ];
-        } else {
-          buttons = <Widget>[
-            _tool(context,
-              multiSelect ? Icons.done_all : Icons.done_all_outlined,
-              multiSelect ? 'Multi-select on' : 'Multi-select off',
-              onToggleMultiSelect,
-              selected: multiSelect,
-            ),
-            _tool(context,
-              Icons.undo,
-              'Undo',
-              canUndo
-                  ? () {
-                      controller.undo();
-                      debugLog.info('history_undo', 'Undo via toolbar');
-                    }
-                  : null,
-            ),
-            _tool(context,
-              Icons.redo,
-              'Redo',
-              canRedo
-                  ? () {
-                      controller.redo();
-                      debugLog.info('history_redo', 'Redo via toolbar');
-                    }
-                  : null,
-            ),
-            sep(),
-            _tool(context,
-              showLayers ? Icons.layers_clear_outlined : Icons.layers_outlined,
-              showLayers ? 'Hide layers' : 'Show layers',
-              onToggleLayers,
-              selected: showLayers,
-            ),
-            sep(),
-            _tool(context,
-              Icons.remove,
-              'Zoom out',
-              () {
-                zoomController.zoomOut();
-                debugLog.info('toolbar_zoom_out', 'Zoom out via toolbar');
-              },
-            ),
-            _tool(context,
-              Icons.add,
-              'Zoom in',
-              () {
-                zoomController.zoomIn();
-                debugLog.info('toolbar_zoom_in', 'Zoom in via toolbar');
-              },
-            ),
-            _tool(context,
-              Icons.fit_screen_outlined,
-              'Fit to screen',
-              () {
-                zoomController.fitToScreen();
-                debugLog.info('toolbar_zoom_fit', 'Fit via toolbar');
-              },
-            ),
-            _tool(context,
-              Icons.grid_4x4,
-              gridVisible ? 'Hide grid' : 'Show grid',
-              onToggleGrid,
-              selected: gridVisible,
-            ),
-            // Mini level (compress) then fully hide (chevron) — no remnant.
-            _tool(context,
-              Icons.compress,
-              'Mini canvas toolbar',
-              onMini,
-            ),
-            _tool(context,
-              vertical ? Icons.close : Icons.keyboard_arrow_down,
-              'Hide canvas toolbar',
-              onHide,
-            ),
-          ];
-        }
-
-        final content = vertical
-            ? Column(mainAxisSize: MainAxisSize.min, children: buttons)
-            : Row(mainAxisSize: MainAxisSize.min, children: buttons);
-
-        return Container(
-          margin: EdgeInsets.only(left: vertical ? 0 : 8, right: vertical ? 0 : 8, bottom: vertical ? 0 : 4),
-          decoration: BoxDecoration(
-            // Transparent strip: buttons carry their own translucent
-            // backgrounds, so only the controls are visible over the canvas.
-            color: Colors.black.withValues(alpha: 0.22),
-            borderRadius: BorderRadius.circular(vertical ? 22 : 24),
-          ),
-          padding: EdgeInsets.symmetric(
-            horizontal: vertical ? 3 : 4,
-            vertical: vertical ? 4 : 3,
-          ),
-          child: vertical
-              ? content
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: content,
-                ),
-        );
-      },
-    );
-  }
-}
-
-class CompactNavigationBar extends StatelessWidget {
-  const CompactNavigationBar({
-    required this.selectedIndex,
-    required this.onSelected,
-    this.columnsEnabled = false,
-    this.onConfigureColumns,
-    super.key,
-  });
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
-
-  /// When a text frame is selected on a compact viewport, exposes a
-  /// mobile-native column-configuration entry (no side inspector exists at
-  /// the 471px-class width).
-  final bool columnsEnabled;
-  final VoidCallback? onConfigureColumns;
-
-  @override
-  Widget build(BuildContext context) => NavigationBar(
-    height: 56,
-    selectedIndex: selectedIndex,
-    onDestinationSelected: (i) {
-      if (i == 3 && columnsEnabled) {
-        onConfigureColumns?.call();
-        return;
-      }
-      onSelected(i);
-    },
-    destinations: [
-      const NavigationDestination(
-        icon: Icon(Icons.near_me_outlined),
-        label: 'Select',
-      ),
-      const NavigationDestination(icon: Icon(Icons.brush_outlined), label: 'Draw'),
-      const NavigationDestination(icon: Icon(Icons.text_fields), label: 'Text'),
-      NavigationDestination(
-        icon: Icon(
-          Icons.view_column_outlined,
-          color: columnsEnabled ? null : Theme.of(context).disabledColor,
-        ),
-        label: 'Columns',
-      ),
-    ],
-  );
-}
-
 /// Compact mobile column-configuration sheet (471px-class viewports have no
 /// side inspector). Owns its gutter [TextEditingController] so the controller
 /// outlives the sheet's exit animation.
@@ -2735,15 +2365,19 @@ class StatusBar extends StatelessWidget {
 /// All of them live inside the More menu by default; the user pins any of
 /// them out to the bar and reorders the menu (persisted in workspace
 /// preferences). Order of declaration = canonical default order.
+/// Document/workspace actions of the top bar. The legacy `canvasToolbar`
+/// and `dockToolbar` actions were removed with the dockable secondary
+/// toolbar: the compact shell now has ONE canonical layout (stable left
+/// tool rail + bottom contextual action bar) instead of a toolbar that
+/// could be docked to three edges. Stored ids of removed actions fail
+/// closed through the existing sanitizers.
 enum EditorTopAction {
   newProject('New project', Icons.note_add_outlined),
   save('Save project', Icons.save_outlined),
   diagnostics('Diagnostics export', Icons.bug_report_outlined),
   settings('Settings', Icons.tune),
   immersive('Immersive canvas', Icons.fullscreen),
-  dockInspector('Dock inspector', Icons.vertical_split_outlined),
-  canvasToolbar('Canvas toolbar', Icons.view_sidebar_outlined),
-  dockToolbar('Dock canvas toolbar', Icons.swap_horiz_outlined);
+  dockInspector('Dock inspector', Icons.vertical_split_outlined);
 
   const EditorTopAction(this.label, this.icon);
 
@@ -2756,6 +2390,13 @@ enum EditorTopAction {
 /// icons render in the contrast color of the surface they float over (the
 /// dark canvas background, so white with a soft shadow) and every action
 /// without a pinned slot lives behind the More menu.
+///
+/// Layout contract (device finding: "RenderFlex overflowed by 1.2 pixels
+/// on the right" at 471px-class widths): the pinned region is a
+/// [Flexible] horizontal scroller, so however many actions the user pins
+/// — including all of them — the Row's intrinsic width can never exceed
+/// its constraints. The More button keeps its fixed slot at the right
+/// edge and is never pushed out.
 class _TopActionBar extends StatelessWidget {
   const _TopActionBar({
     required this.actions,
@@ -2779,20 +2420,33 @@ class _TopActionBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Row(
           children: [
-            for (final action in actions)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: IconButton(
-                  tooltip: action.label,
-                  onPressed: () => onRun(action),
-                  icon: Icon(
-                    action.icon,
-                    size: 22,
-                    color: Colors.white,
-                    shadows: shadow,
-                  ),
+            // Bounded pinned region: shrinks to its content when it fits
+            // and scrolls when it does not, so this Row is mathematically
+            // incapable of overflowing its incoming constraints.
+            Flexible(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final action in actions)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: IconButton(
+                          tooltip: action.label,
+                          onPressed: () => onRun(action),
+                          icon: Icon(
+                            action.icon,
+                            size: 22,
+                            color: Colors.white,
+                            shadows: shadow,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
+            ),
             const Spacer(),
             IconButton(
               tooltip: 'More actions',

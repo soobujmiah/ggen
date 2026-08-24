@@ -199,3 +199,18 @@ Implements Stage 4 of the page-linked text-flow milestone on `feat/linked-text-f
 **Architectural record:** `docs/architecture/page-linked-text-flow.md` (Stage 4 section + limitations).
 
 **Pending on-device:** install the repository-built debug APK on the Redmi Turbo 4 Pro (`25053RT47C`) and run the linked-flow checklist (link/unlink, indicators, 2/3 columns, gutter, undo/redo, save/reload, no duplicated/lost characters). No device claim is made here.
+
+## 2026-08-24 Mobile workspace shell redesign + device bug fixes
+
+Responds to the first Redmi Turbo 4 Pro diagnostics round for the Stage-4 APK: RenderFlex overflow (1.2px right), Text-tool RangeError (`0..2: 3`), and incoherent accumulated toolbar layout. Feature branch `feat/mobile-workspace-shell` from `main` `b926b28` (post-PR #53). **App 254/254 (Flutter 3.47.0) and core 143/143 (Dart 3.13.0) locally on the exact CI toolchains; analyzer adds no new findings. Not device-validated.**
+
+**What shipped**
+- `src/workspace/studio_tool.dart`: typed `StudioTool` enum as the single source of tool identity/order/icons for both the compact rail and wide `NavigationRail`; shell tool state is now `StudioTool`, structurally eliminating the out-of-range index behind the device RangeError (the old 4-destination compact `NavigationBar` forwarded destination index 3 — the contextual Columns entry — into a 3-entry tool list).
+- `src/workspace/workspace_bars.dart`: canonical compact shell — stable left `MobileToolRail` (52px, primary tools only, never moves), single bottom `ContextualActionBar` (history | zoom | view groups; contextual multi-select/Columns rendered only in meaningful states), reusable `ToolButton` (40×40, 20px icon, obvious selected state). The dockable/collapsible `_SecondaryCanvasToolbar` and `CompactNavigationBar` are deleted; no competing surfaces remain.
+- Top action bar: pinned region is now a bounded `Flexible` horizontal scroller — the reported RenderFlex overflow (all 8 actions pinned × 52px > 471px logical width) was reproduced in a widget test before the fix and is now impossible at any width; the More button keeps its fixed right-edge slot.
+- Preferences: legacy `workspace.secondary_toolbar_mode`/`_dock` ignored on load, deleted on save/clear; removed top-action ids fail closed; reset returns to the canonical layout; project data untouched.
+- Tests: +17 (`test/mobile_workspace_shell_test.dart`) covering the RangeError gesture cycle (tool switches, frame creation, edit, outside taps, keyboard insets, repeated taps), 471×1020 + 471.04×1020.46 overflow regression with the maximal pin set, action-bar states (no/one/multiple/text selection; per-tool), single-surface invariants, active-tool marking, reset, save/load and linked-flow sheet reachability; 5 legacy compact-layout tests updated to the canonical shell. App suite 237 → 254.
+
+**Architectural record:** `docs/architecture/mobile-workspace-shell.md`.
+
+**Pending on-device:** build a fresh `android-build.yml` debug APK and re-run the device round on the Redmi Turbo 4 Pro (`25053RT47C`): confirm the overflow banner and RangeError no longer appear, exercise the tool rail/action bar/contextual Columns, immersive mode, reset, save/reload and the linked-flow checklist. No device claim is made here.

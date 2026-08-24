@@ -39,6 +39,10 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 6. Relevant architecture/ADR documents
 7. Relevant source and tests
 
+## Latest working change (2026-08-24, after the first device round)
+
+The first Redmi Turbo 4 Pro diagnostics round on the Stage-4 APK reported a RenderFlex overflow (1.2px right), a Text-tool RangeError (`Not in inclusive range 0..2: 3`) and an incoherent accumulated toolbar layout. Branch `feat/mobile-workspace-shell` (from `b926b28`) fixes both bugs at their root (typed `StudioTool` enum eliminates the out-of-range tool index; the top action bar's pinned region is now a bounded scroller) and replaces the compact shell's three competing toolbar surfaces with one canonical layout: stable left tool rail + single bottom contextual action bar; legacy toolbar dock/mode preferences retired fail-closed. App 254/254, core 143/143 on exact CI toolchains; not device-validated. See `docs/architecture/mobile-workspace-shell.md`.
+
 ## Next recommended milestone
 
 **Physical-device validation of the linked text flow (separate milestone):** with the Stage-4 branch merged and CI-green on `main`, install the repository-built debug APK on the Redmi Turbo 4 Pro (`25053RT47C`) and exercise the checklist in `docs/architecture/page-linked-text-flow.md` / the device checklist of the current milestone: create two text frames, configure 2/3 columns + gutter, overflow the first frame, link A → B, confirm the story continues into B with the blue continuation indicator, verify the red terminal-overflow tab appears exactly once, test unlink/invalid-link/undo/redo, save/reload, and confirm no duplicated or lost characters. Do not claim device validation until actual on-device results are recorded.
