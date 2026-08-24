@@ -15,3 +15,4 @@ export 'src/text/frame_geometry.dart';
 export 'src/text/column_layout.dart';
 export 'src/text/page_geometry.dart';
 export 'src/text/text_flow_engine.dart';
+export 'src/text/text_links.dart';
