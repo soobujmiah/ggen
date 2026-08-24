@@ -13,7 +13,7 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 
 - Pure-Dart core contracts are implemented and have pinned local verification documented as 27 unit tests passing on 2026-08-20.
 - GitHub Actions governance, reusable core tests and Flutter shell tests are documented green on `main` for the Phase 1 verification set.
-- Phase 2 has responsive layouts, workspace settings/profiles, diagnostics, persistence adapters, canvas interaction, Select/Draw/Text, multi-select, grid, groups, layer-list, numeric-inspector and **multi-column text frame layout with gutter geometry** (N equal columns, exact-character text flow, overflow indication, inspector + mobile sheet, one-step undoable transactions, JSON round-trip; core 70 tests / app 198 tests green) documented as implemented — CI/widget verified but not yet exercised on-device.
+- Phase 2 has responsive layouts, workspace settings/profiles, diagnostics, persistence adapters, canvas interaction, Select/Draw/Text, multi-select, grid, groups, layer-list, numeric-inspector, **multi-column text frame layout with gutter geometry** (N equal columns, exact-character text flow, overflow indication, inspector + mobile sheet, one-step undoable transactions, JSON round-trip; CI/widget verified) and — in `ggen_core` only, on `feat/page-linked-text-flow` from `main` HEAD `97f8cef` — **page geometry, linked text-frame chains and a deterministic wrapping policy** (Stages 1–3 of the page-linked text-flow milestone; core 141/141 on Dart 3.13.0; app 198 tests green on `main`) documented as implemented — CI verified but not yet exercised on-device and not yet wired into the Flutter shell (Stage 4).
 - Redmi Turbo 4 Pro evidence exists for current controls and several editing/persistence flows. Device evidence remains scoped to the exact exported diagnostics and does not imply release, GPU/NPU or benchmark validation.
 
 ## Evidence boundary
@@ -41,7 +41,9 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 
 ## Next recommended milestone
 
-**Continue Phase 2 from the exact current `main` HEAD:** inspect the latest phase-2 status and recent commits, identify the smallest remaining evidence-backed creative-surface milestone, implement only that scope, run relevant CI checks, update phase/status documentation, and close the session with a commit SHA and handoff update.
+**Stage 4 — app integration of the page/link core (explicitly instructed, not yet started):** on `feat/page-linked-text-flow` (or its successor after merge), wire the verified `ggen_core` substrate into the Flutter shell: controller link/unlink (atomic, one undoable `ProjectToolSession`/`ProjectTransaction`, fail closed, no partial graph mutation), canvas linked-frame chain resolution and per-frame slice rendering, continuation/overflow indicators via `TextFlowChain.terminalOverflowFrame`, `nextFrame` persistence round-trip, page-aware frame creation, legacy behavior preservation. Start from the verified base (`main` HEAD `97f8cef` + stages 1–3 commits) and `docs/architecture/page-linked-text-flow.md`; do not begin unless the core foundation is merged and CI-green on `main`.
+
+Then continue Phase 2 from the exact current `main` HEAD: inspect the latest phase-2 status and recent commits, identify the smallest remaining evidence-backed creative-surface milestone, implement only that scope, run relevant CI checks, update phase/status documentation, and close the session with a commit SHA and handoff update.
 
 ## Session handoff rule
 
