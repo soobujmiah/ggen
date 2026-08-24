@@ -176,7 +176,8 @@ class _StudioShellState extends State<StudioShell> {
   /// User-defined fullscreen (immersive) control placement. Normalized by
   /// [CanvasControlLayout.resolve] so rendering is always deterministic and
   /// the immersive exit control is always present.
-  CanvasControlLayout _fullscreenLayout = CanvasControlLayout.defaults();
+  CanvasControlLayout _fullscreenLayout = CanvasControlLayout.defaults()
+      .resolve();
 
   /// The active primary tool. Typed ([StudioTool]) rather than a raw index:
   /// the on-device RangeError ("Not in inclusive range 0..2: 3") happened
@@ -1288,14 +1289,17 @@ class _StudioShellState extends State<StudioShell> {
     return ListenableBuilder(
       listenable: _studio,
       builder: (context, _) {
+        // Device class comes from the FULL screen size (MediaQuery), not
+        // the body constraints: the body excludes the bottom bar, so
+        // classifying from it would misclassify e.g. 800×600 as compact.
+        final cls = classifyWorkspace(
+          MediaQuery.sizeOf(context).width,
+          MediaQuery.sizeOf(context).height,
+        );
         return Scaffold(
           appBar: null,
           body: LayoutBuilder(
             builder: (context, constraints) {
-              final cls = classifyWorkspace(
-                constraints.maxWidth,
-                constraints.maxHeight,
-              );
               final compact = cls != WorkspaceClass.wide;
               _recordLayout(
                 _immersive
@@ -1531,10 +1535,6 @@ class _StudioShellState extends State<StudioShell> {
               ? null
               : LayoutBuilder(
                   builder: (context, constraints) {
-                    final cls = classifyWorkspace(
-                      constraints.maxWidth,
-                      constraints.maxHeight,
-                    );
                     if (cls == WorkspaceClass.compactPortrait) {
                       // Canonical mobile workspace: ONE bottom surface — the
                       // contextual action bar (history/zoom/view groups plus
@@ -1729,7 +1729,12 @@ class CanvasArea extends StatelessWidget {
             // toolbar, so the in-canvas zoom overlay is redundant there.
             // Wide layouts keep it (single source of zoom UI); immersive
             // uses the user's fullscreen control regions instead.
-            final cls = classifyWorkspace(size.width, size.height);
+            // Class comes from the full view size, not this local size
+            // (which excludes any bottom bar).
+            final cls = classifyWorkspace(
+              MediaQuery.sizeOf(context).width,
+              MediaQuery.sizeOf(context).height,
+            );
             return RepaintBoundary(
               child: StudioCanvas(
                 controller: controller,
