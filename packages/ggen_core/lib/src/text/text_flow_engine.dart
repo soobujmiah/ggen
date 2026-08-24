@@ -205,6 +205,12 @@ final class TextFlowResult {
 /// to the next linked frame. There is no automatic balancing. The engine is
 /// pure: it never mutates its inputs and depends only on an injected
 /// [TextMeasurementProvider].
+///
+/// Wrapping is a deterministic policy owned by the flow layer (see
+/// [_nextLineBreak]): explicit newlines are hard breaks, width-based wraps
+/// prefer word boundaries (whitespace = space/tab), whitespace is never
+/// collapsed or reordered, and long unbreakable tokens fall back to a
+/// character split. The provider remains a width/measurement oracle.
 final class TextFlowEngine {
   const TextFlowEngine(this.measurement);
 
@@ -349,9 +355,49 @@ final class TextFlowEngine {
     return cursor;
   }
 
-  /// Returns the offset after the next line's worth of text. Honors explicit
-  /// newlines; otherwise wraps on width. Never consumes zero characters when
-  /// text remains and at least one character fits (prevents infinite loops).
+  /// Returns the offset after the next visual line of text.
+  ///
+  /// The flow layer owns the deterministic line-break policy; the
+  /// measurement provider is only a width/measurement oracle.
+  ///
+  /// Line-break policy:
+  ///
+  /// Whitespace:
+  ///  * breakable whitespace = ASCII space (U+0020) and horizontal tab
+  ///    (U+0009);
+  ///  * line feed (U+000A) is the only hard break;
+  ///  * every other character (including carriage return) is an ordinary
+  ///    character.
+  ///
+  /// Whitespace semantics:
+  ///  * whitespace is never collapsed, dropped or reordered: every code
+  ///    unit is either consumed into a line or left to overflow, so the
+  ///    conservation invariant holds exactly;
+  ///  * a wrapped line never starts with whitespace: a whitespace run at a
+  ///    line end is always consumed in full as trailing line whitespace
+  ///    (even when only part of the run fits the line width);
+  ///  * a hard break ends the line even when the line is not full;
+  ///  * a newline at the cursor consumes one line that renders empty
+  ///    (trailing or consecutive newlines are explicit empty lines, never
+  ///    dropped).
+  ///
+  /// Let S be the hard-break segment at [start] (up to the next '\n' or the
+  /// end of the story) and k the provider's fit count for S at [maxWidth]:
+  ///
+  ///  1. S empty (a newline sits at [start]): consume the newline; the line
+  ///     renders empty.
+  ///  2. k == 0 (not even one code unit fits): force one code unit so the
+  ///     engine always makes progress (degenerate width).
+  ///  3. k >= |S|: the whole segment fits; consume S plus the hard break.
+  ///  4. S[0..k) all whitespace: consume the maximal whitespace prefix of
+  ///     S as the line (an indent-only line).
+  ///  5. Word-boundary wrap: let i be the LAST index in [0, k) where S[i]
+  ///     is whitespace and S[0..i) contains a non-whitespace character.
+  ///     The line is S[0..e) where e is the end of the whitespace run
+  ///     starting at i. Words are never broken mid-word when a boundary
+  ///     fits the line.
+  ///  6. Long unbreakable token: consume S[0..k) (character split) — the
+  ///     only case in which text may be broken mid-word.
   int _nextLineBreak({
     required String story,
     required int start,
@@ -364,6 +410,11 @@ final class TextFlowEngine {
     final hardBreak = nl == -1 ? story.length : nl;
     final segment = story.substring(start, hardBreak);
 
+    // Case 1: a newline at [start]; consume it and render an empty line.
+    if (segment.isEmpty) {
+      return hardBreak + 1;
+    }
+
     final fit = measurement.charactersThatFit(
       text: segment,
       start: 0,
@@ -371,17 +422,63 @@ final class TextFlowEngine {
       fontSize: fontSize,
     );
 
+    // Case 2: degenerate width; force one character so the engine makes
+    // progress (rendering the overflow is the shell's responsibility).
     if (fit <= 0) {
-      // Degenerate: width too narrow for even one char. Force one character
-      // so the engine makes progress (rendering overflow is the shell's
-      // responsibility); only safe when one char actually renders.
       return start + 1 > story.length ? start : start + 1;
     }
 
-    // If the whole hard-broken segment fits, consume it plus the newline.
+    // Case 3: the whole segment fits; consume it plus the hard break.
     if (fit >= segment.length) {
       return hardBreak < story.length ? hardBreak + 1 : hardBreak;
     }
-    return start + fit;
+
+    final k = fit;
+
+    // Case 4: S[0..k) all whitespace; consume the maximal whitespace
+    // prefix (an indent-only line).
+    if (_allWhitespace(segment, 0, k)) {
+      var e = 0;
+      while (e < segment.length && _isBreakableWhitespace(segment[e])) {
+        e++;
+      }
+      return start + e;
+    }
+
+    // Case 5: word-boundary wrap at the last qualifying whitespace.
+    var lastWs = -1;
+    for (var i = k - 1; i >= 0; i--) {
+      if (i == 0 || !_isBreakableWhitespace(segment[i])) continue;
+      if (!_containsNonWhitespace(segment, 0, i)) continue;
+      lastWs = i;
+      break;
+    }
+    if (lastWs != -1) {
+      var e = lastWs;
+      while (e < segment.length && _isBreakableWhitespace(segment[e])) {
+        e++;
+      }
+      return start + e;
+    }
+
+    // Case 6: long unbreakable token (no qualifying boundary); character
+    // split at exactly the provider's fit count.
+    return start + k;
+  }
+
+  bool _isBreakableWhitespace(String ch) => ch == ' ' || ch == '\t';
+
+  bool _allWhitespace(String s, int begin, int end) {
+    for (var i = begin; i < end; i++) {
+      if (!_isBreakableWhitespace(s[i])) return false;
+    }
+    return true;
+  }
+
+  bool _containsNonWhitespace(String s, int begin, int end) {
+    for (var i = begin; i < end; i++) {
+      if (!_isBreakableWhitespace(s[i])) return true;
+    }
+    return false;
   }
 }
