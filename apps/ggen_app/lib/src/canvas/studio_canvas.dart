@@ -4,124 +4,40 @@ import 'package:flutter/services.dart';
 import 'package:ggen_core/ggen_core.dart';
 
 import '../controller/studio_controller.dart';
+import '../text_flow/linked_text_flow.dart';
 import 'canvas_viewport.dart';
 import 'canvas_zoom_controller.dart';
 
-/// Flutter `TextPainter`-backed measurement for the core text-flow engine.
-///
-/// Core stays rendering-free; the shell supplies this provider so multi-column
-/// layout uses real platform typography (wrapping, line height) rather than
-/// the monospace stub. Stateless: a [TextPainter] is created per call because
-/// measurement happens during build/layout, not on a retained painter.
-class FlutterTextMeasurement implements TextMeasurementProvider {
-  const FlutterTextMeasurement();
+// The text-flow measurement and standalone-flow helpers live in the
+// text_flow module; re-exported so existing canvas consumers (tests, the
+// legacy label path) keep their import.
+export '../text_flow/linked_text_flow.dart'
+    show FlutterTextMeasurement, kDefaultTextMeasurement, flowTextFrame;
 
-  TextSpan _span(String text, double fontSize) => TextSpan(
-    text: text,
-    style: TextStyle(fontSize: fontSize, height: 1.2),
-  );
-
-  @override
-  int charactersThatFit({
-    required String text,
-    required int start,
-    required double maxWidth,
-    required double fontSize,
-  }) {
-    if (maxWidth <= 0 || fontSize <= 0 || start >= text.length) return 0;
-    final painter = TextPainter(
-      text: _span('', fontSize),
-      textDirection: TextDirection.ltr,
-    );
-    // Binary search for the largest prefix that paints within maxWidth.
-    var lo = 0;
-    var hi = text.length - start;
-    while (lo < hi) {
-      final mid = (lo + hi + 1) >> 1;
-      painter.text = _span(text.substring(start, start + mid), fontSize);
-      painter.layout(maxWidth: double.infinity);
-      if (painter.width <= maxWidth) {
-        lo = mid;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    painter.dispose();
-    return lo;
-  }
-
-  @override
-  double measureTextHeight({
-    required String text,
-    required double maxWidth,
-    required double fontSize,
-  }) {
-    if (text.isEmpty || maxWidth <= 0 || fontSize <= 0) return 0;
-    final painter = TextPainter(
-      text: _span(text, fontSize),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: maxWidth);
-    final height = painter.height;
-    painter.dispose();
-    return height;
-  }
-
-  @override
-  double lineHeight(double fontSize) {
-    final painter = TextPainter(
-      text: _span('Mg', fontSize),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: double.infinity);
-    final value = painter.preferredLineHeight;
-    painter.dispose();
-    return value;
-  }
-}
-
-/// Default shell measurement provider for text flow.
-const TextMeasurementProvider kDefaultTextMeasurement =
-    FlutterTextMeasurement();
-
-/// Computes the multi-column flow result for a frame text node, or null when
-/// the node lacks frame geometry or a valid text payload. Presentation code
-/// uses this to render column widgets and guides; it never mutates the node.
-TextFlowResult? flowTextFrame(
-  DocumentNode node, {
-  TextMeasurementProvider measurement = kDefaultTextMeasurement,
-}) {
-  final geom = textNodeFrameGeometry(node);
-  if (geom == null) return null;
-  final layout = textNodeColumnLayout(node);
-  final text = node.extensions['text'];
-  final size = node.extensions['size'];
-  if (text is! String || size is! num) return null;
-  final engine = TextFlowEngine(measurement);
-  return engine.flow(
-    story: text,
-    frames: [
-      TextFlowFrameInput(
-        frameId: node.id.value,
-        geometry: geom,
-        layout: layout,
-      ),
-    ],
-    fontSize: size.toDouble(),
-  );
-}
-
-/// CustomPainter that draws column boundary guides and the terminal overflow
-/// corner tab for a text frame. Text itself is rendered as real [Text] widgets
+/// CustomPainter that draws column boundary guides plus the flow indicator
+/// tab for a text frame. Text itself is rendered as real [Text] widgets
 /// by the canvas (for testability and correct interaction), not painted here.
+///
+/// The indicator tab distinguishes the two overflow cases of the linked
+/// text-flow model:
+///  * [continuation] — the frame is full and the story continues into the
+///    next linked frame: a BLUE right-pointing tab (not an overflow);
+///  * otherwise [flow.hasOverflow] — terminal overflow: the RED corner tab,
+///    shown on exactly one frame per chain (the terminal frame).
 class ColumnGuidesPainter extends CustomPainter {
   ColumnGuidesPainter({
     required this.node,
     required this.selected,
     required this.flow,
+    this.continuation = false,
   });
 
   final DocumentNode node;
   final bool selected;
   final TextFlowResult? flow;
+
+  /// Whether the frame's story continues into the next linked frame.
+  final bool continuation;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -162,21 +78,35 @@ class ColumnGuidesPainter extends CustomPainter {
     }
 
     final result = flow;
-    if (result != null && result.hasOverflow) {
-      final last = result.allColumns
+    final terminalOverflow = result != null && result.hasOverflow;
+    if (continuation || terminalOverflow) {
+      final last = result?.allColumns
           .where((c) => c.visibleEnd > c.visibleStart)
           .lastOrNull;
       if (last != null) {
         final b = last.bounds.bounds;
-        final tab = Paint()..color = const Color(0xFFD93025);
         final right = b.right - geom.x;
         final bottom = b.bottom - geom.y;
-        final triangle = Path()
-          ..moveTo(right, bottom)
-          ..lineTo(right - 14, bottom)
-          ..lineTo(right, bottom - 14)
-          ..close();
-        canvas.drawPath(triangle, tab);
+        if (continuation) {
+          // Blue right-pointing tab: the story continues into the next
+          // linked frame (continuation is NOT an overflow).
+          final tab = Paint()..color = const Color(0xFF4E6BFF);
+          final triangle = Path()
+            ..moveTo(right, bottom)
+            ..lineTo(right - 14, bottom - 7)
+            ..lineTo(right, bottom - 14)
+            ..close();
+          canvas.drawPath(triangle, tab);
+        } else {
+          // Red corner tab: terminal overflow (exactly one frame per chain).
+          final tab = Paint()..color = const Color(0xFFD93025);
+          final triangle = Path()
+            ..moveTo(right, bottom)
+            ..lineTo(right - 14, bottom)
+            ..lineTo(right, bottom - 14)
+            ..close();
+          canvas.drawPath(triangle, tab);
+        }
       }
     }
   }
@@ -211,6 +141,7 @@ class ColumnGuidesPainter extends CustomPainter {
   bool shouldRepaint(covariant ColumnGuidesPainter oldDelegate) =>
       oldDelegate.node != node ||
       oldDelegate.selected != selected ||
+      oldDelegate.continuation != continuation ||
       oldDelegate.flow != flow;
 }
 
@@ -556,6 +487,13 @@ class _StudioCanvasState extends State<StudioCanvas> {
       );
     }
     final artboard = artboards.first;
+    // Linked text frames flow ONE story across their chain; every frame
+    // renders only its assigned slice. A null result (malformed links)
+    // keeps the legacy standalone rendering for every frame.
+    final linkedFlow = computeLinkedTextFlow(
+      artboard,
+      measurement: _textMeasurement,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -827,7 +765,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
                             ),
                           ),
                         for (final node in artboard.nodes)
-                          ..._nodeWidgets(node),
+                          ..._nodeWidgets(node, linkedFlow),
                       ],
                     ),
                   ),
@@ -933,7 +871,22 @@ class _StudioCanvasState extends State<StudioCanvas> {
     ];
   }
 
-  List<Widget> _nodeWidgets(DocumentNode node) {
+  /// Wraps one frame's chain slice into the [TextFlowResult] shape the
+  /// guide painter consumes. The painter only reads `allColumns` and
+  /// `hasOverflow`, so the single-frame view reports the terminal overflow
+  /// (continuation frames report none: their blue tab comes from the
+  /// `continuation` flag, not the overflow tab).
+  static TextFlowResult _painterResult(
+    TextFrameFlow slice,
+    bool terminalOverflow,
+  ) => TextFlowResult(
+    frames: <TextFlowFrameResult>[slice.result],
+    storyLength: 0,
+    consumed: 0,
+    overflowLength: terminalOverflow ? 1 : 0,
+  );
+
+  List<Widget> _nodeWidgets(DocumentNode node, LinkedTextFlow? linkedFlow) {
     final isSelected = widget.controller.selectedNodeIds.contains(node.id);
     final drag = _nodeDrag;
     // Apply live drag offset to every dragged node's visual position.
@@ -949,45 +902,58 @@ class _StudioCanvasState extends State<StudioCanvas> {
       if (geometry == null) return const <Widget>[];
 
       // Frame text nodes have an explicit w/h and flow across columns using
-      // the core engine. Each column's slice is a real (clipped) Text widget
-      // so it remains testable and interactive; column guides and the
-      // overflow tab are an overlay. Legacy label-sized nodes (no w/h) keep
-      // the original single-line Text widget for backward compatibility.
+      // the core engine. Linked frames (A -> B -> C) flow ONE story across
+      // the chain; each frame renders ONLY its assigned slice (never the
+      // whole story). Isolated frames and frames whose chain fell back keep
+      // the legacy standalone flow. Each column's slice is a real (clipped)
+      // Text widget so it remains testable and interactive; column guides
+      // and the flow indicator tab are an overlay. Legacy label-sized nodes
+      // (no w/h) keep the original single-line Text widget.
       final frame = textNodeFrameGeometry(node);
       if (frame != null) {
-        final flow = flowTextFrame(node, measurement: _textMeasurement);
-        final showGuides = isSelected || textNodeColumnCount(node) > 1;
+        final slice = linkedFlow?.sliceFor(node.id.value);
+        final standalone =
+            slice == null
+                ? flowTextFrame(node, measurement: _textMeasurement)
+                : null;
+        final columns = slice != null
+            ? slice.result.columns
+            : standalone?.allColumns.toList() ?? const <TextFlowColumnResult>[];
+        final continuation = slice?.continuation ?? false;
+        final terminalOverflow =
+            slice?.terminalOverflow ?? (standalone?.hasOverflow ?? false);
+        final inChain = (slice?.chainLength ?? 1) > 1;
+        final showGuides =
+            isSelected || textNodeColumnCount(node) > 1 || inChain;
         final colorValue = node.extensions['color'];
         final sizeValue = node.extensions['size'];
         final color = colorValue is int ? Color(colorValue) : Colors.black;
         final fontSize = sizeValue is num ? sizeValue.toDouble() : 16.0;
         final widgets = <Widget>[];
-        if (flow != null) {
-          for (final col in flow.allColumns) {
-            if (col.visibleText.isEmpty) continue;
-            final b = col.bounds.bounds;
-            widgets.add(
-              Positioned(
-                key: ValueKey(
-                  'ggen_text_frame_${node.id.value}_col${col.columnIndex}',
-                ),
-                left: frame.x + dragDx + (b.left - frame.x),
-                top: frame.y + dragDy + (b.top - frame.y),
-                width: b.width,
-                height: b.height,
-                child: ClipRect(
-                  child: Text(
-                    col.visibleText,
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      color: color,
-                      height: 1.2,
-                    ),
+        for (final col in columns) {
+          if (col.visibleText.isEmpty) continue;
+          final b = col.bounds.bounds;
+          widgets.add(
+            Positioned(
+              key: ValueKey(
+                'ggen_text_frame_${node.id.value}_col${col.columnIndex}',
+              ),
+              left: frame.x + dragDx + (b.left - frame.x),
+              top: frame.y + dragDy + (b.top - frame.y),
+              width: b.width,
+              height: b.height,
+              child: ClipRect(
+                child: Text(
+                  col.visibleText,
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    color: color,
+                    height: 1.2,
                   ),
                 ),
               ),
-            );
-          }
+            ),
+          );
         }
         if (showGuides) {
           widgets.add(
@@ -1002,7 +968,10 @@ class _StudioCanvasState extends State<StudioCanvas> {
                   painter: ColumnGuidesPainter(
                     node: node,
                     selected: isSelected,
-                    flow: flow,
+                    continuation: continuation,
+                    flow: slice != null
+                        ? _painterResult(slice, terminalOverflow)
+                        : standalone,
                   ),
                 ),
               ),
