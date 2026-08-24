@@ -120,13 +120,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Immersive canvas'));
     await tester.pumpAndSettle();
-    // Immersive hides both shell surfaces: tool rail and action bar.
+    // Immersive hides both shell surfaces: tool rail and action bar, and
+    // the default top bar (the user's fullscreen control regions replace
+    // it, with an always-present immersive exit control).
     expect(find.byKey(ContextualActionBar.barKey), findsNothing);
     expect(find.byKey(MobileToolRail.railKey), findsNothing);
-    // Leave again through the same More entry (it toggles).
-    await tester.tap(find.byTooltip('More actions'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Immersive canvas'));
+    expect(find.byTooltip('More actions'), findsNothing);
+    // Leave again through the enforced immersive exit control (toggles).
+    await tester.tap(find.byTooltip('Immersive canvas'));
     await tester.pumpAndSettle();
     expect(find.byKey(ContextualActionBar.barKey), findsOneWidget);
     expect(find.byKey(MobileToolRail.railKey), findsOneWidget);
@@ -621,19 +622,27 @@ void main() {
       );
     });
 
-    testWidgets('immersive keeps the in-canvas zoom overlay', (tester) async {
-      await pumpAt(tester, const Size(471, 803));
-      // Enter immersive via the More menu (the top bar is the single
-      // entry point for project actions).
-      await tester.tap(find.byTooltip('More actions'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Immersive canvas'));
-      await tester.pumpAndSettle();
-      // No bottom toolbar in immersive, so the canvas keeps its own zoom
-      // controls (single source, not duplicated).
-      expect(find.byIcon(Icons.fit_screen_outlined), findsOneWidget);
-      expect(find.textContaining('%'), findsOneWidget);
-    });
+    testWidgets(
+      'immersive renders the fullscreen control regions (zoom cluster, '
+      'no legacy fixed overlay)',
+      (tester) async {
+        await pumpAt(tester, const Size(471, 803));
+        // Enter immersive via the More menu (the top bar is the single
+        // entry point for project actions).
+        await tester.tap(find.byTooltip('More actions'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Immersive canvas'));
+        await tester.pumpAndSettle();
+        // The legacy fixed in-canvas zoom overlay is gone (% label belongs
+        // to it) and the user's zoom cluster provides zoom controls once.
+        expect(find.textContaining('%'), findsNothing);
+        expect(find.byIcon(Icons.fit_screen_outlined), findsOneWidget);
+        expect(find.byIcon(Icons.add), findsOneWidget);
+        expect(find.byIcon(Icons.remove), findsOneWidget);
+        // The immersive exit control is always present.
+        expect(find.byTooltip('Immersive canvas'), findsOneWidget);
+      },
+    );
 
     testWidgets('small tablet (700-899): rail without inspector', (
       tester,

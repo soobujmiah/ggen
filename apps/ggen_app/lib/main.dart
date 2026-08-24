@@ -15,6 +15,7 @@ import 'src/canvas/canvas_zoom_controller.dart';
 import 'src/layers/layer_list.dart';
 import 'src/text_flow/linked_text_flow.dart';
 import 'src/workspace/studio_tool.dart';
+import 'src/workspace/control_layout.dart';
 import 'src/workspace/workspace_bars.dart';
 import 'src/storage/file_project_store.dart';
 import 'src/storage/file_recovery_journal.dart';
@@ -171,6 +172,11 @@ class _StudioShellState extends State<StudioShell> {
   bool _canvasFirst = true;
   bool _workspaceSettingsOpen = false;
   InspectorDock _inspectorDock = InspectorDock.right;
+
+  /// User-defined fullscreen (immersive) control placement. Normalized by
+  /// [CanvasControlLayout.resolve] so rendering is always deterministic and
+  /// the immersive exit control is always present.
+  CanvasControlLayout _fullscreenLayout = CanvasControlLayout.defaults();
 
   /// The active primary tool. Typed ([StudioTool]) rather than a raw index:
   /// the on-device RangeError ("Not in inclusive range 0..2: 3") happened
@@ -417,12 +423,16 @@ class _StudioShellState extends State<StudioShell> {
           : InspectorDock.right;
       _topActionOrder = _sanitizeActionOrder(prefs.topActionOrder);
       _topActionPinned = _sanitizePinned(prefs.topActionPinned);
+      _fullscreenLayout = CanvasControlLayout.fromPrefs(
+        prefs.fullscreenRegions,
+      );
     });
     debugLog.info('workspace_restore', 'Workspace preferences restored', {
       'inspector_visible': _showInspector,
       'canvas_first': _canvasFirst,
       'inspector_dock': _inspectorDock.name,
       'top_action_pinned': _topActionPinned.length,
+      'fullscreen_regions': _fullscreenLayout.regions.length,
     });
   }
 
@@ -462,6 +472,17 @@ class _StudioShellState extends State<StudioShell> {
       if (!_topActionOrder.contains(action)) action,
   ];
 
+  /// True when exactly the selected node is a text frame; enables the
+  /// Columns action on the compact and landscape bars.
+  bool get _columnsEnabled =>
+      _studio.selectedNodeId != null &&
+      _studio.project.artboards.isNotEmpty &&
+      _studio.project.artboards.first.nodes.any(
+        (n) =>
+            n.id == _studio.selectedNodeId &&
+            n.kind == DocumentNodeKind.textFrame,
+      );
+
   Future<void> _persistWorkspace() => WorkspacePreferences(
     inspectorVisible: _showInspector,
     canvasFirst: _canvasFirst,
@@ -471,7 +492,368 @@ class _StudioShellState extends State<StudioShell> {
       for (final a in _topActionOrder)
         if (_topActionPinned.contains(a)) a.name,
     ],
+    fullscreenRegions: _fullscreenLayout.toPrefs(),
   ).save();
+
+  /// Opens the fullscreen control customization sheet: every
+  /// [CanvasControl] with a region picker (6 regions + Hidden), a reset
+  /// button, and immediate persistence. In fullscreen the same placement is
+  /// also reachable by long-pressing a control cluster and dragging it to
+  /// another corner (see [_onClusterDragEnd]).
+  Future<void> _openFullscreenCustomizer() async {
+    debugLog.info(
+      'fullscreen_customize',
+      'Fullscreen customizer opened',
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          ControlRegion? regionOf(CanvasControl control) {
+            for (final entry in _fullscreenLayout.regions.entries) {
+              if (entry.value.contains(control)) return entry.key;
+            }
+            return null;
+          }
+
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.72,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Customize fullscreen controls',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setSheetState(() {
+                              setState(
+                                () =>
+                                    _fullscreenLayout = CanvasControlLayout
+                                        .defaults()
+                                        .resolve(),
+                              );
+                              unawaited(_persistWorkspace());
+                            });
+                            debugLog.info(
+                              'fullscreen_customize_reset',
+                              'Fullscreen controls reset to defaults',
+                            );
+                          },
+                          child: const Text('Reset'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      'Choose where each control appears in fullscreen. In '
+                      'fullscreen, long-press a control cluster and drag it '
+                      'to another corner to move it.',
+                      style: TextStyle(fontSize: 12, color: Colors.white60),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        for (final control in CanvasControl.values)
+                          ListTile(
+                            dense: true,
+                            leading: Icon(control.icon),
+                            title: Text(control.label),
+                            trailing: PopupMenuButton<ControlRegion?>(
+                              initialValue: regionOf(control),
+                              onSelected: (target) {
+                                setSheetState(
+                                  () => _moveFullscreenControl(
+                                    control,
+                                    target,
+                                    sheetContext,
+                                  ),
+                                );
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem<ControlRegion?>(
+                                  value: null,
+                                  child: Text('Hidden'),
+                                ),
+                                for (final region in ControlRegion.values)
+                                  PopupMenuItem<ControlRegion?>(
+                                    value: region,
+                                    child: Text(region.label),
+                                  ),
+                              ],
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    regionOf(control)?.label ?? 'Hidden',
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                  const Icon(Icons.arrow_drop_down),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Applies one control placement from the customizer: removes the control
+  /// from any region, optionally appends it to the chosen region, enforces
+  /// the per-region capacity, and persists. The immersive exit control can
+  /// never be hidden (the user must always be able to leave fullscreen).
+  void _moveFullscreenControl(
+    CanvasControl control,
+    ControlRegion? target,
+    BuildContext sheetContext,
+  ) {
+    if (control == CanvasControl.immersive && target == null) {
+      ScaffoldMessenger.of(sheetContext).showSnackBar(
+        const SnackBar(
+          content: Text('The immersive exit control cannot be hidden'),
+        ),
+      );
+      return;
+    }
+    final map = <ControlRegion, List<CanvasControl>>{
+      for (final entry in _fullscreenLayout.regions.entries)
+        entry.key: [...entry.value],
+    };
+    for (final list in map.values) {
+      list.remove(control);
+    }
+    if (target != null) {
+      final targetList = map[target] ?? <CanvasControl>[];
+      if (targetList.length >= CanvasControlLayout.maxControlsPerRegion) {
+        ScaffoldMessenger.of(sheetContext).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${target.label} is full '
+              '(${CanvasControlLayout.maxControlsPerRegion} max)',
+            ),
+          ),
+        );
+        return;
+      }
+      map[target] = [...targetList, control];
+    }
+    setState(() => _fullscreenLayout = CanvasControlLayout(map).resolve());
+    unawaited(_persistWorkspace());
+    debugLog.info(
+      'fullscreen_control_place',
+      'Fullscreen control placement updated',
+      {'control': control.name, 'region': target?.name ?? 'hidden'},
+    );
+  }
+
+  /// Resolves the controls of one fullscreen region into concrete shell
+  /// actions (same enablement rules as the compact bar): undo/redo need
+  /// history, multi-select needs the Select tool, Columns needs a selected
+  /// text frame.
+  List<ResolvedControlAction> _resolveFullscreenActions(
+    List<CanvasControl> controls,
+  ) {
+    void log(String event, String message, [Map<String, Object?>? extra]) =>
+        debugLog.info(event, message, extra);
+    return [
+      for (final control in controls)
+        ResolvedControlAction(
+          control,
+          selected: control == CanvasControl.grid && _showGrid,
+          onPressed: switch (control) {
+            CanvasControl.undo => _studio.canUndo
+                ? () {
+                    _studio.undo();
+                    log('fullscreen_undo', 'Undo applied', {
+                      'revision': _studio.revision,
+                    });
+                  }
+                : null,
+            CanvasControl.redo => _studio.canRedo
+                ? () {
+                    _studio.redo();
+                    log('fullscreen_redo', 'Redo applied', {
+                      'revision': _studio.revision,
+                    });
+                  }
+                : null,
+            CanvasControl.zoomIn => () {
+              _zoomController.zoomIn();
+              log('fullscreen_zoom_in', 'Zoom in');
+            },
+            CanvasControl.zoomOut => () {
+              _zoomController.zoomOut();
+              log('fullscreen_zoom_out', 'Zoom out');
+            },
+            CanvasControl.zoomFit => () {
+              _zoomController.fitToScreen();
+              log('fullscreen_zoom_fit', 'Fit to screen');
+            },
+            CanvasControl.grid => () => _toggleGrid(),
+            CanvasControl.layers => () {
+              _showLayersSheet();
+              log('fullscreen_layers', 'Layers sheet opened');
+            },
+            CanvasControl.multiSelect => _tool == StudioTool.select
+                ? () {
+                    setState(() => _multiSelect = !_multiSelect);
+                    log(
+                      'fullscreen_multi_select',
+                      _multiSelect
+                          ? 'Multi-select enabled'
+                          : 'Multi-select disabled',
+                    );
+                  }
+                : null,
+            CanvasControl.columns => _columnsEnabled
+                ? () => _showColumnsSheet()
+                : null,
+            CanvasControl.newProject =>
+              () => unawaited(_runTopAction(EditorTopAction.newProject)),
+            CanvasControl.save =>
+              () => unawaited(_runTopAction(EditorTopAction.save)),
+            CanvasControl.diagnostics => () => unawaited(
+              _runTopAction(EditorTopAction.diagnostics),
+            ),
+            CanvasControl.settings => () => unawaited(
+              _openWorkspaceSettings(),
+            ),
+            CanvasControl.immersive => () => _setImmersive(false),
+            CanvasControl.dockInspector => () => unawaited(
+              _runTopAction(EditorTopAction.dockInspector),
+            ),
+          },
+        ),
+    ];
+  }
+
+  /// Builds one fullscreen control cluster for [region], draggable to
+  /// another region via [_onClusterDragEnd]. Width-bounded and horizontally
+  /// scrollable so it can never overflow or be clipped at any screen size.
+  Widget _fullscreenCluster(
+    ControlRegion region,
+    List<CanvasControl> controls,
+    BoxConstraints constraints,
+  ) {
+    final maxWidth = constraints.maxWidth - 16;
+    final cluster = CanvasControlCluster(
+      actions: _resolveFullscreenActions(controls),
+      maxWidth: maxWidth,
+    );
+    return _regionPositioned(
+      region,
+      LongPressDraggable<ControlRegion>(
+        data: region,
+        feedback: Material(
+          elevation: 6,
+          borderRadius: BorderRadius.circular(22),
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          child: Opacity(opacity: 0.92, child: cluster),
+        ),
+        childWhenDragging: Opacity(opacity: 0.4, child: cluster),
+        onDragEnd: (details) =>
+            _onClusterDragEnd(region, details.offset, constraints.biggest),
+        child: cluster,
+      ),
+    );
+  }
+
+  /// Positions a fullscreen control cluster in [region], respecting the
+  /// camera cutout via [MediaQuery.viewPadding] so controls stay tappable
+  /// even while the canvas itself draws under the notch.
+  Widget _regionPositioned(
+    ControlRegion region,
+    Widget child,
+  ) {
+    final topInset = MediaQuery.viewPaddingOf(context).top;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final padded = Padding(
+      padding: EdgeInsets.only(top: topInset, bottom: bottomInset),
+      child: child,
+    );
+    switch (region) {
+      case ControlRegion.topLeft:
+        return Positioned(top: 8, left: 8, child: padded);
+      case ControlRegion.topRight:
+        return Positioned(top: 8, right: 8, child: padded);
+      case ControlRegion.topCenter:
+        return Positioned(
+          top: 8,
+          left: 0,
+          right: 0,
+          child: Center(child: padded),
+        );
+      case ControlRegion.bottomLeft:
+        return Positioned(bottom: 8, left: 8, child: padded);
+      case ControlRegion.bottomRight:
+        return Positioned(bottom: 8, right: 8, child: padded);
+      case ControlRegion.bottomCenter:
+        return Positioned(
+          bottom: 8,
+          left: 0,
+          right: 0,
+          child: Center(child: padded),
+        );
+    }
+  }
+
+  /// Drag-snap for a fullscreen control cluster: computes the nearest region
+  /// from the drop point (deterministic thirds/halves math) and moves the
+  /// whole cluster there, persisting the new placement.
+  void _onClusterDragEnd(
+    ControlRegion origin,
+    Offset drop,
+    Size viewport,
+  ) {
+    final target = CanvasControlLayout.nearestRegion(drop, viewport);
+    if (target == origin) return;
+    final controls = _fullscreenLayout.regions[origin];
+    if (controls == null || controls.isEmpty) return;
+    final map = <ControlRegion, List<CanvasControl>>{
+      for (final entry in _fullscreenLayout.regions.entries)
+        entry.key: [...entry.value],
+    };
+    map.remove(origin);
+    final incoming = [...controls];
+    map[target] = [
+      ...?map[target],
+      ...incoming,
+    ].take(CanvasControlLayout.maxControlsPerRegion).toList(growable: false);
+    setState(() => _fullscreenLayout = CanvasControlLayout(map).resolve());
+    unawaited(_persistWorkspace());
+    debugLog.info(
+      'fullscreen_control_move',
+      'Fullscreen control cluster moved',
+      {
+        'from': origin.name,
+        'to': target.name,
+        'controls': controls.length,
+      },
+    );
+  }
 
   /// Opens the workspace settings sheet (moved out of the bottom
   /// navigation into the top-bar More menu per device feedback).
@@ -582,6 +964,16 @@ class _StudioShellState extends State<StudioShell> {
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                 ),
               ),
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.dashboard_customize_outlined),
+                title: const Text('Customize fullscreen controls'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  unawaited(_openFullscreenCustomizer());
+                },
+              ),
+              const Divider(height: 8),
               for (var i = 0; i < _topActionOrder.length; i++)
                 _buildMoreRow(sheetContext, i, setSheetState),
             ],
@@ -895,10 +1287,16 @@ class _StudioShellState extends State<StudioShell> {
           appBar: null,
           body: LayoutBuilder(
             builder: (context, constraints) {
-              final compact = constraints.maxWidth < 700;
+              final cls = classifyWorkspace(
+                constraints.maxWidth,
+                constraints.maxHeight,
+              );
+              final compact = cls != WorkspaceClass.wide;
               _recordLayout(
                 _immersive
                     ? 'immersive_canvas'
+                    : cls == WorkspaceClass.compactLandscape
+                    ? 'compact_landscape'
                     : compact
                     ? 'compact_bottom_navigation'
                     : 'wide_rail_navigation',
@@ -930,18 +1328,19 @@ class _StudioShellState extends State<StudioShell> {
                       // Canonical mobile workspace: a stable vertical tool
                       // rail on the left (phone portrait) — primary tools
                       // never move between edges.
-                      if (showPanels && compact)
+                      if (showPanels &&
+                          cls == WorkspaceClass.compactPortrait)
                         MobileToolRail(
                           activeTool: _tool,
                           onSelected: _selectTool,
                         ),
-                      if (showPanels && !compact)
+                      if (showPanels && cls == WorkspaceClass.wide)
                         ToolRail(
                           selectedTool: _tool,
                           onSelected: _selectTool,
                         ),
                       if (showPanels &&
-                          !compact &&
+                          cls == WorkspaceClass.wide &&
                           _showInspector &&
                           _inspectorDock == InspectorDock.left)
                         inspector,
@@ -959,11 +1358,18 @@ class _StudioShellState extends State<StudioShell> {
                           gridVisible: _showGrid,
                           onToggleGrid: _toggleGrid,
                           selectedNodeId: _studio.selectedNodeId,
-                          topBar: _TopActionBar(
-                            actions: _pinnedInOrder,
-                            onRun: (action) => unawaited(_runTopAction(action)),
-                            onMore: () => unawaited(_showMoreMenu()),
-                          ),
+                          // In immersive the user's chosen control regions
+                          // replace the default top bar entirely.
+                          hideProjectName: _immersive,
+                          topBar: _immersive
+                              ? null
+                              : _TopActionBar(
+                                  actions: _pinnedInOrder,
+                                  onRun: (action) => unawaited(
+                                    _runTopAction(action),
+                                  ),
+                                  onMore: () => unawaited(_showMoreMenu()),
+                                ),
                           suppressGeometryLog: _workspaceSettingsOpen,
                           zoomController: _zoomController,
                           onNodeAdded: () {
@@ -1013,11 +1419,13 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                       ),
                       if (showPanels &&
-                          !compact &&
+                          cls == WorkspaceClass.wide &&
                           _showInspector &&
                           _inspectorDock == InspectorDock.right)
                         inspector,
-                      if (showPanels && !compact && _showLayers)
+                      if (showPanels &&
+                          cls == WorkspaceClass.wide &&
+                          _showLayers)
                         SizedBox(
                           width: 260,
                           child: Card(
@@ -1047,7 +1455,7 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                     ],
                   ),
-                  if (!_immersive && !compact)
+                  if (!_immersive && cls == WorkspaceClass.wide)
                     Positioned(
                       bottom: 16,
                       left: 12,
@@ -1070,7 +1478,7 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                       ),
                     ),
-                  if (!_immersive && !compact)
+                  if (!_immersive && cls == WorkspaceClass.wide)
                     Positioned(
                       // Below the overlay top bar (which occupies the very
                       // top of the canvas); a top:12 position collided with
@@ -1082,7 +1490,7 @@ class _StudioShellState extends State<StudioShell> {
                         child: IconButton.filledTonal(
                           tooltip: _showLayers ? 'Hide layers' : 'Show layers',
                           onPressed: () {
-                            if (compact) {
+                            if (cls != WorkspaceClass.wide) {
                               _showLayersSheet();
                             } else {
                               setState(() => _showLayers = !_showLayers);
@@ -1093,13 +1501,21 @@ class _StudioShellState extends State<StudioShell> {
                             }
                           },
                           icon: Icon(
-                            _showLayers && !compact
+                            _showLayers && cls == WorkspaceClass.wide
                                 ? Icons.layers_clear_outlined
                                 : Icons.layers_outlined,
                           ),
                         ),
                       ),
                     ),
+                  // Fullscreen control regions: the user's chosen controls
+                  // rendered as persistent clusters, replacing the default
+                  // top bar and the legacy fixed zoom overlay.
+                  if (_immersive)
+                    for (final region in ControlRegion.values)
+                      if (_fullscreenLayout.regions[region] case final controls
+                          when controls.isNotEmpty)
+                        _fullscreenCluster(region, controls, constraints),
                 ],
                 ),
               );
@@ -1109,8 +1525,11 @@ class _StudioShellState extends State<StudioShell> {
               ? null
               : LayoutBuilder(
                   builder: (context, constraints) {
-                    final isCompact = constraints.maxWidth < 700;
-                    if (isCompact) {
+                    final cls = classifyWorkspace(
+                      constraints.maxWidth,
+                      constraints.maxHeight,
+                    );
+                    if (cls == WorkspaceClass.compactPortrait) {
                       // Canonical mobile workspace: ONE bottom surface — the
                       // contextual action bar (history/zoom/view groups plus
                       // state-dependent actions). Primary tools live on the
@@ -1121,14 +1540,7 @@ class _StudioShellState extends State<StudioShell> {
                         activeTool: _tool,
                         gridVisible: _showGrid,
                         multiSelect: _multiSelect,
-                        columnsEnabled:
-                            _studio.selectedNodeId != null &&
-                            _studio.project.artboards.isNotEmpty &&
-                            _studio.project.artboards.first.nodes.any(
-                              (n) =>
-                                  n.id == _studio.selectedNodeId &&
-                                  n.kind == DocumentNodeKind.textFrame,
-                            ),
+                        columnsEnabled: _columnsEnabled,
                         onToggleGrid: _toggleGrid,
                         onToggleMultiSelect: () {
                           setState(() => _multiSelect = !_multiSelect);
@@ -1146,6 +1558,40 @@ class _StudioShellState extends State<StudioShell> {
                         onConfigureColumns: _showColumnsSheet,
                         onDiagnostic: (event) =>
                             debugLog.info(event, 'Action bar control used'),
+                      );
+                    }
+                    if (cls == WorkspaceClass.compactLandscape) {
+                      // Landscape phones: ONE compact bar (tools | history |
+                      // zoom | view | context), no left rail and no status
+                      // bar, so the canvas keeps the maximum usable area.
+                      return LandscapeBar(
+                        controller: _studio,
+                        zoomController: _zoomController,
+                        activeTool: _tool,
+                        onSelectedTool: _selectTool,
+                        gridVisible: _showGrid,
+                        onToggleGrid: _toggleGrid,
+                        onToggleMultiSelect: () {
+                          setState(() => _multiSelect = !_multiSelect);
+                          debugLog.info(
+                            'multi_select_toggle',
+                            _multiSelect
+                                ? 'Multi-select enabled'
+                                : 'Multi-select disabled',
+                          );
+                        },
+                        onShowLayers: () {
+                          _showLayersSheet();
+                          debugLog.info(
+                            'layers_toggle',
+                            'Layers via landscape bar',
+                          );
+                        },
+                        multiSelect: _multiSelect,
+                        columnsEnabled: _columnsEnabled,
+                        onConfigureColumns: _showColumnsSheet,
+                        onDiagnostic: (event) =>
+                            debugLog.info(event, 'Landscape bar control used'),
                       );
                     }
                     return StatusBar(
@@ -1207,6 +1653,7 @@ class CanvasArea extends StatelessWidget {
     this.selectedNodeId,
     this.suppressGeometryLog = false,
     this.zoomController,
+    this.hideProjectName = false,
     this.onTextRequest,
     this.onNodeSelected,
     this.onTwoFingerTap,
@@ -1222,6 +1669,10 @@ class CanvasArea extends StatelessWidget {
   final VoidCallback onNodeAdded;
   final bool selectMode;
   final bool textEnabled;
+
+  /// True in immersive mode: the project-name overlay is hidden so the
+  /// user's chosen fullscreen controls are the only chrome.
+  final bool hideProjectName;
 
   /// Whether the shell is in immersive canvas mode; keeps the in-canvas
   /// zoom overlay available there (no bottom toolbar exists in immersive).
@@ -1269,9 +1720,10 @@ class CanvasArea extends StatelessWidget {
               suppress: suppressGeometryLog,
             );
             // Compact phones get undo/redo, layers and zoom from the bottom
-            // toolbar, so the in-canvas zoom overlay is redundant there;
-            // wide layouts and immersive keep it (single source of zoom UI).
-            final compact = size.width < 700;
+            // toolbar, so the in-canvas zoom overlay is redundant there.
+            // Wide layouts keep it (single source of zoom UI); immersive
+            // uses the user's fullscreen control regions instead.
+            final cls = classifyWorkspace(size.width, size.height);
             return RepaintBoundary(
               child: StudioCanvas(
                 controller: controller,
@@ -1280,7 +1732,7 @@ class CanvasArea extends StatelessWidget {
                 onNodeAdded: onNodeAdded,
                 selectMode: selectMode,
                 textEnabled: textEnabled,
-                showZoomOverlay: immersive || !compact,
+                showZoomOverlay: !immersive && cls == WorkspaceClass.wide,
                 multiSelectMode: multiSelectMode,
                 gridVisible: gridVisible,
                 onToggleGrid: onToggleGrid,
@@ -1304,7 +1756,9 @@ class CanvasArea extends StatelessWidget {
           ),
         // Project name — no hazy bar per device feedback (was black 0.45 scrim).
         // Now a clean text with shadow for legibility, no container bar.
-        Positioned(
+        // Hidden in immersive so the user's controls are the only chrome.
+        if (!hideProjectName)
+          Positioned(
           top: topBar == null ? 12 : 62,
           left: 12,
           right: 96,

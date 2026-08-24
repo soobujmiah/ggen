@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persisted workspace preferences, including the top action-bar
@@ -18,6 +20,7 @@ class WorkspacePreferences {
     this.lastProjectKey,
     this.topActionOrder = const <String>[],
     this.topActionPinned = const <String>[],
+    this.fullscreenRegions = const <String, List<String>>{},
   });
 
   final bool inspectorVisible;
@@ -36,12 +39,19 @@ class WorkspacePreferences {
   /// order they should appear; bounded and sanitized on load.
   final List<String> topActionPinned;
 
+  /// Fullscreen (immersive) control placement: region name → control ids,
+  /// as edited in the "Customize fullscreen controls" sheet. Empty means the
+  /// built-in default layout. Stored as one JSON string; sanitized by
+  /// `CanvasControlLayout.fromPrefs` on load so unknown ids fail closed.
+  final Map<String, List<String>> fullscreenRegions;
+
   static const _inspectorKey = 'workspace.inspector_visible';
   static const _canvasFirstKey = 'workspace.canvas_first';
   static const _inspectorDockKey = 'workspace.inspector_dock';
   static const _lastProjectKeyPref = 'workspace.last_project_key';
   static const _topActionOrderKey = 'workspace.top_action_order';
   static const _topActionPinnedKey = 'workspace.top_action_pinned';
+  static const _fullscreenRegionsKey = 'workspace.fullscreen_regions';
 
   /// Retired keys of the removed dockable secondary toolbar; cleaned up on
   /// save/clear so no stale layout state lingers on-device.
@@ -59,6 +69,7 @@ class WorkspacePreferences {
       topActionOrder: prefs.getStringList(_topActionOrderKey) ?? const <String>[],
       topActionPinned:
           prefs.getStringList(_topActionPinnedKey) ?? const <String>[],
+      fullscreenRegions: _decodeRegions(prefs.getString(_fullscreenRegionsKey)),
     );
   }
 
@@ -74,6 +85,14 @@ class WorkspacePreferences {
     }
     await prefs.setStringList(_topActionOrderKey, topActionOrder);
     await prefs.setStringList(_topActionPinnedKey, topActionPinned);
+    if (fullscreenRegions.isEmpty) {
+      await prefs.remove(_fullscreenRegionsKey);
+    } else {
+      await prefs.setString(
+        _fullscreenRegionsKey,
+        jsonEncode(fullscreenRegions),
+      );
+    }
     await prefs.remove(_legacyToolbarModeKey);
     await prefs.remove(_legacyToolbarDockKey);
   }
@@ -86,7 +105,32 @@ class WorkspacePreferences {
     await prefs.remove(_lastProjectKeyPref);
     await prefs.remove(_topActionOrderKey);
     await prefs.remove(_topActionPinnedKey);
+    await prefs.remove(_fullscreenRegionsKey);
     await prefs.remove(_legacyToolbarModeKey);
     await prefs.remove(_legacyToolbarDockKey);
+  }
+
+  /// Decodes the stored fullscreen region JSON, failing closed to an empty
+  /// map on any malformed input so a corrupt value cannot crash the shell.
+  static Map<String, List<String>> _decodeRegions(String? raw) {
+    if (raw == null || raw.isEmpty) return const <String, List<String>>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return const <String, List<String>>{};
+      }
+      final result = <String, List<String>>{};
+      for (final entry in decoded.entries) {
+        final value = entry.value;
+        if (value is List) {
+          result[entry.key] = value
+              .whereType<String>()
+              .toList(growable: false);
+        }
+      }
+      return result;
+    } catch (_) {
+      return const <String, List<String>>{};
+    }
   }
 }
