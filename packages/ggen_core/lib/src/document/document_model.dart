@@ -161,14 +161,23 @@ final class Artboard {
       }
       return null;
     }
+
     // Legacy placeholder shape nodes may carry no geometry keys at all
     // (e.g. tests create bare DocumentNode(kind: shape) for group-reference
     // checks). Only validate when at least one geometry/style key is
     // present, in which case the full payload must be well-formed.
-    final hasAnyShapeKey = node.extensions.keys.any((String k) =>
-        k == 'x' || k == 'y' || k == 'w' || k == 'h' ||
-        k == 'fill' || k == 'color' ||
-        k == 'stroke' || k == 'stroke_width' || k == 'shape_type');
+    final hasAnyShapeKey = node.extensions.keys.any(
+      (String k) =>
+          k == 'x' ||
+          k == 'y' ||
+          k == 'w' ||
+          k == 'h' ||
+          k == 'fill' ||
+          k == 'color' ||
+          k == 'stroke' ||
+          k == 'stroke_width' ||
+          k == 'shape_type',
+    );
     if (!hasAnyShapeKey) return;
     final x = asFiniteDouble(node.extensions['x']);
     final y = asFiniteDouble(node.extensions['y']);
@@ -180,9 +189,7 @@ final class Artboard {
       );
     }
     if (w <= 0 || h <= 0) {
-      throw ArgumentError(
-        'Shape node "${node.id}" w/h must be positive.',
-      );
+      throw ArgumentError('Shape node "${node.id}" w/h must be positive.');
     }
     final fillKey = node.extensions.containsKey('fill') ? 'fill' : 'color';
     final fill = node.extensions[fillKey];
