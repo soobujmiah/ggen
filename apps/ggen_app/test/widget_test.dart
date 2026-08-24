@@ -6,6 +6,7 @@ import 'package:ggen_app/main.dart';
 import 'package:ggen_app/src/canvas/studio_canvas.dart';
 import 'package:ggen_app/src/layers/layer_list.dart';
 import 'package:ggen_app/src/controller/studio_controller.dart';
+import 'package:ggen_app/src/workspace/workspace_bars.dart';
 import 'package:ggen_core/ggen_core.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -61,13 +62,19 @@ DocumentProject _withNode(DocumentProject project, String name) {
 }
 
 void main() {
-  testWidgets('uses compact navigation without a side rail', (tester) async {
+  testWidgets('compact uses the tool rail and contextual action bar',
+      (tester) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(const GgenApp());
-    expect(find.byType(NavigationBar), findsOneWidget);
+    // Canonical mobile workspace: stable left tool rail + one bottom
+    // contextual action bar; no wide NavigationRail, no legacy bottom
+    // NavigationBar.
+    expect(find.byKey(MobileToolRail.railKey), findsOneWidget);
+    expect(find.byKey(ContextualActionBar.barKey), findsOneWidget);
     expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byType(NavigationBar), findsNothing);
     expect(find.byTooltip('Dock inspector left or right'), findsNothing);
   });
 
@@ -113,13 +120,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Immersive canvas'));
     await tester.pumpAndSettle();
-    expect(find.byType(NavigationBar), findsNothing);
+    // Immersive hides both shell surfaces: tool rail and action bar.
+    expect(find.byKey(ContextualActionBar.barKey), findsNothing);
+    expect(find.byKey(MobileToolRail.railKey), findsNothing);
     // Leave again through the same More entry (it toggles).
     await tester.tap(find.byTooltip('More actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Immersive canvas'));
     await tester.pumpAndSettle();
-    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byKey(ContextualActionBar.barKey), findsOneWidget);
+    expect(find.byKey(MobileToolRail.railKey), findsOneWidget);
   });
 
   testWidgets('undo and redo are disabled without history', (tester) async {
@@ -538,12 +548,14 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('compact phone (<700): bottom navigation, no rail', (
+    testWidgets('compact phone (<700): tool rail + action bar, no wide rail', (
       tester,
     ) async {
       await pumpAt(tester, const Size(400, 800));
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byKey(MobileToolRail.railKey), findsOneWidget);
+      expect(find.byKey(ContextualActionBar.barKey), findsOneWidget);
       expect(find.byType(NavigationRail), findsNothing);
+      expect(find.byType(NavigationBar), findsNothing);
     });
 
     testWidgets(
@@ -729,75 +741,62 @@ void main() {
     });
 
     testWidgets(
-      'secondary canvas toolbar hides fully (no remnant), mini and expands',
+      'canonical action bar: one surface, stable groups, no legacy toolbar',
       (tester) async {
-        // Real-device size: at 471 the full toolbar fits without scrolling
-        // and the 8-row More sheet is fully on-screen.
+        // Real-device size (Redmi Turbo 4 Pro logical width class).
         tester.view.physicalSize = const Size(471, 1020);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         await tester.pumpWidget(const GgenApp());
         await tester.pumpAndSettle();
 
-        // Full -> hide leaves NOTHING behind (device feedback: a hidden
-        // toolbar must not keep a 40px strip).
-        expect(find.byTooltip('Hide canvas toolbar'), findsOneWidget);
+        // Exactly one contextual action bar with the stable groups.
+        expect(find.byKey(ContextualActionBar.barKey), findsOneWidget);
         expect(find.byTooltip('Undo'), findsOneWidget);
-        await tester.tap(find.byTooltip('Hide canvas toolbar'));
-        await tester.pumpAndSettle();
-        expect(find.byTooltip('Hide canvas toolbar'), findsNothing);
-        expect(find.byTooltip('Undo'), findsNothing);
+        expect(find.byTooltip('Redo'), findsOneWidget);
+        expect(find.byTooltip('Zoom in'), findsOneWidget);
+        expect(find.byTooltip('Zoom out'), findsOneWidget);
+        expect(find.byTooltip('Fit to screen'), findsOneWidget);
+        expect(find.byTooltip('Show layers'), findsOneWidget);
 
-        // Restore through the More menu (Canvas toolbar action).
+        // The legacy dockable/collapsible toolbar is gone: no hide/mini/
+        // dock controls anywhere, and the More menu no longer offers them.
+        expect(find.byTooltip('Hide canvas toolbar'), findsNothing);
+        expect(find.byTooltip('Mini canvas toolbar'), findsNothing);
         await tester.tap(find.byTooltip('More actions'));
         await tester.pumpAndSettle();
-        await tester.tap(
-        find.widgetWithText(ListTile, 'Canvas toolbar'),
-      );
-        await tester.pumpAndSettle();
-        expect(find.byTooltip('Hide canvas toolbar'), findsOneWidget);
-
-        // Full -> mini leaves only the essentials.
-        await tester.tap(find.byTooltip('Mini canvas toolbar'));
-        await tester.pumpAndSettle();
-        expect(find.byTooltip('Expand canvas toolbar'), findsOneWidget);
-        expect(find.byTooltip('Mini canvas toolbar'), findsNothing);
-        expect(find.byTooltip('Zoom in'), findsOneWidget);
-        expect(find.byTooltip('Show layers'), findsNothing);
-
-        // Mini -> back to full.
-        await tester.tap(find.byTooltip('Expand canvas toolbar'));
-        await tester.pumpAndSettle();
-        expect(find.byTooltip('Mini canvas toolbar'), findsOneWidget);
+        expect(find.widgetWithText(ListTile, 'Canvas toolbar'), findsNothing);
+        expect(
+          find.widgetWithText(ListTile, 'Dock canvas toolbar'),
+          findsNothing,
+        );
       },
     );
 
-    testWidgets('canvas toolbar docks to the side and logs the change', (
-      tester,
-    ) async {
+    testWidgets('stored legacy toolbar preferences cannot revive the old '
+        'layout', (tester) async {
+      // A device that used the removed left/right dock + mini mode must
+      // still get the canonical layout (functionality preserved, stale
+      // customization ignored).
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'workspace.secondary_toolbar_mode': 'mini',
+        'workspace.secondary_toolbar_dock': 'left',
+        'workspace.top_action_pinned': <String>['canvasToolbar', 'dockToolbar'],
+      });
       tester.view.physicalSize = const Size(471, 1020);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      debugLog.clear();
       await tester.pumpWidget(const GgenApp());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('More actions'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Dock canvas toolbar'));
-      await tester.pumpAndSettle();
-
-      expect(
-        debugLog.entries.any(
-          (entry) =>
-              entry.event == 'canvas_toolbar_dock' &&
-              (entry.details['dock'] == 'left'),
-        ),
-        isTrue,
-        reason: 'first Dock action should move the toolbar to the left',
-      );
-      // The vertical toolbar is present (its Hide tooltip exists).
-      expect(find.byTooltip('Hide canvas toolbar'), findsOneWidget);
+      expect(find.byKey(MobileToolRail.railKey), findsOneWidget);
+      expect(find.byKey(ContextualActionBar.barKey), findsOneWidget);
+      expect(find.byTooltip('Expand canvas toolbar'), findsNothing);
+      expect(find.byTooltip('Hide canvas toolbar'), findsNothing);
+      // Unknown pinned ids fail closed: no phantom top-bar icons.
+      expect(find.byTooltip('Canvas toolbar'), findsNothing);
+      expect(find.byTooltip('Dock canvas toolbar'), findsNothing);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('new project creates a portrait artboard from the screen ratio', (
@@ -1077,11 +1076,10 @@ void main() {
       await tester.pumpWidget(GgenApp(controller: controller));
       await tester.pumpAndSettle();
 
-      // The compact Columns destination is enabled (a text frame is selected).
-      final columnsDest = find.text('Columns');
-      expect(columnsDest, findsOneWidget);
-      await tester.ensureVisible(columnsDest);
-      await tester.tap(columnsDest);
+      // The contextual Columns action appears (a text frame is selected).
+      final columnsAction = find.byTooltip('Columns');
+      expect(columnsAction, findsOneWidget);
+      await tester.tap(columnsAction);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('mobile_columns_slider')),
@@ -1249,7 +1247,7 @@ void main() {
       await tester.pumpWidget(GgenApp(controller: controller));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Columns'));
+      await tester.tap(find.byTooltip('Columns'));
       await tester.pumpAndSettle();
 
       // The sheet offers the link action next to the column controls.
