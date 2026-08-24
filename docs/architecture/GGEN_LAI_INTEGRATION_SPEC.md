@@ -1,71 +1,80 @@
 # GGEN ↔ LAI Integration Specification
 
-**Status:** Architecture baseline / implementation contract
+**Status:** Canonical cross-repository integration contract
 **Date:** 2026-08-24
 **Scope:** GGEN Creative & Document Studio ↔ LAI AI/runtime platform
 
 ## 1. Purpose
 
-This document defines the architectural boundary between GGEN and LAI. It is intentionally implementation-oriented: coding agents should treat this document as the contract to implement against, not as permission to merge the two repositories.
+This document defines the boundary between GGEN and LAI. It is an integration contract, not permission to merge the repositories or duplicate runtime infrastructure.
 
 ## 2. Non-negotiable boundary
 
-- GGEN remains a user-facing Creative + Document Studio.
-- LAI remains an AI intelligence, inference, agent, automation and execution platform.
+- GGEN remains the user-facing Creative + Document Studio.
+- LAI remains the AI intelligence, inference, agent, automation and execution platform.
 - Repositories remain independent.
-- GGEN MUST NOT embed llama.cpp, Vulkan, QNN, device scheduling, Android automation, or LAI model-runtime internals merely to obtain AI capabilities.
+- GGEN MUST NOT embed llama.cpp, Vulkan, QNN, device scheduling, Android automation, provider adapters, provider secrets, or LAI model-runtime internals merely to obtain AI capabilities.
 - LAI MUST NOT become a required dependency for basic GGEN editing, document production, import/export, or offline non-AI workflows.
 - Communication occurs through versioned capability contracts.
 - Either side may evolve independently when the contract remains compatible.
 
-## 3. Capability model
+## 3. Capability ownership
 
-The integration is capability-oriented rather than provider-oriented. GGEN asks for a capability; a provider decides how to satisfy it.
+The capability is requested by GGEN, but runtime authority is owned by LAI where the capability concerns AI execution or Android/device execution.
 
-Initial capability identifiers:
+| Capability | GGEN responsibility | LAI responsibility |
+|---|---|---|
+| `text.generate` | request/context/result UX | model/provider execution |
+| `vision.analyze` | document/image context and result UX | multimodal execution |
+| `ocr.extract` | source/result document workflow | OCR execution where supplied by runtime |
+| `image.generate` | creative workflow and editable result | generation provider/runtime |
+| `image.edit` | selection/mask/document integration | image model/provider execution |
+| `embedding.create` | knowledge/document use | embedding runtime/provider |
+| `document.transform` | document semantics and user approval | AI transformation execution |
+| `tool.execute` | request declared capability | policy, permission and execution authority |
+| `agent.run` | task objective and user-facing controls | bounded agent runtime and execution authority |
 
-| Capability | Purpose |
-|---|---|
-| `text.generate` | Generate or transform text |
-| `vision.analyze` | Analyze an image/document visual input |
-| `ocr.extract` | Extract text/layout from an image or document |
-| `image.generate` | Generate an image from a prompt/specification |
-| `image.edit` | Edit an existing image |
-| `embedding.create` | Create embeddings |
-| `document.transform` | AI-assisted document transformation |
-| `tool.execute` | Execute an explicitly authorized tool operation |
-| `agent.run` | Run a bounded agent task |
+## 4. Provider ownership
 
-Capabilities are extensible. Unknown capabilities MUST fail with a typed unsupported-capability error; clients MUST NOT silently reinterpret them.
+**LAI is the canonical owner of provider adapters, provider routing/failover, runtime credentials, model execution selection, and execution evidence.**
 
-## 4. Provider abstraction
+GGEN may present provider choices and user policy controls, but those are expressed as runtime constraints/preferences. GGEN MUST NOT maintain a second provider adapter/router stack for the same providers.
 
-GGEN SHOULD expose a provider registry with providers such as:
-
-- `lai`
-- `openai`
-- `gemini`
-- `anthropic`
-- `openai_compatible`
-- `custom_http`
-- future local/remote providers
-
-The GGEN UI and domain model SHOULD depend on capability interfaces, not provider-specific SDKs.
-
-Preferred routing examples:
+Preferred topology:
 
 ```text
-GGEN → LAI → local CPU
-GGEN → LAI → Vulkan/GPU
-GGEN → LAI → QNN/NPU
-GGEN → LAI → remote model/server
-GGEN → cloud provider
-GGEN → custom endpoint
+GGEN
+  Creative/Product UX
+       |
+       | capability contract + user constraints
+       v
+LAI Runtime Gateway
+       |
+   +---+---------+----------------+
+   |             |                |
+ Local runtime  Cloud providers  Custom endpoints
+ CPU/GPU/NPU    OpenAI/etc.       LAN/remote
 ```
 
-## 5. Canonical request envelope
+A future GGEN direct external-provider adapter is a client-side compatibility/fallback mechanism only; it must not duplicate LAI's Android/device authority or become a second canonical runtime. Any such adapter requires an explicit ADR and ownership review.
 
-A transport implementation may use JSON, HTTP, local IPC, Unix socket, Android Binder, or another mechanism. The logical envelope remains stable.
+## 5. Initial capability identifiers
+
+- `text.generate`
+- `vision.analyze`
+- `ocr.extract`
+- `image.generate`
+- `image.edit`
+- `embedding.create`
+- `document.transform`
+- `tool.execute`
+- `agent.run`
+
+Unknown capabilities MUST fail with a typed unsupported-capability error.
+
+## 6. Canonical request envelope
+
+A transport may use JSON, HTTP, local IPC, Android Binder, or another mechanism. The logical envelope remains stable.
 
 ```json
 {
@@ -73,15 +82,13 @@ A transport implementation may use JSON, HTTP, local IPC, Unix socket, Android B
   "request_id": "uuid",
   "capability": "text.generate",
   "operation": "generate",
-  "source": {
-    "application": "ggen",
-    "application_version": "..."
-  },
+  "source": {"application": "ggen", "application_version": "..."},
   "input": {},
   "context": {},
   "constraints": {
-    "latency_class": "interactive",
+    "execution": "auto",
     "privacy": "local_preferred",
+    "latency_class": "interactive",
     "max_cost": null
   },
   "stream": false,
@@ -89,15 +96,9 @@ A transport implementation may use JSON, HTTP, local IPC, Unix socket, Android B
 }
 ```
 
-Requirements:
+Requirements: unique request ID; explicit capability; explicit media/document references; no implicit shared filesystem paths; secrets excluded from ordinary metadata.
 
-- `request_id` MUST be unique per request.
-- `capability` MUST be explicit.
-- Inputs MUST identify media/document references rather than relying on implicit shared filesystem paths.
-- Constraints are advisory unless the provider explicitly declares support.
-- Secrets MUST NOT be placed in ordinary metadata.
-
-## 6. Canonical response envelope
+## 7. Canonical response envelope
 
 ```json
 {
@@ -105,10 +106,7 @@ Requirements:
   "request_id": "uuid",
   "status": "success",
   "output": {},
-  "provider": {
-    "id": "lai",
-    "execution": "local"
-  },
+  "provider": {"id": "lai", "execution": "local"},
   "usage": {},
   "provenance": {},
   "warnings": [],
@@ -116,275 +114,82 @@ Requirements:
 }
 ```
 
-`status` values:
+Statuses: `success`, `partial`, `failed`, `cancelled`, `unsupported`, `denied`, `timeout`.
 
-- `success`
-- `partial`
-- `failed`
-- `cancelled`
-- `unsupported`
-- `denied`
-- `timeout`
+## 8. Error contract
 
-A successful response MUST NOT imply that the result is authoritative or verified. Provenance and warnings should communicate model/provider limitations.
+Stable machine-readable errors include `invalid_request`, `unsupported_capability`, `unsupported_version`, `authentication_failed`, `authorization_denied`, `privacy_policy_denied`, `provider_unavailable`, `model_unavailable`, `resource_exhausted`, `input_invalid`, `output_invalid`, `tool_denied`, `timeout`, `cancelled`, and `internal_error`.
 
-## 7. Error contract
+The runtime decides retry/failover. GGEN receives normalized errors and presents appropriate UX.
 
-Errors MUST be machine-readable and stable.
+## 9. Discovery, health, streaming and cancellation
 
-Recommended classes:
+LAI/runtime providers SHOULD expose protocol version, identity/version, supported capabilities/media, streaming/cancellation support, authentication mode, execution locality and health/readiness. GGEN MUST NOT infer support from provider names.
 
-- `invalid_request`
-- `unsupported_capability`
-- `unsupported_version`
-- `authentication_failed`
-- `authorization_denied`
-- `privacy_policy_denied`
-- `provider_unavailable`
-- `model_unavailable`
-- `resource_exhausted`
-- `input_invalid`
-- `output_invalid`
-- `tool_denied`
-- `timeout`
-- `cancelled`
-- `internal_error`
-
-Errors MUST NOT cause an automatic provider fallback when the operation has side effects unless the policy explicitly allows it.
-
-## 8. Discovery and health
-
-A provider SHOULD expose:
-
-```text
-GET/inspect → protocol version
-              provider identity
-              supported capabilities
-              supported media
-              streaming support
-              cancellation support
-              authentication mode
-              execution locality
-              health/readiness
-```
-
-Capability discovery MUST be explicit. GGEN MUST NOT infer support from a provider name.
-
-## 9. Streaming and cancellation
-
-Interactive generation SHOULD support streaming when available. Every streamed event carries `request_id` and a monotonic sequence number.
-
-Cancellation is best-effort but MUST be explicit. A cancelled operation MUST eventually resolve to `cancelled` or a terminal provider error; it MUST NOT remain indefinitely ambiguous.
+Interactive generation SHOULD support streaming. Stream events carry request ID and monotonic sequence number. Cancellation is explicit and must eventually resolve to a terminal state.
 
 ## 10. File and media boundary
 
-Do not establish a hidden shared data directory between repositories.
-
-Preferred mechanisms, in order of suitability:
-
-1. bounded request payload for small content;
-2. explicit file/blob reference with ownership and expiry metadata;
-3. provider-managed upload/download channel;
-4. future platform-specific transport adapter.
-
-A file reference MUST specify enough information for the receiver to determine ownership, type, size and lifetime. Arbitrary filesystem paths MUST NOT cross the boundary.
+No hidden shared data directory between repositories. Prefer bounded payloads for small content, explicit expiring file/blob references, or provider-managed transfer. Arbitrary filesystem paths MUST NOT cross the boundary.
 
 ## 11. Privacy and execution locality
 
-GGEN SHOULD express user intent such as:
+GGEN expresses `local_only`, `local_preferred`, `cloud_allowed`, `remote_allowed`, or `network_required`. LAI enforces runtime execution policy. `local_only` MUST never silently leave the device.
 
-- `local_only`
-- `local_preferred`
-- `cloud_allowed`
-- `remote_allowed`
-- `network_required`
+GGEN remains usable if LAI is absent; manual/non-AI workflows never depend on LAI.
 
-A provider MUST reject a request when its execution policy violates a `local_only` constraint.
+## 12. Tool and agent boundary
 
-GGEN remains usable if LAI is absent. LAI is a preferred provider, not a hidden runtime dependency.
+GGEN requests capabilities; LAI owns policy, permission and execution. Tool requests must be explicitly declared, schema-validated, authorized, bounded, auditable, and fail closed when uncertain. For Android automation, LAI owns Accessibility/Shizuku/runtime safety; GGEN communicates intent rather than privileged handles.
 
-## 12. Tool execution boundary
+A bounded agent request carries objective, selected resource IDs, allowed capabilities/tools, constraints, confirmation policy, timeout and desired output type. The agent must not expand authority silently.
 
-`tool.execute` and `agent.run` are higher-risk capabilities.
+## 13. Fallback and idempotency
 
-GGEN MUST NOT grant LAI unrestricted authority over the host application or user filesystem. Tool requests must be:
+Provider fallback is a runtime concern. The runtime may move from preferred local execution to another allowed provider only when privacy, cost, capability and side-effect constraints permit it. `local_only` and non-idempotent side effects block unsafe fallback.
 
-1. explicitly declared;
-2. schema validated;
-3. authorized according to policy;
-4. bounded in scope;
-5. auditable;
-6. denied closed when validation/authorization is uncertain.
+Read/generation operations SHOULD support safe retries. Side-effecting operations MUST use an idempotency key or equivalent where practical; a timeout must not accidentally duplicate edits, files, external actions or charges.
 
-For Android automation, LAI remains responsible for its own Accessibility/Shizuku/runtime safety boundary. GGEN communicates intent, not raw privileged handles.
+## 14. Authentication and versioning
 
-## 13. Agent boundary
+Authentication is transport-specific. Provider credentials are runtime-owned and must never be persisted in ordinary GGEN project documents.
 
-GGEN may ask LAI to perform a bounded agent task, for example:
+Protocol and capability versions are independent. Additive optional fields should remain compatible; breaking changes require a new version.
 
-```text
-"Improve the selected document's layout while preserving its content."
-```
+## 15. Observability and provenance
 
-The request should carry:
+AI operations SHOULD produce request ID, capability, provider/runtime identity, execution locality, duration, status, usage/cost where available, warnings and evidence level. This does not authorize exposing private prompts or document contents.
 
-- task objective;
-- selected resource IDs;
-- allowed capabilities/tools;
-- constraints;
-- confirmation policy;
-- timeout;
-- desired output type.
+## 16. Contract ownership
 
-The agent MUST NOT silently expand authority from a document task into unrelated system operations.
+GGEN owns creative/document UX, creative/document domain state, document selection/context assembly, user-facing AI preferences/constraints, presentation/incorporation of AI results, and offline non-AI functionality.
 
-## 14. Fallback policy
-
-Provider fallback is a routing concern, not an implementation detail hidden inside every feature.
-
-Example:
-
-```text
-preferred: LAI/local
-       ↓ unavailable
-allowed: OpenAI-compatible remote
-       ↓ unavailable
-allowed: another configured provider
-       ↓ all unavailable
-GGEN returns a truthful AI-unavailable state
-```
-
-Fallback MUST respect privacy, cost, capability and side-effect constraints. No fallback is allowed when doing so would violate `local_only` or execute a non-idempotent side effect twice.
-
-## 15. Idempotency and side effects
-
-Read/generation operations SHOULD support safe retries. Side-effecting operations MUST support an idempotency key or equivalent mechanism where practical.
-
-The same request MUST NOT accidentally create duplicate files, duplicate edits, duplicate external actions, or duplicate charges after a timeout.
-
-## 16. Authentication and trust
-
-Authentication is transport-specific and MUST NOT be encoded into the capability semantics.
-
-Examples include:
-
-- local process trust;
-- Android app identity/IPC authorization;
-- API key/token for remote providers;
-- mutual authentication in future deployments.
-
-Credentials MUST be stored and handled by the provider/transport security layer, not persisted in ordinary GGEN project documents.
-
-## 17. Versioning
-
-Protocol and capability versions are independent.
-
-- Protocol uses semantic compatibility rules.
-- Capability schemas are versioned when their input/output semantics change.
-- Additive optional fields SHOULD remain backward compatible.
-- Breaking changes require a new version.
-- Providers MUST advertise supported versions.
-
-GGEN SHOULD retain a compatibility adapter rather than scattering version checks throughout UI code.
-
-## 18. Observability and provenance
-
-Every AI operation SHOULD produce a structured record containing:
-
-- request ID;
-- capability;
-- provider;
-- execution locality;
-- model/runtime identity where available;
-- duration;
-- status;
-- usage/cost where available;
-- warnings;
-- provenance/reference information.
-
-This is diagnostic/provenance data, not permission to expose private prompts or document contents.
-
-## 19. Contract ownership
-
-GGEN owns:
-
-- user experience;
-- creative/document domain model;
-- document selection/context assembly;
-- provider selection policy from the user's perspective;
-- presentation of AI results;
-- offline non-AI functionality.
-
-LAI owns:
-
-- model/runtime execution;
-- local inference backends;
-- device-aware scheduling;
-- agent runtime;
-- privileged Android automation;
-- model lifecycle;
-- runtime security/audit;
-- AI execution telemetry.
+LAI owns provider adapters/connectivity, routing/failover, local inference backends, model lifecycle/execution, device scheduling, agent runtime, privileged Android automation, runtime security/audit, execution evidence and runtime telemetry.
 
 Neither repository owns the other's internals.
 
-## 20. Initial implementation sequence
+## 17. Implementation sequence
 
-### P0 — Contract only
+### P0 — Contract reconciliation
 
-1. Freeze capability IDs.
-2. Define request/response/error schemas.
-3. Define discovery/health contract.
-4. Define privacy/execution constraints.
-5. Define file/media reference contract.
-6. Define versioning rules.
+Freeze capability IDs, request/response/error schemas, discovery/health, privacy constraints, media references and versioning. Reconcile all existing provider/router documentation in both repositories with this ownership decision before implementation.
 
-### P1 — GGEN provider layer
+### P1 — LAI runtime gateway
 
-1. Introduce provider/capability interfaces.
-2. Add a mock provider.
-3. Add a generic HTTP/OpenAI-compatible adapter where appropriate.
-4. Ensure all AI features can operate without LAI.
+Implement the runtime-side contract in LAI without disturbing existing CPU/device-validated paths.
 
-### P2 — LAI gateway adapter
+### P2 — GGEN client integration
 
-1. Implement the protocol endpoint in LAI.
-2. Map capabilities to LAI services.
-3. Return truthful unsupported/error states.
-4. Preserve LAI's existing safety/audit boundaries.
+Add only the GGEN client/transport/capability layer required to consume LAI. Existing GGEN AI UX remains independent of runtime internals.
 
 ### P3 — End-to-end validation
 
-Test:
+Validate text, OCR, vision, image generation/editing, cancellation, unavailable providers, local-only policy, malformed requests, unsupported capabilities, timeout/retry/idempotency and provenance. Expand only after the smallest contract is stable.
 
-- text generation;
-- OCR;
-- vision;
-- image generation/editing;
-- embedding;
-- bounded agent task;
-- cancellation;
-- unavailable provider;
-- local-only policy;
-- malformed request;
-- unsupported capability;
-- timeout/retry/idempotency;
-- provenance.
+## 18. Explicit non-goals
 
-## 21. Explicit non-goals
+This specification does not authorize moving LAI code into GGEN, moving GGEN's document model into LAI, embedding a second canonical provider/runtime stack in GGEN, unrestricted agent filesystem/shell access, direct GGEN coupling to llama.cpp/Vulkan/QNN, replacing manual workflows with AI-only workflows, or making LAI mandatory for GGEN startup/basic editing.
 
-This specification does NOT authorize:
+## 19. Agent instruction
 
-- moving LAI code into GGEN;
-- moving GGEN's document model into LAI;
-- embedding an LLM runtime in GGEN merely for convenience;
-- giving an AI agent unrestricted filesystem/shell access;
-- coupling GGEN UI directly to llama.cpp/Vulkan/QNN;
-- replacing manual workflows with AI-only workflows;
-- making LAI mandatory for GGEN startup or basic editing.
-
-## 22. Agent instruction
-
-Before implementing this contract, an agent MUST inspect the current repository architecture and existing documentation. It MUST preserve existing working behavior and tests unless a documented architectural change requires otherwise. Any deviation from this specification must be documented first and explicitly approved.
-
-The next implementation task should be a contract review and repository-specific mapping, not an immediate large refactor.
+Before implementation, inspect current repository architecture, source, tests and documentation in **both** repositories. Preserve working behavior. The first implementation task is contract reconciliation and repository-specific mapping, not a large refactor.
