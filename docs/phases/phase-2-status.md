@@ -183,3 +183,19 @@ Implements the page/link substrate for multi-frame text flow in `ggen_core` only
 **Architectural record:** `docs/architecture/page-linked-text-flow.md`.
 
 **Stage 4 (app integration) NOT started:** controller link/unlink (atomic, one undoable tool session), canvas linked-frame chain resolution/rendering, continuation/overflow indicators, `nextFrame` persistence round-trip, page-aware frame creation, legacy behavior preservation. App suite (198) is CI-verified on the PR; Stage 3 may surface widget tests pinning old mid-word splits (review, don't silently rewrite). No device claim is made here.
+
+## 2026-08-24 Linked text-flow app integration (Stage 4)
+
+Implements Stage 4 of the page-linked text-flow milestone on `feat/linked-text-flow-app` from the verified post-merge `main` (PR #52 / merge commit `7eacade`). The Stage-1–3 core substrate is reused unchanged; no second flow engine, no second link representation, no schema migration. **Core 143/143 (Dart 3.13.0) and app 237/237 (Flutter 3.47.0) verified locally with the exact CI toolchains; GitHub Actions re-runs the same gates on the PR. Not device-validated; a debug APK (the `android-build.yml` artifact) is the device-validation candidate.**
+
+**What shipped**
+- `StudioController.linkTextFrames`/`unlinkTextFrame`: one valid operation = exactly ONE undoable `ProjectToolSession`/`ProjectTransaction`; fail-closed (missing/wrong-kind/legacy-rect-less nodes and no-ops return false; self-links, cycles of any length, ambiguous two-predecessor targets throw before any mutation, validated through the core `TextFlowLinkResolver`); re-link replaces the successor; `deleteNodes` prunes dangling `nextFrame` references so the link graph stays well-formed.
+- `src/text_flow/linked_text_flow.dart` + canvas: `computeLinkedTextFlow` flows each multi-frame chain as ONE story (concatenated `text` in flow order) through the existing `TextFlowEngine`; each frame renders ONLY its assigned slices (conservation exact, no duplication). New indicators: blue right-arrow continuation tab (frame full, story continues — not an overflow) and the red corner tab shown exactly once per chain on the terminal frame (`terminalOverflowFrame`). Malformed links or a chain member without geometry/text/size fall back to the legacy standalone rendering. Chain font size = head frame's size (documented limitation).
+- Page-aware frame creation: the artboard is the page (`artboardAsPage`, zero-margin `PageGeometry`); `addTextNode` now places the frame entirely inside the page content bounds (`clampFrameIntoPage`), matching the shape placement contract (one pre-existing clamp test updated to the new contract).
+- Persistence: `nextFrame` round-trips through the existing `ProjectCodec` (+2 core codec tests) and controller save/restore; legacy documents without link metadata decode and render unchanged.
+- Minimal UI: wide inspector "Text flow" section (deterministic link candidates; "Flows into …" + Unlink; inspector content now scrollable) and the compact Columns sheet's live "Text flow" section. Invalid operations surface the fail-closed message in a SnackBar.
+- Tests: +16 module, +17 controller, +3 canvas, +2 widget app tests and +2 core codec tests (app 198 → 237, core 141 → 143); `dart analyze --fatal-infos` clean on core; `flutter analyze` adds no new findings.
+
+**Architectural record:** `docs/architecture/page-linked-text-flow.md` (Stage 4 section + limitations).
+
+**Pending on-device:** install the repository-built debug APK on the Redmi Turbo 4 Pro (`25053RT47C`) and run the linked-flow checklist (link/unlink, indicators, 2/3 columns, gutter, undo/redo, save/reload, no duplicated/lost characters). No device claim is made here.
