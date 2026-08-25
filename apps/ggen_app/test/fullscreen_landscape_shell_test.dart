@@ -2,21 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ggen_app/main.dart';
 import 'package:ggen_app/src/controller/studio_controller.dart';
-import 'package:ggen_app/src/workspace/control_layout.dart';
 import 'package:ggen_app/src/workspace/workspace_bars.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Fullscreen (immersive) control regions and the landscape device-class
-/// layout (2026-08-25 plan: `docs/architecture/fullscreen-control-and-
-/// landscape-plan.md`).
+/// Fullscreen (immersive) free-form control clusters and the landscape
+/// device-class layout (2026-08-25 plan: `docs/architecture/fullscreen-
+/// control-and-landscape-plan.md`, superseded by the free-form placement
+/// milestone).
 ///
 /// Pins:
 /// - landscape phones (800×360, 640×360) get ONE compact landscape bar and
 ///   no left rail / status bar / fixed zoom overlay (maximum usable canvas);
 /// - wide (1280×800) keeps the rail + status bar + zoom overlay;
-/// - immersive renders only the user's chosen control regions (default top
-///   bar and legacy fixed zoom overlay gone), with an enforced exit control;
-/// - customization persists through `workspace.fullscreen_regions`;
+/// - immersive renders only the user's free-form floating control clusters
+///   (default top bar and legacy fixed zoom overlay gone), with an enforced
+///   exit control;
+/// - cluster positions persist through `workspace.fullscreen_clusters`
+///   (normalized x/y, no region snapping); overlapping clusters all render;
+/// - idle clusters fade in place after `kFullscreenIdleTimeout` and restore
+///   on interaction;
 /// - orientation changes preserve tool/grid state.
 void main() {
   setUp(() {
@@ -41,10 +45,21 @@ void main() {
     await tester.pumpAndSettle();
     // The More sheet is capped at 9/16 of the screen height, so on short
     // viewports (e.g. 800×600 landscape) the Immersive row sits below the
-    // fold; reveal it before tapping.
-    await tester.ensureVisible(find.text('Immersive canvas'));
+    // fold. The action rows live in the sheet's lazily-built reorderable
+    // list — scroll until the row is built and visible, then tap it.
+    final immersiveRow = find.text('Immersive canvas');
+    await tester.scrollUntilVisible(
+      immersiveRow,
+      60,
+      scrollable: find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Immersive canvas'));
+    await tester.tap(immersiveRow);
     await tester.pumpAndSettle();
   }
 
@@ -117,19 +132,19 @@ void main() {
     });
   });
 
-  group('fullscreen control regions', () {
-    testWidgets('immersive renders only the default region clusters',
-        (tester) async {
+  group('fullscreen free-form control clusters', () {
+    testWidgets('immersive renders only the default clusters', (tester) async {
       await pumpAt(tester, const Size(471, 1020));
       await enterImmersive(tester);
 
       // Default top-right document cluster (with the enforced exit control).
       expect(find.byTooltip('Immersive canvas'), findsOneWidget);
+      expect(find.byTooltip('Open project'), findsOneWidget);
       expect(find.byTooltip('Save project'), findsOneWidget);
       expect(find.byTooltip('New project'), findsOneWidget);
       expect(find.byTooltip('Settings'), findsOneWidget);
 
-      // Default bottom-right history + movable zoom cluster.
+      // Default bottom-right history + zoom cluster.
       expect(find.byTooltip('Undo'), findsOneWidget);
       expect(find.byTooltip('Redo'), findsOneWidget);
       expect(find.byTooltip('Zoom in'), findsOneWidget);
@@ -157,24 +172,24 @@ void main() {
       await tester.tap(find.text('Customize fullscreen controls'));
       await tester.pumpAndSettle();
 
-      // Move Layers from bottom-left to top-left.
+      // Move Layers out of the default tools group into a NEW group.
       final tile = find.ancestor(
         of: find.text('Layers'),
         matching: find.byType(ListTile),
       );
       final popup = find.descendant(
         of: tile,
-        matching: find.byType(PopupMenuButton<ControlRegion?>),
+        matching: find.byType(PopupMenuButton<String?>),
       );
       await tester.tap(popup);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Top-left').last);
+      await tester.tap(find.text('New group…').last);
       await tester.pumpAndSettle();
 
       final prefs = await SharedPreferences.getInstance();
-      final stored = prefs.getString('workspace.fullscreen_regions');
+      final stored = prefs.getString('workspace.fullscreen_clusters');
       expect(stored, isNotNull);
-      expect(stored, contains('"topLeft"'));
+      expect(stored, contains('"group1"'));
       expect(stored, contains('"layers"'));
 
       // Close the sheet, enter immersive, and the moved control is present.
@@ -209,29 +224,109 @@ void main() {
       expect(undoButton().onPressed, isNotNull);
     });
 
-    testWidgets('dragging a fullscreen cluster snaps and persists the region',
-        (tester) async {
+    testWidgets('dragging a fullscreen cluster moves it freely (no snapping) '
+        'and persists the new position', (tester) async {
       await pumpAt(tester, const Size(800, 600));
       await enterImmersive(tester);
 
-      // Grab the bottom-right zoom cluster and drag it far to the top-left.
+      // Grab the bottom-right history cluster and drag it to the middle.
       final zoomIn = find.byTooltip('Zoom in');
       expect(zoomIn, findsOneWidget);
       final center = tester.getCenter(zoomIn);
       final gesture = await tester.startGesture(center);
       await tester.pump(const Duration(milliseconds: 700));
-      // From the bottom-right cluster (~778,570) to the top-left quadrant
-      // (<266, <300) of the 800×600 viewport.
-      await gesture.moveBy(const Offset(-560, -350));
+      // Two-step move: the first update establishes the drag origin, the
+      // second determines the free-form drop position.
+      await gesture.moveBy(const Offset(-100, -100));
+      await tester.pump();
+      await gesture.moveBy(const Offset(-200, -200));
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
 
       final prefs = await SharedPreferences.getInstance();
-      final stored = prefs.getString('workspace.fullscreen_regions');
+      final stored = prefs.getString('workspace.fullscreen_clusters');
       expect(stored, isNotNull);
-      expect(stored, contains('"topLeft"'));
-      expect(stored, contains('"zoomIn"'));
+      // Free-form position: the history cluster no longer sits at its
+      // default bottom-right anchor, and no region names exist anymore.
+      expect(stored, isNot(contains('"x":1.0,"y":1.0')));
+      expect(stored, isNot(contains('topLeft')));
+      expect(stored, isNot(contains('bottomRight')));
+      // The cluster is still rendered (never hidden by the move).
+      expect(find.byTooltip('Zoom in'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('overlapping clusters both render and stay independently '
+        'movable', (tester) async {
+      // Seed a saved layout with two clusters at the SAME position.
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'workspace.fullscreen_clusters':
+            '{"clusters":['
+            '{"id":"document","x":0.5,"y":0.5,'
+            '"controls":["save","newProject","settings"]},'
+            '{"id":"history","x":0.5,"y":0.5,'
+            '"controls":["undo","redo","zoomIn","zoomOut","zoomFit","grid"]}'
+            ']}',
+      });
+      await pumpAt(tester, const Size(800, 600));
+      await enterImmersive(tester);
+
+      // BOTH clusters render at the same spot — neither one disappears.
+      expect(find.byTooltip('Save project'), findsOneWidget);
+      expect(find.byTooltip('Undo'), findsOneWidget);
+      expect(find.byTooltip('Zoom in'), findsOneWidget);
+
+      // Drag the history cluster away; both clusters survive independently.
+      final zoomIn = find.byTooltip('Zoom in');
+      final center = tester.getCenter(zoomIn);
+      final gesture = await tester.startGesture(center);
+      await tester.pump(const Duration(milliseconds: 700));
+      await gesture.moveBy(const Offset(-50, -50));
+      await tester.pump();
+      await gesture.moveBy(const Offset(-250, -200));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Save project'), findsOneWidget);
+      expect(find.byTooltip('Zoom in'), findsOneWidget);
+      final stored = (await SharedPreferences.getInstance())
+          .getString('workspace.fullscreen_clusters');
+      expect(stored, contains('"history"'));
+      expect(stored, contains('"document"'));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('fullscreen controls fade when idle and restore on '
+        'interaction, without relocating', (tester) async {
+      await pumpAt(tester, const Size(471, 1020));
+      await enterImmersive(tester);
+
+      AnimatedOpacity documentOpacity() => tester.widget<AnimatedOpacity>(
+        find.byKey(const ValueKey('fullscreen_cluster_document')),
+      );
+      final before = tester.getTopLeft(find.byTooltip('Save project'));
+
+      // Fully prominent immediately after entering immersive.
+      expect(documentOpacity().opacity, 1);
+
+      // After the idle timeout the controls are subdued IN PLACE.
+      await tester.pump(kFullscreenIdleTimeout);
+      await tester.pumpAndSettle();
+      expect(documentOpacity().opacity, 0.45);
+      expect(tester.getTopLeft(find.byTooltip('Save project')), before);
+
+      // Any interaction restores full prominence.
+      await tester.tap(find.byTooltip('Grid'));
+      await tester.pumpAndSettle();
+      expect(documentOpacity().opacity, 1);
+      expect(tester.getTopLeft(find.byTooltip('Save project')), before);
+
+      // And the idle timer arms again after interaction.
+      await tester.pump(kFullscreenIdleTimeout);
+      await tester.pumpAndSettle();
+      expect(documentOpacity().opacity, 0.45);
       expect(tester.takeException(), isNull);
     });
   });

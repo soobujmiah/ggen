@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -19,11 +20,18 @@ import 'src/workspace/control_layout.dart';
 import 'src/workspace/workspace_bars.dart';
 import 'src/storage/file_project_store.dart';
 import 'src/storage/file_recovery_journal.dart';
+import 'src/storage/saved_project_summary.dart';
 
 import 'package:ggen_core/ggen_core.dart';
 
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 final Set<String> _loggedLayoutModes = <String>{};
+
+/// How long the fullscreen floating controls stay fully prominent after the
+/// last interaction. When idle they fade to a subdued opacity IN PLACE —
+/// they never relocate and never disappear. Public so widget tests can pump
+/// exactly this duration.
+const Duration kFullscreenIdleTimeout = Duration(seconds: 6);
 
 enum InspectorDock { left, right }
 
@@ -173,11 +181,29 @@ class _StudioShellState extends State<StudioShell> {
   bool _workspaceSettingsOpen = false;
   InspectorDock _inspectorDock = InspectorDock.right;
 
-  /// User-defined fullscreen (immersive) control placement. Normalized by
-  /// [CanvasControlLayout.resolve] so rendering is always deterministic and
-  /// the immersive exit control is always present.
+  /// User-defined fullscreen (immersive) control placement: free-form
+  /// floating clusters, each with its own normalized position. Normalized
+  /// by [CanvasControlLayout.resolve] so rendering is always deterministic
+  /// and the immersive exit control is always present.
   CanvasControlLayout _fullscreenLayout = CanvasControlLayout.defaults()
       .resolve();
+
+  /// Storage key of the most recently saved/opened project. Kept in shell
+  /// state so EVERY workspace preference save (not only the Save action)
+  /// preserves it — previously an unrelated preference change silently
+  /// cleared the startup-restore key.
+  String? _lastProjectKey;
+
+  /// Idle visual de-emphasis of the fullscreen floating controls: subdued
+  /// opacity while unused, restored to full prominence on any interaction.
+  /// Position and visibility are never affected by idle.
+  bool _fullscreenIdle = false;
+  Timer? _fullscreenIdleTimer;
+
+  /// Pointer position captured at the first update of a cluster drag; the
+  /// drop position is `origin + (end - start)`, so the drag is free-form
+  /// and 1:1 with the finger (no snapping).
+  Offset? _clusterDragStartPointer;
 
   /// The active primary tool. Typed ([StudioTool]) rather than a raw index:
   /// the on-device RangeError ("Not in inclusive range 0..2: 3") happened
@@ -235,6 +261,7 @@ class _StudioShellState extends State<StudioShell> {
 
   @override
   void dispose() {
+    _fullscreenIdleTimer?.cancel();
     _studio.removeListener(_onStudioChanged);
     // Method tear-offs of the same method on the same instance compare
     // equal, so this removes the handler added in initState.
@@ -396,6 +423,7 @@ class _StudioShellState extends State<StudioShell> {
     try {
       final restored = await _studio.restore(ProjectStorageKey(key));
       if (restored && mounted) {
+        setState(() => _lastProjectKey = key);
         debugLog.info('project_restore', 'Last project restored', {
           'key': key,
           'revision': _studio.revision,
@@ -425,17 +453,20 @@ class _StudioShellState extends State<StudioShell> {
       _topActionOrder = _sanitizeActionOrder(prefs.topActionOrder);
       _topActionPinned = _sanitizePinned(prefs.topActionPinned);
       // Empty stored config means "never customized": keep the built-in
-      // defaults. Only a non-empty stored map replaces them.
-      _fullscreenLayout = prefs.fullscreenRegions.isEmpty
-          ? CanvasControlLayout.defaults().resolve()
-          : CanvasControlLayout.fromPrefs(prefs.fullscreenRegions);
+      // defaults. The current cluster format wins; the retired region
+      // format migrates on first load (and is removed on next save).
+      _fullscreenLayout = prefs.fullscreenClusters.isNotEmpty
+          ? CanvasControlLayout.fromPrefs(prefs.fullscreenClusters)
+          : prefs.fullscreenRegions.isNotEmpty
+          ? CanvasControlLayout.fromLegacyRegions(prefs.fullscreenRegions)
+          : CanvasControlLayout.defaults().resolve();
     });
     debugLog.info('workspace_restore', 'Workspace preferences restored', {
       'inspector_visible': _showInspector,
       'canvas_first': _canvasFirst,
       'inspector_dock': _inspectorDock.name,
       'top_action_pinned': _topActionPinned.length,
-      'fullscreen_regions': _fullscreenLayout.regions.length,
+      'fullscreen_clusters': _fullscreenLayout.clusters.length,
     });
   }
 
@@ -490,19 +521,33 @@ class _StudioShellState extends State<StudioShell> {
     inspectorVisible: _showInspector,
     canvasFirst: _canvasFirst,
     inspectorDock: _inspectorDock.name,
+    lastProjectKey: _lastProjectKey,
     topActionOrder: <String>[for (final a in _topActionOrder) a.name],
     topActionPinned: <String>[
       for (final a in _topActionOrder)
         if (_topActionPinned.contains(a)) a.name,
     ],
-    fullscreenRegions: _fullscreenLayout.toPrefs(),
+    fullscreenClusters: _fullscreenLayout.toPrefs(),
   ).save();
 
+  /// Sentinel menu value for the customizer's "New group" option. Generated
+  /// cluster ids are `groupN`, so this can never collide.
+  static const String _newClusterSentinel = '__new__';
+
+  /// Human-friendly display name for a cluster id.
+  String _clusterLabel(String id) => switch (id) {
+    'document' => 'Document actions',
+    'history' => 'History & zoom',
+    'tools' => 'Tools',
+    _ => id,
+  };
+
   /// Opens the fullscreen control customization sheet: every
-  /// [CanvasControl] with a region picker (6 regions + Hidden), a reset
-  /// button, and immediate persistence. In fullscreen the same placement is
-  /// also reachable by long-pressing a control cluster and dragging it to
-  /// another corner (see [_onClusterDragEnd]).
+  /// [CanvasControl] with a cluster picker (existing groups + Hidden + New
+  /// group), a reset button, and immediate persistence. Cluster POSITIONS
+  /// are not edited here — in fullscreen the user long-presses any cluster
+  /// and drags it freely, which is the direct manipulation the sheet's
+  /// text describes.
   Future<void> _openFullscreenCustomizer() async {
     debugLog.info(
       'fullscreen_customize',
@@ -514,12 +559,8 @@ class _StudioShellState extends State<StudioShell> {
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) {
-          ControlRegion? regionOf(CanvasControl control) {
-            for (final entry in _fullscreenLayout.regions.entries) {
-              if (entry.value.contains(control)) return entry.key;
-            }
-            return null;
-          }
+          String? clusterOf(CanvasControl control) =>
+              _fullscreenLayout.clusterOf(control);
 
           return SafeArea(
             child: SizedBox(
@@ -563,9 +604,9 @@ class _StudioShellState extends State<StudioShell> {
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 20),
                     child: Text(
-                      'Choose where each control appears in fullscreen. In '
-                      'fullscreen, long-press a control cluster and drag it '
-                      'to another corner to move it.',
+                      'Choose which floating group each control belongs to. '
+                      'In fullscreen, long-press a group and drag it '
+                      'anywhere on the canvas — the position is saved.',
                       style: TextStyle(fontSize: 12, color: Colors.white60),
                     ),
                   ),
@@ -578,11 +619,11 @@ class _StudioShellState extends State<StudioShell> {
                             dense: true,
                             leading: Icon(control.icon),
                             title: Text(control.label),
-                            trailing: PopupMenuButton<ControlRegion?>(
-                              initialValue: regionOf(control),
+                            trailing: PopupMenuButton<String?>(
+                              initialValue: clusterOf(control),
                               onSelected: (target) {
                                 setSheetState(
-                                  () => _moveFullscreenControl(
+                                  () => _assignFullscreenControl(
                                     control,
                                     target,
                                     sheetContext,
@@ -590,21 +631,28 @@ class _StudioShellState extends State<StudioShell> {
                                 );
                               },
                               itemBuilder: (context) => [
-                                const PopupMenuItem<ControlRegion?>(
+                                const PopupMenuItem<String?>(
                                   value: null,
                                   child: Text('Hidden'),
                                 ),
-                                for (final region in ControlRegion.values)
-                                  PopupMenuItem<ControlRegion?>(
-                                    value: region,
-                                    child: Text(region.label),
+                                for (final cluster
+                                    in _fullscreenLayout.clusters)
+                                  PopupMenuItem<String?>(
+                                    value: cluster.id,
+                                    child: Text(_clusterLabel(cluster.id)),
                                   ),
+                                const PopupMenuItem<String?>(
+                                  value: _newClusterSentinel,
+                                  child: Text('New group…'),
+                                ),
                               ],
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    regionOf(control)?.label ?? 'Hidden',
+                                    clusterOf(control) == null
+                                        ? 'Hidden'
+                                        : _clusterLabel(clusterOf(control)!),
                                     style: const TextStyle(fontSize: 13),
                                   ),
                                   const Icon(Icons.arrow_drop_down),
@@ -625,12 +673,13 @@ class _StudioShellState extends State<StudioShell> {
   }
 
   /// Applies one control placement from the customizer: removes the control
-  /// from any region, optionally appends it to the chosen region, enforces
-  /// the per-region capacity, and persists. The immersive exit control can
-  /// never be hidden (the user must always be able to leave fullscreen).
-  void _moveFullscreenControl(
+  /// from any cluster, optionally appends it to the chosen cluster (or a
+  /// fresh one for "New group"), enforces the per-cluster capacity, and
+  /// persists. The immersive exit control can never be hidden (the user
+  /// must always be able to leave fullscreen).
+  void _assignFullscreenControl(
     CanvasControl control,
-    ControlRegion? target,
+    String? target,
     BuildContext sheetContext,
   ) {
     if (control == CanvasControl.immersive && target == null) {
@@ -641,41 +690,55 @@ class _StudioShellState extends State<StudioShell> {
       );
       return;
     }
-    final map = <ControlRegion, List<CanvasControl>>{
-      for (final entry in _fullscreenLayout.regions.entries)
-        entry.key: [...entry.value],
-    };
-    for (final list in map.values) {
-      list.remove(control);
+    if (target == _newClusterSentinel) {
+      final id = _fullscreenLayout.nextClusterId();
+      setState(
+        () =>
+            _fullscreenLayout = _fullscreenLayout.assignControl(control, id),
+      );
+      unawaited(_persistWorkspace());
+      debugLog.info(
+        'fullscreen_control_place',
+        'Fullscreen control placed in a new group',
+        {'control': control.name, 'cluster': id},
+      );
+      return;
     }
     if (target != null) {
-      final targetList = map[target] ?? <CanvasControl>[];
-      if (targetList.length >= CanvasControlLayout.maxControlsPerRegion) {
+      final existing = _fullscreenLayout.clusterById(target);
+      if (existing != null &&
+          existing.controls.length >=
+              CanvasControlLayout.maxControlsPerCluster &&
+          !existing.controls.contains(control)) {
         ScaffoldMessenger.of(sheetContext).showSnackBar(
           SnackBar(
             content: Text(
-              '${target.label} is full '
-              '(${CanvasControlLayout.maxControlsPerRegion} max)',
+              '${_clusterLabel(target)} is full '
+              '(${CanvasControlLayout.maxControlsPerCluster} max)',
             ),
           ),
         );
         return;
       }
-      map[target] = [...targetList, control];
     }
-    setState(() => _fullscreenLayout = CanvasControlLayout(map).resolve());
+    setState(
+      () => _fullscreenLayout = target == null
+          ? _fullscreenLayout.removeControl(control)
+          : _fullscreenLayout.assignControl(control, target),
+    );
     unawaited(_persistWorkspace());
     debugLog.info(
       'fullscreen_control_place',
       'Fullscreen control placement updated',
-      {'control': control.name, 'region': target?.name ?? 'hidden'},
+      {'control': control.name, 'cluster': target ?? 'hidden'},
     );
   }
 
-  /// Resolves the controls of one fullscreen region into concrete shell
+  /// Resolves the controls of one fullscreen cluster into concrete shell
   /// actions (same enablement rules as the compact bar): undo/redo need
   /// history, multi-select needs the Select tool, Columns needs a selected
-  /// text frame.
+  /// text frame. Every enabled action also bumps the idle-activity timer
+  /// so interacting with a subdued cluster restores its prominence.
   List<ResolvedControlAction> _resolveFullscreenActions(
     List<CanvasControl> controls,
   ) {
@@ -686,7 +749,7 @@ class _StudioShellState extends State<StudioShell> {
         debugLog.info(event, message, extra);
       }
     }
-    return [
+    final resolved = [
       for (final control in controls)
         ResolvedControlAction(
           control,
@@ -741,6 +804,7 @@ class _StudioShellState extends State<StudioShell> {
                 : null,
             CanvasControl.newProject =>
               () => unawaited(_runTopAction(EditorTopAction.newProject)),
+            CanvasControl.openProject => () => unawaited(_openProjectSheet()),
             CanvasControl.save =>
               () => unawaited(_runTopAction(EditorTopAction.save)),
             CanvasControl.diagnostics => () => unawaited(
@@ -756,115 +820,140 @@ class _StudioShellState extends State<StudioShell> {
           },
         ),
     ];
+    return [
+      for (final action in resolved)
+        action.onPressed == null
+            ? action
+            : ResolvedControlAction(
+                action.control,
+                selected: action.selected,
+                onPressed: () {
+                  _bumpFullscreenActivity();
+                  action.onPressed!();
+                },
+              ),
+    ];
   }
 
-  /// Builds one fullscreen control cluster for [region], draggable to
-  /// another region via [_onClusterDragEnd]. Width-bounded and horizontally
-  /// scrollable so it can never overflow or be clipped at any screen size.
-  Widget _fullscreenCluster(
-    ControlRegion region,
-    List<CanvasControl> controls,
+  /// Safe (cutout + gesture) edges the fullscreen clusters clamp into. The
+  /// canvas/background may draw edge-to-edge underneath system areas in
+  /// immersive mode, but interactive controls must stay fully reachable, so
+  /// clusters never render inside the view-padding insets.
+  EdgeInsets _fullscreenSafeEdges() {
+    final pad = MediaQuery.viewPaddingOf(context);
+    double atLeast8(double v) => v < 8 ? 8 : v;
+    return EdgeInsets.fromLTRB(
+      atLeast8(pad.left),
+      atLeast8(pad.top),
+      atLeast8(pad.right),
+      atLeast8(pad.bottom),
+    );
+  }
+
+  /// Builds one free-form fullscreen control cluster: positioned from its
+  /// persisted normalized position (clamped into the safe viewport),
+  /// draggable anywhere with no snapping, always rendered even when it
+  /// overlaps another cluster, and visually subdued after
+  /// [kFullscreenIdleTimeout] of inactivity.
+  Widget _freeCluster(
+    FullscreenControlCluster cluster,
     BoxConstraints constraints,
   ) {
-    final maxWidth = constraints.maxWidth - 16;
-    final cluster = CanvasControlCluster(
-      actions: _resolveFullscreenActions(controls),
-      maxWidth: maxWidth,
+    final safe = _fullscreenSafeEdges();
+    final viewport = constraints.biggest;
+    final clusterSize = estimatedClusterSize(cluster.controls.length);
+    // If the cluster is wider than the safe viewport it scrolls internally;
+    // the layout math must use the capped size so clamping stays exact.
+    final cappedSize = Size(
+      math.min(clusterSize.width, math.max(0.0, viewport.width - safe.horizontal)),
+      clusterSize.height,
     );
-    return _regionPositioned(
-      region,
-      LongPressDraggable<ControlRegion>(
-        data: region,
-        // 300ms beats the Tooltip long-press trigger (kLongPressTimeout) in
-        // the gesture arena, so holding a cluster always starts the move
-        // (and never pops the tooltip) — deterministic on device and in
-        // widget tests.
-        delay: const Duration(milliseconds: 300),
-        feedback: Material(
-          elevation: 6,
-          borderRadius: BorderRadius.circular(22),
-          color: Theme.of(context).colorScheme.surfaceContainerHigh,
-          child: Opacity(opacity: 0.92, child: cluster),
+    Offset pixelPosition() => CanvasControlLayout.clusterPixelsForNormalized(
+      cluster.position,
+      cappedSize,
+      viewport,
+      safe,
+    );
+    final clusterWidget = CanvasControlCluster(
+      actions: _resolveFullscreenActions(cluster.controls),
+      maxWidth: constraints.maxWidth - 16,
+    );
+    return Positioned(
+      // Identity key: bringClusterToFront reorders the Stack children while
+      // a drag may be ACTIVE — without a key the dragged element would be
+      // reparented to another cluster mid-gesture and the drag would die.
+      key: ValueKey('fullscreen_cluster_positioned_${cluster.id}'),
+      left: pixelPosition().dx,
+      top: pixelPosition().dy,
+      child: AnimatedOpacity(
+        key: ValueKey('fullscreen_cluster_${cluster.id}'),
+        opacity: _fullscreenIdle ? 0.45 : 1,
+        duration: const Duration(milliseconds: 250),
+        child: LongPressDraggable<String>(
+          data: cluster.id,
+          // 300ms beats the Tooltip long-press trigger (kLongPressTimeout)
+          // in the gesture arena, so holding a cluster always starts the
+          // move (and never pops the tooltip) — deterministic on device and
+          // in widget tests.
+          delay: const Duration(milliseconds: 300),
+          feedback: Material(
+            elevation: 6,
+            borderRadius: BorderRadius.circular(22),
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
+            child: Opacity(opacity: 0.92, child: clusterWidget),
+          ),
+          childWhenDragging: Opacity(opacity: 0.4, child: clusterWidget),
+          onDragStarted: () {
+            // The dragged cluster comes to the front so it receives
+            // gestures first while overlapping others; positions are only
+            // committed on drop.
+            _clusterDragStartPointer = null;
+            _bumpFullscreenActivity();
+            setState(
+              () => _fullscreenLayout = _fullscreenLayout
+                  .bringClusterToFront(cluster.id),
+            );
+          },
+          onDragUpdate: (details) {
+            _clusterDragStartPointer ??= details.globalPosition;
+          },
+          onDragEnd: (details) {
+            final start = _clusterDragStartPointer;
+            _clusterDragStartPointer = null;
+            if (start == null) return;
+            // Free-form drop: the cluster's origin plus the exact pointer
+            // delta — no nearest-region math, no snapping, no collision
+            // relocation. Normalized before persisting so the placement
+            // survives orientation/size changes.
+            final dropped = pixelPosition() + (details.offset - start);
+            final normalized = CanvasControlLayout.normalizedForClusterPixels(
+              dropped,
+              cappedSize,
+              viewport,
+              safe,
+            );
+            if ((normalized - cluster.position).distance < 0.0005) return;
+            setState(
+              () => _fullscreenLayout = _fullscreenLayout.moveCluster(
+                cluster.id,
+                normalized,
+              ),
+            );
+            unawaited(_persistWorkspace());
+            debugLog.info(
+              'fullscreen_control_move',
+              'Fullscreen control cluster moved',
+              {
+                'cluster': cluster.id,
+                'x': normalized.dx,
+                'y': normalized.dy,
+                'controls': cluster.controls.length,
+              },
+            );
+          },
+          child: clusterWidget,
         ),
-        childWhenDragging: Opacity(opacity: 0.4, child: cluster),
-        onDragEnd: (details) =>
-            _onClusterDragEnd(region, details.offset, constraints.biggest),
-        child: cluster,
       ),
-    );
-  }
-
-  /// Positions a fullscreen control cluster in [region], respecting the
-  /// camera cutout via [MediaQuery.viewPadding] so controls stay tappable
-  /// even while the canvas itself draws under the notch.
-  Widget _regionPositioned(
-    ControlRegion region,
-    Widget child,
-  ) {
-    final topInset = MediaQuery.viewPaddingOf(context).top;
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
-    final padded = Padding(
-      padding: EdgeInsets.only(top: topInset, bottom: bottomInset),
-      child: child,
-    );
-    switch (region) {
-      case ControlRegion.topLeft:
-        return Positioned(top: 8, left: 8, child: padded);
-      case ControlRegion.topRight:
-        return Positioned(top: 8, right: 8, child: padded);
-      case ControlRegion.topCenter:
-        return Positioned(
-          top: 8,
-          left: 0,
-          right: 0,
-          child: Center(child: padded),
-        );
-      case ControlRegion.bottomLeft:
-        return Positioned(bottom: 8, left: 8, child: padded);
-      case ControlRegion.bottomRight:
-        return Positioned(bottom: 8, right: 8, child: padded);
-      case ControlRegion.bottomCenter:
-        return Positioned(
-          bottom: 8,
-          left: 0,
-          right: 0,
-          child: Center(child: padded),
-        );
-    }
-  }
-
-  /// Drag-snap for a fullscreen control cluster: computes the nearest region
-  /// from the drop point (deterministic thirds/halves math) and moves the
-  /// whole cluster there, persisting the new placement.
-  void _onClusterDragEnd(
-    ControlRegion origin,
-    Offset drop,
-    Size viewport,
-  ) {
-    final target = CanvasControlLayout.nearestRegion(drop, viewport);
-    if (target == origin) return;
-    final controls = _fullscreenLayout.regions[origin];
-    if (controls == null || controls.isEmpty) return;
-    final map = <ControlRegion, List<CanvasControl>>{
-      for (final entry in _fullscreenLayout.regions.entries)
-        entry.key: [...entry.value],
-    };
-    map.remove(origin);
-    final incoming = [...controls];
-    map[target] = [
-      ...?map[target],
-      ...incoming,
-    ].take(CanvasControlLayout.maxControlsPerRegion).toList(growable: false);
-    setState(() => _fullscreenLayout = CanvasControlLayout(map).resolve());
-    unawaited(_persistWorkspace());
-    debugLog.info(
-      'fullscreen_control_move',
-      'Fullscreen control cluster moved',
-      {
-        'from': origin.name,
-        'to': target.name,
-        'controls': controls.length,
-      },
     );
   }
 
@@ -927,6 +1016,8 @@ class _StudioShellState extends State<StudioShell> {
   /// Runs a top action-bar action (pinned icon or a More-menu tap).
   Future<void> _runTopAction(EditorTopAction action) async {
     switch (action) {
+      case EditorTopAction.openProject:
+        await _openProjectSheet();
       case EditorTopAction.newProject:
         await _newProject(context);
       case EditorTopAction.save:
@@ -956,54 +1047,140 @@ class _StudioShellState extends State<StudioShell> {
     }
   }
 
-  /// Shows the More menu: every top action in configurable order with pin
-  /// (show in the top bar) and reorder (up/down) controls; tapping a row
-  /// runs the action.
+  /// Shows the More menu: every top action in configurable order.
+  ///
+  /// Normal state shows actions only — no reorder affordances take up
+  /// space. Press-and-hold a row to enter reorder mode for that row: the
+  /// drag handle and up/down arrows appear, dragging/arrows reorder,
+  /// release or any outside interaction returns the menu to normal.
+  /// Tapping a row (outside reorder mode) runs the action.
   Future<void> _showMoreMenu() async {
     debugLog.info('top_action_more', 'More menu opened');
+    int? reorderIndex;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.only(bottom: 16),
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
-                child: Text(
-                  'More actions',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        builder: (context, setSheetState) {
+          void exitReorder() {
+            if (reorderIndex != null) setSheetState(() => reorderIndex = null);
+          }
+
+          void moveRow(int from, int to) {
+            final action = _topActionOrder.removeAt(from);
+            _topActionOrder.insert(to, action);
+          }
+
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  child: Text(
+                    'More actions',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
-              ),
-              ListTile(
-                dense: true,
-                leading: const Icon(Icons.dashboard_customize_outlined),
-                title: const Text('Customize fullscreen controls'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  unawaited(_openFullscreenCustomizer());
-                },
-              ),
-              const Divider(height: 8),
-              for (var i = 0; i < _topActionOrder.length; i++)
-                _buildMoreRow(sheetContext, i, setSheetState),
-            ],
-          ),
-        ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.dashboard_customize_outlined),
+                  title: const Text('Customize fullscreen controls'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    unawaited(_openFullscreenCustomizer());
+                  },
+                ),
+                const Divider(height: 8),
+                Flexible(
+                  child: ReorderableListView(
+                    shrinkWrap: true,
+                    buildDefaultDragHandles: false,
+                    padding: const EdgeInsets.only(bottom: 16),
+                    onReorderItem: (oldIndex, newIndex) {
+                      setSheetState(() {
+                        moveRow(oldIndex, newIndex);
+                        reorderIndex = null;
+                      });
+                      setState(() {}); // shell: the bar reflects immediately
+                      debugLog.info(
+                        'top_action_reorder',
+                        'Action reordered via drag',
+                        {
+                          'action': _topActionOrder[newIndex].name,
+                          'from': oldIndex,
+                          'to': newIndex,
+                        },
+                      );
+                      unawaited(_persistWorkspace());
+                    },
+                    onReorderEnd: (_) => exitReorder(),
+                    children: [
+                      for (var i = 0; i < _topActionOrder.length; i++)
+                        _buildMoreRow(
+                          sheetContext: sheetContext,
+                          index: i,
+                          reorderMode: reorderIndex == i,
+                          reorderActive: reorderIndex != null,
+                          setSheetState: setSheetState,
+                          onEnterReorder: () =>
+                              setSheetState(() => reorderIndex = i),
+                          onExitReorder: exitReorder,
+                          onMoveUp: i == 0
+                              ? null
+                              : () {
+                                  setSheetState(() => moveRow(i, i - 1));
+                                  setState(() {});
+                                  debugLog.info(
+                                    'top_action_reorder',
+                                    'Action moved up',
+                                    {'action': _topActionOrder[i - 1].name},
+                                  );
+                                  unawaited(_persistWorkspace());
+                                },
+                          onMoveDown:
+                              i == _topActionOrder.length - 1
+                              ? null
+                              : () {
+                                  setSheetState(() => moveRow(i, i + 1));
+                                  setState(() {});
+                                  debugLog.info(
+                                    'top_action_reorder',
+                                    'Action moved down',
+                                    {'action': _topActionOrder[i + 1].name},
+                                  );
+                                  unawaited(_persistWorkspace());
+                                },
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildMoreRow(
-    BuildContext sheetContext,
-    int index,
-    StateSetter setSheetState,
-  ) {
+  Widget _buildMoreRow({
+    required BuildContext sheetContext,
+    required int index,
+    required bool reorderMode,
+    required bool reorderActive,
+    required StateSetter setSheetState,
+    required VoidCallback onEnterReorder,
+    required VoidCallback onExitReorder,
+    required VoidCallback? onMoveUp,
+    required VoidCallback? onMoveDown,
+  }) {
     final action = _topActionOrder[index];
     final pinned = _topActionPinned.contains(action);
     return ListTile(
+      key: ValueKey(action.name),
       dense: true,
       leading: IconButton(
         tooltip: pinned ? 'Hide from top bar' : 'Show in top bar',
@@ -1012,6 +1189,7 @@ class _StudioShellState extends State<StudioShell> {
         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
         visualDensity: VisualDensity.compact,
         onPressed: () {
+          onExitReorder();
           setSheetState(() {
             if (pinned) {
               _topActionPinned.remove(action);
@@ -1033,85 +1211,114 @@ class _StudioShellState extends State<StudioShell> {
         ),
       ),
       title: Text(action.label),
+      // Press-and-hold enters reorder mode; a normal tap runs the action.
+      // While ANY row is in reorder mode, tapping anywhere only leaves
+      // reorder mode — it never accidentally executes an action.
       onTap: () {
+        if (reorderActive) {
+          onExitReorder();
+          return;
+        }
         debugLog.info('top_action_run', 'Action run from More menu', {
           'action': action.name,
         });
         Navigator.pop(sheetContext);
         unawaited(_runTopAction(action));
       },
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            tooltip: 'Move up',
-            iconSize: 18,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            visualDensity: VisualDensity.compact,
-            onPressed: index == 0
-                ? null
-                : () {
-                    setSheetState(() {
-                      final prev = _topActionOrder[index - 1];
-                      _topActionOrder[index - 1] = action;
-                      _topActionOrder[index] = prev;
-                    });
-                    setState(() {});
-                    debugLog.info(
-                      'top_action_reorder',
-                      'Action moved up',
-                      {'action': action.name},
-                    );
-                    unawaited(_persistWorkspace());
-                  },
-            icon: const Icon(Icons.arrow_upward),
-          ),
-          IconButton(
-            tooltip: 'Move down',
-            iconSize: 18,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            visualDensity: VisualDensity.compact,
-            onPressed: index == _topActionOrder.length - 1
-                ? null
-                : () {
-                    setSheetState(() {
-                      final next = _topActionOrder[index + 1];
-                      _topActionOrder[index + 1] = action;
-                      _topActionOrder[index] = next;
-                    });
-                    setState(() {});
-                    debugLog.info(
-                      'top_action_reorder',
-                      'Action moved down',
-                      {'action': action.name},
-                    );
-                    unawaited(_persistWorkspace());
-                  },
-            icon: const Icon(Icons.arrow_downward),
-          ),
-        ],
-      ),
+      onLongPress: onEnterReorder,
+      trailing: !reorderMode
+          ? null
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Move up',
+                  iconSize: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onMoveUp,
+                  icon: const Icon(Icons.arrow_upward),
+                ),
+                IconButton(
+                  tooltip: 'Move down',
+                  iconSize: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onMoveDown,
+                  icon: const Icon(Icons.arrow_downward),
+                ),
+                // Drag handle: the only direct-drag entry point, visible
+                // exclusively in reorder mode.
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: ReorderableDragStartListener(
+                    index: index,
+                    child: const Icon(
+                      Icons.drag_indicator,
+                      size: 22,
+                      color: Colors.white54,
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 
   void _setImmersive(bool value) {
-    setState(() => _immersive = value);
+    setState(() {
+      _immersive = value;
+      if (!value) _fullscreenIdle = false;
+    });
+    if (value) {
+      _bumpFullscreenActivity();
+    } else {
+      _fullscreenIdleTimer?.cancel();
+    }
     // Hide the system bars in fullscreen so the canvas reaches the true
-    // screen edges instead of drawing under the status bar (device report:
-    // "fullscreen overlaps the status bar"). Restoring returns to normal
-    // edge-to-edge with bars visible; the SafeArea below guards the canvas
-    // from insets whenever the bars remain visible.
+    // physical display edges. In immersive the canvas deliberately draws
+    // underneath the (hidden) status-bar and cutout area — only the
+    // floating controls clamp into the safe insets. Restoring returns to
+    // normal edge-to-edge with bars visible; the SafeArea below guards the
+    // canvas from insets whenever the bars remain visible.
     unawaited(
       SystemChrome.setEnabledSystemUIMode(
         value ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
       ),
     );
+    final padding = MediaQuery.paddingOf(context);
+    final viewPadding = MediaQuery.viewPaddingOf(context);
     debugLog.info(
       'immersive_mode',
       value ? 'Canvas chrome hidden' : 'Canvas chrome restored',
+      {
+        'padding_top': padding.top.round(),
+        'padding_bottom': padding.bottom.round(),
+        'view_padding_top': viewPadding.top.round(),
+        'view_padding_bottom': viewPadding.bottom.round(),
+      },
     );
+  }
+
+  /// Marks fullscreen-control activity: restores full prominence and
+  /// (re)arms the idle timer that later fades the controls in place.
+  void _bumpFullscreenActivity() {
+    if (!mounted || !_immersive) return;
+    _fullscreenIdleTimer?.cancel();
+    _fullscreenIdleTimer = Timer(kFullscreenIdleTimeout, () {
+      if (mounted && _immersive) {
+        setState(() => _fullscreenIdle = true);
+      }
+    });
+    if (_fullscreenIdle) setState(() => _fullscreenIdle = false);
   }
 
   /// Opens the compact mobile column-configuration sheet for the selected
@@ -1260,17 +1467,11 @@ class _StudioShellState extends State<StudioShell> {
         'bytes': receipt.byteSize,
         'sha256': receipt.contentSha256,
       });
-      await WorkspacePreferences(
-        inspectorVisible: _showInspector,
-        canvasFirst: _canvasFirst,
-        inspectorDock: _inspectorDock.name,
-        lastProjectKey: receipt.key.value,
-        topActionOrder: <String>[for (final a in _topActionOrder) a.name],
-        topActionPinned: <String>[
-          for (final a in _topActionOrder)
-            if (_topActionPinned.contains(a)) a.name,
-        ],
-      ).save();
+      // Persist through the shared workspace save so the last-project key,
+      // action order/pins and fullscreen layout all stay consistent — no
+      // preference is dropped by saving a project.
+      setState(() => _lastProjectKey = receipt.key.value);
+      await _persistWorkspace();
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1287,6 +1488,118 @@ class _StudioShellState extends State<StudioShell> {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Save rejected: ${error.message}')),
+      );
+    }
+  }
+
+  String _formatSavedDate(DateTime time) {
+    final local = time.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  /// Opens the saved-projects sheet: every project the backing store
+  /// currently holds, most recently updated first, with name, revision,
+  /// storage key and save time. Tapping an entry opens it. Listing is
+  /// fail-closed — a listing failure or an empty store shows a friendly
+  /// empty state instead of crashing.
+  Future<void> _openProjectSheet() async {
+    debugLog.info('project_open_sheet', 'Open project sheet opened');
+    List<SavedProjectSummary> summaries;
+    try {
+      summaries = await _studio.listSavedProjects();
+    } catch (error) {
+      summaries = const <SavedProjectSummary>[];
+      debugLog.warning('project_open_sheet', 'Listing saved projects failed', {
+        'error': error.toString(),
+      });
+    }
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: summaries.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No saved projects yet. Save a project first, then it '
+                  'appears here.',
+                ),
+              )
+            : ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(bottom: 16),
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    child: Text(
+                      'Open project',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  for (final summary in summaries)
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.folder_open_outlined),
+                      title: Text(summary.name),
+                      subtitle: Text(
+                        'rev ${summary.revision} · ${summary.key} · '
+                        '${_formatSavedDate(summary.updatedAt)}',
+                      ),
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        unawaited(_openSavedProject(summary));
+                      },
+                    ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// Opens one saved project through the EXISTING store restore path (the
+  /// same mechanism startup restore uses — no second persistence system).
+  /// A missing/corrupt/malformed project fails safe: the current workspace
+  /// is left untouched and the condition is recorded in diagnostics.
+  Future<void> _openSavedProject(SavedProjectSummary summary) async {
+    // Captured up front: never touch a BuildContext after an async gap.
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final restored = await _studio.restore(ProjectStorageKey(summary.key));
+      if (!mounted) return;
+      if (restored) {
+        setState(() => _lastProjectKey = summary.key);
+        await _persistWorkspace();
+        debugLog.info('project_open', 'Project opened', {
+          'key': summary.key,
+          'name': _studio.project.name,
+          'revision': _studio.revision,
+        });
+        messenger.showSnackBar(
+          SnackBar(content: Text('Opened "${summary.name}"')),
+        );
+      } else {
+        debugLog.warning('project_open', 'Project missing or corrupt', {
+          'key': summary.key,
+        });
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Project missing or corrupt — nothing opened'),
+          ),
+        );
+      }
+    } on ArgumentError catch (error) {
+      debugLog.warning('project_open', 'Stored project key is malformed', {
+        'key': summary.key,
+        'error': error.toString(),
+      });
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Project key is malformed — nothing opened')),
       );
     }
   }
@@ -1327,13 +1640,17 @@ class _StudioShellState extends State<StudioShell> {
                     )
                   : const SizedBox.shrink();
               return SafeArea(
-                // The canvas must NEVER draw under the status bar in normal
-                // mode (device feedback: the canvas and zoomed content slid
-                // under the status bar). Top inset is therefore always
-                // consumed here; in immersive the system bars are hidden so
-                // the inset is 0 and the canvas still reaches the true
-                // screen top.
-                top: true,
+                // NORMAL mode: the canvas must NEVER draw under the status
+                // bar (device feedback: the canvas and zoomed content slid
+                // under the status bar), so the top inset is consumed here.
+                // IMMERSIVE mode: the canvas deliberately uses the FULL
+                // physical display area — device feedback reported an unused
+                // status-bar-height strip left above the canvas. The top
+                // inset is therefore NOT consumed in immersive; the system
+                // bars are hidden and the canvas/background extends behind
+                // the status-bar/cutout region, while the floating control
+                // clusters clamp themselves into the safe insets.
+                top: !_immersive,
                 bottom: _immersive,
                 left: false,
                 right: false,
@@ -1524,15 +1841,14 @@ class _StudioShellState extends State<StudioShell> {
                         ),
                       ),
                     ),
-                  // Fullscreen control regions: the user's chosen controls
-                  // rendered as persistent clusters, replacing the default
-                  // top bar and the legacy fixed zoom overlay.
+                  // Fullscreen control clusters: the user's chosen controls
+                  // rendered as free-form floating clusters (normalized
+                  // positions, no snapping), replacing the default top bar
+                  // and the legacy fixed zoom overlay. All clusters render
+                  // even when they overlap; the last-touched one is on top.
                   if (_immersive)
-                    for (final region in ControlRegion.values)
-                      if (_fullscreenLayout.regions[region]
-                          case final controls?
-                          when controls.isNotEmpty)
-                        _fullscreenCluster(region, controls, constraints),
+                    for (final cluster in _fullscreenLayout.clusters)
+                      _freeCluster(cluster, constraints),
                 ],
                 ),
               );
@@ -2957,6 +3273,7 @@ class StatusBar extends StatelessWidget {
 /// could be docked to three edges. Stored ids of removed actions fail
 /// closed through the existing sanitizers.
 enum EditorTopAction {
+  openProject('Open project', Icons.folder_open_outlined),
   newProject('New project', Icons.note_add_outlined),
   save('Save project', Icons.save_outlined),
   diagnostics('Diagnostics export', Icons.bug_report_outlined),

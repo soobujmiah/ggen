@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:ggen_core/ggen_core.dart';
 
+import 'saved_project_summary.dart';
+
 /// File-backed [TransactionalProjectStore].
 ///
 /// Layout under [root]:
@@ -17,7 +19,7 @@ import 'package:ggen_core/ggen_core.dart';
 /// This adapter is pure Dart and takes the root directory explicitly; the
 /// shell resolves the platform directory (path_provider) and passes it in,
 /// which keeps the adapter fully unit-testable without plugins.
-final class FileProjectStore implements TransactionalProjectStore {
+final class FileProjectStore implements TransactionalProjectStore, ProjectStoreListing {
   FileProjectStore(Directory root) : projectsDir = _ensureDir(root, 'projects');
 
   static const String fileExtension = '.ggen';
@@ -52,6 +54,52 @@ final class FileProjectStore implements TransactionalProjectStore {
   ProjectEnvelope? latest() {
     final key = _lastCommittedKey;
     return key == null ? null : _read(key);
+  }
+
+  /// Lists every decodable saved project in the store, most recently
+  /// modified first. Files that are not valid stored projects (wrong key
+  /// shape, corrupt payload) are skipped so the Open-project sheet never
+  /// surfaces something that would fail to open.
+  @override
+  Future<List<SavedProjectSummary>> listSavedProjects() async {
+    final out = <SavedProjectSummary>[];
+    final entities = projectsDir.existsSync()
+        ? projectsDir.listSync()
+        : const <FileSystemEntity>[];
+    for (final entity in entities) {
+      if (entity is! File || !entity.path.endsWith(fileExtension)) continue;
+      final fileName = entity.uri.pathSegments.last;
+      final keyValue = fileName.substring(
+        0,
+        fileName.length - fileExtension.length,
+      );
+      final ProjectStorageKey key;
+      try {
+        key = ProjectStorageKey(keyValue);
+      } on ArgumentError {
+        continue;
+      }
+      final ProjectEnvelope envelope;
+      try {
+        envelope = _read(key)!;
+      } catch (_) {
+        // Fail closed: any undecodable file (corrupt JSON, wrong schema,
+        // oversize payload, …) is simply not offered for opening.
+        continue;
+      }
+      final stat = entity.statSync();
+      out.add(
+        SavedProjectSummary(
+          key: key.value,
+          name: envelope.project.name,
+          revision: envelope.project.revision,
+          byteSize: stat.size,
+          updatedAt: stat.modified,
+        ),
+      );
+    }
+    out.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return out;
   }
 
   @override

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:ggen_core/ggen_core.dart';
 
+import 'saved_project_summary.dart';
+
 /// In-memory [TransactionalProjectStore] used until a platform storage
 /// decision is accepted.
 ///
@@ -10,9 +12,11 @@ import 'package:ggen_core/ggen_core.dart';
 /// atomically, receipts carry the canonical content digest and byte size,
 /// and a transaction opened with a stale expected revision is rejected.
 /// Envelopes are retained for the lifetime of the store (single process).
-final class MemoryProjectStore implements TransactionalProjectStore {
+final class MemoryProjectStore implements TransactionalProjectStore, ProjectStoreListing {
   final Map<ProjectStorageKey, ProjectEnvelope> _data =
       <ProjectStorageKey, ProjectEnvelope>{};
+  final Map<ProjectStorageKey, DateTime> _committedAt =
+      <ProjectStorageKey, DateTime>{};
   final ProjectCodec _codec = ProjectCodec(
     limits: ProjectCodecLimits.conservative(),
   );
@@ -27,6 +31,25 @@ final class MemoryProjectStore implements TransactionalProjectStore {
   ProjectEnvelope? latest() {
     final key = _lastCommittedKey;
     return key == null ? null : _data[key];
+  }
+
+  /// Lists every committed project, most recently committed first. Mirrors
+  /// the [FileProjectStore] listing semantics so the Open-project sheet
+  /// behaves identically in tests and on-device fallback.
+  @override
+  Future<List<SavedProjectSummary>> listSavedProjects() async {
+    final out = <SavedProjectSummary>[
+      for (final entry in _data.entries)
+        SavedProjectSummary(
+          key: entry.key.value,
+          name: entry.value.project.name,
+          revision: entry.value.project.revision,
+          byteSize: utf8.encode(_codec.encode(entry.value)).length,
+          updatedAt: _committedAt[entry.key] ?? DateTime.fromMillisecondsSinceEpoch(0),
+        ),
+    ];
+    out.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return out;
   }
 
   @override
@@ -50,6 +73,7 @@ final class MemoryProjectStore implements TransactionalProjectStore {
   void _commitEnvelope(ProjectStorageKey key, ProjectEnvelope envelope) {
     _data[key] = envelope;
     _lastCommittedKey = key;
+    _committedAt[key] = DateTime.now();
   }
 }
 

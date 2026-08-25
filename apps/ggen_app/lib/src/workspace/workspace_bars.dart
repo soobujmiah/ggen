@@ -286,10 +286,10 @@ class ResolvedControlAction {
 }
 
 /// Compact floating cluster of fullscreen controls rendered over the canvas
-/// in immersive mode, one per occupied [ControlRegion].
+/// in immersive mode, one per user-placed cluster (free-form, no regions).
 ///
 /// Contract: the cluster is width-bounded ([maxWidth]) and horizontally
-/// scrollable, so however many controls a region holds it can never overflow
+/// scrollable, so however many controls a cluster holds it can never overflow
 /// its constraints or be clipped (device finding: the old fixed zoom overlay
 /// could not grow). Buttons keep the shared 40×40 [ToolButton] contract.
 class CanvasControlCluster extends StatelessWidget {
@@ -313,12 +313,18 @@ class CanvasControlCluster extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           color: Theme.of(context).colorScheme.surfaceContainerHigh,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            // Constants shared with the free-form placement math
+            // (`control_layout.dart`), so the rendered size always matches
+            // the size the shell uses for clamping and hit-testing.
+            padding: const EdgeInsets.symmetric(
+              horizontal: kClusterHorizontalInset / 2,
+              vertical: kClusterVerticalInset / 2,
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (var i = 0; i < actions.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 2),
+                for (var i = 0; i < actions.length; i++) ...<Widget>[
+                  if (i > 0) const SizedBox(width: kControlButtonGap),
                   ToolButton(
                     icon: actions[i].control.icon,
                     tooltip: actions[i].control.label,

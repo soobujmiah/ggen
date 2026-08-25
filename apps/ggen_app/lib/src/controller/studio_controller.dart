@@ -10,6 +10,7 @@ import '../geometry/shape_geometry.dart';
 import '../storage/memory_project_store.dart';
 import '../storage/memory_recovery_journal.dart';
 import '../storage/payload_journal.dart';
+import '../storage/saved_project_summary.dart';
 
 /// App-layer controller that owns the current document project through the
 /// platform-neutral `ggen_core` contracts.
@@ -1438,6 +1439,22 @@ class StudioController extends ChangeNotifier {
     _clearSerialized();
     notifyListeners();
     return true;
+  }
+
+  /// Lists the projects the backing store currently holds, most recently
+  /// updated first. Stores without a listing capability (or listing
+  /// failures surfaced as exceptions) fail closed to an empty list.
+  Future<List<SavedProjectSummary>> listSavedProjects() async {
+    // Pattern binding: unrelated interface types don't flow-promote from a
+    // class-typed field in this SDK, and field promotion isn't a thing.
+    if (_store case final ProjectStoreListing listing) {
+      try {
+        return await listing.listSavedProjects();
+      } catch (_) {
+        return const <SavedProjectSummary>[];
+      }
+    }
+    return const <SavedProjectSummary>[];
   }
 
   /// Serializes the current envelope with the canonical bounded codec.
