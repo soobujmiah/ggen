@@ -10,6 +10,7 @@ import '../geometry/shape_geometry.dart';
 import '../storage/memory_project_store.dart';
 import '../storage/memory_recovery_journal.dart';
 import '../storage/payload_journal.dart';
+import '../storage/saved_project_summary.dart';
 
 /// App-layer controller that owns the current document project through the
 /// platform-neutral `ggen_core` contracts.
@@ -1435,9 +1436,56 @@ class StudioController extends ChangeNotifier {
       envelope.project,
       maxEntries: maxHistoryEntries,
     );
+    _reseedCountersFromProject(_history.current);
     _clearSerialized();
     notifyListeners();
     return true;
+  }
+
+  /// Largest numeric suffix across ids of the form `<prefix><n>` (0 when
+  /// none match). Keeps the per-kind id counters collision-free against
+  /// any document the controller is asked to restore.
+  static int _maxIdSuffix(Iterable<GgenId> ids, String prefix) {
+    var max = 0;
+    for (final id in ids) {
+      final value = id.value;
+      if (!value.startsWith(prefix)) continue;
+      final suffix = int.tryParse(value.substring(prefix.length));
+      if (suffix != null && suffix > max) max = suffix;
+    }
+    return max;
+  }
+
+  /// Reseeds the `node-`/`text-`/`group-` id counters from the current
+  /// document so the next generated id cannot collide with an existing
+  /// one. Called whenever a WHOLE project replaces the current one
+  /// (restore / Open Project / startup restore). The counters are never
+  /// decreased mid-session, so deletes, undo/redo and grouping/ungrouping
+  /// cannot reintroduce collisions.
+  void _reseedCountersFromProject(DocumentProject project) {
+    final ids = <GgenId>[
+      for (final artboard in project.artboards)
+        for (final node in artboard.nodes) node.id,
+    ];
+    _shapeCount = _maxIdSuffix(ids, 'node-');
+    _textCount = _maxIdSuffix(ids, 'text-');
+    _groupCount = _maxIdSuffix(ids, 'group-');
+  }
+
+  /// Lists the projects the backing store currently holds, most recently
+  /// updated first. Stores without a listing capability (or listing
+  /// failures surfaced as exceptions) fail closed to an empty list.
+  Future<List<SavedProjectSummary>> listSavedProjects() async {
+    // Pattern binding: unrelated interface types don't flow-promote from a
+    // class-typed field in this SDK, and field promotion isn't a thing.
+    if (_store case final ProjectStoreListing listing) {
+      try {
+        return await listing.listSavedProjects();
+      } catch (_) {
+        return const <SavedProjectSummary>[];
+      }
+    }
+    return const <SavedProjectSummary>[];
   }
 
   /// Serializes the current envelope with the canonical bounded codec.

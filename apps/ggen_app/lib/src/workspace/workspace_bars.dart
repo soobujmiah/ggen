@@ -16,6 +16,7 @@ class ToolButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.selected = false,
+    this.tooltipTriggerMode = TooltipTriggerMode.longPress,
     super.key,
   });
 
@@ -28,21 +29,30 @@ class ToolButton extends StatelessWidget {
   /// Selected/active state: filled primary container, obvious at a glance.
   final bool selected;
 
+  /// How the visual tooltip triggers. Fullscreen clusters use
+  /// [TooltipTriggerMode.manual] so the cluster's long-press DRAG owns the
+  /// gesture arena deterministically (the tooltip keeps contributing its
+  /// semantics label either way).
+  final TooltipTriggerMode tooltipTriggerMode;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      isSelected: selected,
-      icon: Icon(icon, size: 20),
-      style: IconButton.styleFrom(
-        padding: EdgeInsets.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: const Size(40, 40),
-        maximumSize: const Size(40, 40),
-        backgroundColor: selected ? scheme.primaryContainer : null,
-        foregroundColor: selected ? scheme.onPrimaryContainer : null,
+    return Tooltip(
+      message: tooltip,
+      triggerMode: tooltipTriggerMode,
+      child: IconButton(
+        onPressed: onPressed,
+        isSelected: selected,
+        icon: Icon(icon, size: 20),
+        style: IconButton.styleFrom(
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          minimumSize: const Size(40, 40),
+          maximumSize: const Size(40, 40),
+          backgroundColor: selected ? scheme.primaryContainer : null,
+          foregroundColor: selected ? scheme.onPrimaryContainer : null,
+        ),
       ),
     );
   }
@@ -286,21 +296,48 @@ class ResolvedControlAction {
 }
 
 /// Compact floating cluster of fullscreen controls rendered over the canvas
-/// in immersive mode, one per occupied [ControlRegion].
+/// in immersive mode, one per user-placed cluster (free-form, no regions).
 ///
 /// Contract: the cluster is width-bounded ([maxWidth]) and horizontally
-/// scrollable, so however many controls a region holds it can never overflow
+/// scrollable, so however many controls a cluster holds it can never overflow
 /// its constraints or be clipped (device finding: the old fixed zoom overlay
 /// could not grow). Buttons keep the shared 40×40 [ToolButton] contract.
 class CanvasControlCluster extends StatelessWidget {
   const CanvasControlCluster({
     required this.actions,
     this.maxWidth = 360,
+    this.tooltipTriggerMode = TooltipTriggerMode.longPress,
+    this.showDragHandle = false,
+    this.ignoreControlPresses = false,
+    this.onHandlePanStart,
+    this.onHandlePanUpdate,
+    this.onHandlePanEnd,
+    this.onHandlePanCancel,
     super.key,
   });
 
   final List<ResolvedControlAction> actions;
   final double maxWidth;
+
+  /// Forwarded to each [ToolButton]; the fullscreen shell passes
+  /// [TooltipTriggerMode.manual] so long-press always starts the cluster
+  /// drag instead of fighting the tooltip in the gesture arena.
+  final TooltipTriggerMode tooltipTriggerMode;
+
+  /// Dedicated drag grip. Immediate pan from the grip moves the cluster
+  /// without requiring a long-press on a control button.
+  final bool showDragHandle;
+
+  /// When true (an active cluster drag) control buttons ignore presses so
+  /// a drag cannot accidentally fire undo/save/exit.
+  final bool ignoreControlPresses;
+
+  final GestureDragStartCallback? onHandlePanStart;
+  final GestureDragUpdateCallback? onHandlePanUpdate;
+  final GestureDragEndCallback? onHandlePanEnd;
+  final GestureDragCancelCallback? onHandlePanCancel;
+
+  static const Key dragHandleKey = ValueKey('cluster_drag_handle');
 
   @override
   Widget build(BuildContext context) {
@@ -313,19 +350,57 @@ class CanvasControlCluster extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           color: Theme.of(context).colorScheme.surfaceContainerHigh,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            // Constants shared with the free-form placement math
+            // (`control_layout.dart`), so the rendered size always matches
+            // the size the shell uses for clamping and hit-testing.
+            padding: const EdgeInsets.symmetric(
+              horizontal: kClusterHorizontalInset / 2,
+              vertical: kClusterVerticalInset / 2,
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (var i = 0; i < actions.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 2),
-                  ToolButton(
-                    icon: actions[i].control.icon,
-                    tooltip: actions[i].control.label,
-                    selected: actions[i].selected,
-                    onPressed: actions[i].onPressed,
+                if (showDragHandle) ...[
+                  GestureDetector(
+                    key: dragHandleKey,
+                    behavior: HitTestBehavior.opaque,
+                    onPanStart: onHandlePanStart,
+                    onPanUpdate: onHandlePanUpdate,
+                    onPanEnd: onHandlePanEnd,
+                    onPanCancel: onHandlePanCancel,
+                    child: SizedBox(
+                      width: kClusterDragHandleExtent,
+                      height: kControlButtonExtent,
+                      child: Icon(
+                        Icons.drag_indicator,
+                        size: 16,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.55),
+                      ),
+                    ),
                   ),
+                  const SizedBox(width: kClusterDragHandleGap),
                 ],
+                IgnorePointer(
+                  ignoring: ignoreControlPresses,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < actions.length; i++) ...<Widget>[
+                        if (i > 0) const SizedBox(width: kControlButtonGap),
+                        ToolButton(
+                          icon: actions[i].control.icon,
+                          tooltip: actions[i].control.label,
+                          selected: actions[i].selected,
+                          onPressed: actions[i].onPressed,
+                          tooltipTriggerMode: tooltipTriggerMode,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -335,22 +410,19 @@ class CanvasControlCluster extends StatelessWidget {
   }
 }
 
-/// Compact landscape bottom bar — the ONE bottom surface of the
+/// Compact landscape RIGHT action rail of the
 /// [WorkspaceClass.compactLandscape] layout.
 ///
-/// Landscape phones previously fell into the "wide" branch (left rail +
-/// bottom status bar + fixed zoom overlay), wasting the short vertical
-/// space. This single 48px bar carries everything: tools (from
-/// [StudioTool.values], the same metadata as every other surface),
-/// history, zoom, view, and the contextual multi-select/columns entries.
-/// Horizontally scrollable and centered, so it can never overflow at any
-/// landscape width.
-class LandscapeBar extends StatelessWidget {
-  const LandscapeBar({
+/// Landscape phones have scarce vertical space (device: 1020×471,
+/// previous bottom bar left a 1020×367 canvas). Primary tools live on the
+/// LEFT [MobileToolRail]; this 52px RIGHT rail holds history, zoom, view
+/// and contextual actions. Vertically scrollable so a short 360px-class
+/// viewport can never overflow. There is no bottom bar.
+class LandscapeActionRail extends StatelessWidget {
+  const LandscapeActionRail({
     required this.controller,
     required this.zoomController,
     required this.activeTool,
-    required this.onSelectedTool,
     required this.gridVisible,
     required this.onToggleGrid,
     required this.onToggleMultiSelect,
@@ -362,12 +434,11 @@ class LandscapeBar extends StatelessWidget {
     super.key,
   });
 
-  static const Key barKey = ValueKey('landscape_bar');
+  static const Key railKey = ValueKey('landscape_action_rail');
 
   final StudioController controller;
   final CanvasZoomController zoomController;
   final StudioTool activeTool;
-  final ValueChanged<StudioTool> onSelectedTool;
   final bool gridVisible;
   final VoidCallback onToggleGrid;
   final VoidCallback onToggleMultiSelect;
@@ -378,8 +449,8 @@ class LandscapeBar extends StatelessWidget {
   final void Function(String event)? onDiagnostic;
 
   Widget _separator() => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 4),
-    child: Container(width: 1, height: 24, color: Colors.white24),
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Container(width: 24, height: 1, color: Colors.white24),
   );
 
   @override
@@ -388,14 +459,6 @@ class LandscapeBar extends StatelessWidget {
       listenable: controller,
       builder: (context, _) {
         final buttons = <Widget>[
-          for (final tool in StudioTool.values)
-            ToolButton(
-              icon: tool == activeTool ? tool.selectedIcon : tool.icon,
-              tooltip: tool.label,
-              selected: tool == activeTool,
-              onPressed: () => onSelectedTool(tool),
-            ),
-          _separator(),
           ToolButton(
             icon: Icons.undo,
             tooltip: 'Undo',
@@ -469,26 +532,22 @@ class LandscapeBar extends StatelessWidget {
             ),
         ];
         return Material(
-          key: barKey,
-          color: Theme.of(context).colorScheme.surfaceContainer,
+          key: railKey,
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
           child: SafeArea(
-            top: false,
+            left: false,
             child: SizedBox(
-              height: 48,
-              child: Center(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < buttons.length; i++) ...[
-                        if (i > 0 && buttons[i] is ToolButton)
-                          const SizedBox(width: 2),
-                        buttons[i],
-                      ],
+              width: 52,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < buttons.length; i++) ...[
+                      if (i > 0 && buttons[i] is ToolButton)
+                        const SizedBox(height: 2),
+                      buttons[i],
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),

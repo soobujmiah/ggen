@@ -153,4 +153,71 @@ void main() {
       expect(read.project.revision, 2);
     });
   });
+
+  group('saved project listing', () {
+    ProjectEnvelope namedEnvelope(int revision, String id, String name) =>
+        ProjectEnvelope(
+          project: DocumentProject(
+            id: GgenId(id),
+            name: name,
+            revision: revision,
+          ),
+          schemaVersion: ProjectSchemaVersion(ProjectSchemaVersion.current),
+        );
+
+    Future<void> commitProject(
+      FileProjectStore store,
+      String id,
+      String name,
+      int revision,
+    ) async {
+      final transaction = await store.begin(ProjectStorageKey(id));
+      await transaction.stage(namedEnvelope(revision, id, name));
+      await transaction.commit();
+    }
+
+    test('lists committed projects, most recently updated first', () async {
+      final store = FileProjectStore(root);
+      await commitProject(store, 'alpha', 'Alpha', 0);
+      await commitProject(store, 'beta', 'Beta', 3);
+      await File('${root.path}/projects/alpha.ggen').setLastModified(
+        DateTime(2026, 8, 20, 10),
+      );
+      await File('${root.path}/projects/beta.ggen').setLastModified(
+        DateTime(2026, 8, 22, 18),
+      );
+
+      final summaries = await store.listSavedProjects();
+      expect(summaries, hasLength(2));
+      expect(summaries.first.key, 'beta');
+      expect(summaries.first.name, 'Beta');
+      expect(summaries.first.revision, 3);
+      expect(summaries.first.byteSize, greaterThan(0));
+      expect(summaries.last.key, 'alpha');
+      expect(summaries.last.name, 'Alpha');
+      expect(summaries.last.revision, 0);
+    });
+
+    test('corrupt, invalid-key and non-project files are skipped', () async {
+      final store = FileProjectStore(root);
+      await commitProject(store, 'alpha', 'Alpha', 0);
+      // Corrupt payload with a valid key shape.
+      File('${root.path}/projects/corrupt.ggen')
+          .writeAsStringSync('{not valid json');
+      // Valid JSON that is not a project envelope.
+      File('${root.path}/projects/odd.ggen').writeAsStringSync('{"x":1}');
+      // File whose name is not a valid storage key.
+      File('${root.path}/projects/UPPER.ggen').writeAsStringSync('{}');
+      // Unrelated extension.
+      File('${root.path}/projects/notes.txt').writeAsStringSync('ignore me');
+
+      final summaries = await store.listSavedProjects();
+      expect(summaries, hasLength(1));
+      expect(summaries.single.key, 'alpha');
+    });
+
+    test('an empty store lists nothing', () async {
+      expect(await FileProjectStore(root).listSavedProjects(), isEmpty);
+    });
+  });
 }

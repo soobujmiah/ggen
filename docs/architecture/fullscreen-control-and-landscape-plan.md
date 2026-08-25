@@ -168,3 +168,15 @@ New entry tile "Customize fullscreen controls" at the top of the More sheet:
   control; immersive zoom overlay assertions now target the fullscreen
   cluster.
 - CI: `flutter test` (apps/ggen_app) + Public governance on push to `main`.
+
+## Supersession (2026-08-25): free-form placement replaces region snap
+
+The physical-device round confirmed the core plan (clusters over the canvas, enforced exit control, movable zoom) but rejected the region-snap interaction: controls overlapped, moving one cluster over another could make controls disappear, and snapping fought the user. The interaction model is therefore superseded by **free-form floating clusters**:
+
+- `ControlRegion` / `nearestRegion` removed. A cluster is `FullscreenControlCluster {id, controls, position}` with a NORMALIZED top-left anchor (x/y ∈ 0..1) persisted under `workspace.fullscreen_clusters` (legacy `workspace.fullscreen_regions` migrates on load, removed on next save).
+- Drag = long-press (300 ms) then 1:1 pointer delta — no snapping, no collision relocation. Overlapping clusters ALL render; the last-touched cluster is brought to front and receives gestures first. Positions persist; empty clusters drop out; `resolve()` still guarantees the immersive exit control (which is now free-placed like every other control).
+- Idle de-emphasis: after `kFullscreenIdleTimeout` (6 s) the clusters fade to 45% opacity IN PLACE; any interaction restores prominence. Positions never change on idle.
+- The customizer's per-control picker now assigns controls to floating groups (existing + Hidden + New group); positions are direct-manipulated on the canvas, not configured modally.
+- Immersive mode now also draws the canvas edge-to-edge (body SafeArea top inset not consumed in immersive) while clusters clamp into `MediaQuery.viewPadding` — the device-reported unused status-bar strip is addressed on the Flutter side (bars already hidden via `SystemUiMode.immersiveSticky`).
+
+The landscape device-class model (`WorkspaceClass`) survives. The compact-landscape **bottom** `LandscapeBar` was later replaced (2026-08-25 follow-up): tools live on the LEFT `MobileToolRail` and actions on the RIGHT `LandscapeActionRail` so the short vertical axis stays canvas. Fullscreen clusters gained a dedicated drag handle, idle opacity 0.82, and `cluster_drag_*` diagnostics.

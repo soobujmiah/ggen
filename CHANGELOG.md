@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-08-25 — Fullscreen cluster drag handle + landscape side rails
+
+Follows the post-fix Redmi Turbo 4 Pro round that verified the Duplicate-ID fix (open existing project → 6 rectangles + 5 ellipses + `text-1`, zero duplicate-ID / uncaught errors) and still reported faded/snapping fullscreen clusters plus a landscape bottom bar eating canvas height (1020×471 screen → 1020×367 canvas). Same PR #61 branch. **Pending device validation of this commit — no device claim until a fresh `android-build.yml` APK is tested.**
+
+- **Fullscreen drag handle**: each floating cluster now has a dedicated grip. Immediate pan from the grip moves the cluster 1:1 with no long-press delay; long-press on the cluster body still works. Control buttons are `IgnorePointer` while a drag is active so a drag cannot fire undo/save/exit. Size math includes the grip via `estimatedClusterSize(..., dragHandle: true)`.
+- **Idle fade floor** 0.6 → `kFullscreenIdleOpacity` 0.82 — subdued but clearly discoverable/usable. Dragged clusters never fade.
+- **Diagnostics**: `cluster_drag_start`, throttled `cluster_drag_update`, `cluster_drag_end`, `cluster_position`, `cluster_clamp` (safe-viewport bound only — not snap), `cluster_idle_fade`.
+- **Landscape chrome**: compact landscape no longer uses a bottom bar. LEFT `MobileToolRail` (Select/Rectangle/Ellipse/Text) + RIGHT `LandscapeActionRail` (history/zoom/view/context, vertically scrollable). Maximum canvas height. Portrait bottom `ContextualActionBar` unchanged. Immersive still replaces both rails with free-form clusters.
+- Duplicate-ID reseeding is **unchanged** (`restore()` still seeds `node-`/`text-`/`group-` counters from the loaded document).
+- More-menu long-press reorder is **unchanged**.
+- Tests: `control_layout_test` handle-size case; `fullscreen_landscape_shell_test` rewritten for side rails + new immediate-handle-drag case. CI at `2beacc4`: core 143/143, app 353/353, governance green. APK run `32848917825`, artifact `ggen-debug-apk`.
+
+## 2026-08-25 — Physical-device fixes follow-up: duplicate-node-ID regression + free-form fullscreen control UX refinements
+
+Follows the 2026-08-25 Redmi Turbo 4 Pro validation round (diagnostics `2026-08-25T07:26:32Z`) on the same feature branch as the previous entry (PR #61). That round exercised Open Project, true immersive fullscreen and the editing core successfully but exposed two follow-up areas, fixed here. **Pending device validation — no device claim until the fresh `android-build.yml` APK is tested on the Redmi Turbo 4 Pro.**
+
+- **Duplicate-node-ID regression (P0)**: the controller's `node-`/`text-`/`group-` id counters were never seeded from a loaded document, so the first new object after Open Project collided with the project's existing ids and `Artboard._requireUniqueIds` threw (on-device: 23 shapes silently lost, text add crashed with an uncaught error). `restore()` now reseeds the counters from the loaded project (max numeric suffix per id prefix); counters never decrease mid-session, so deletes, undo/redo and grouping/ungrouping cannot reintroduce collisions. The first new object after opening any project succeeds immediately; no uniqueness validation weakened, no errors swallowed.
+- **Fullscreen drag rework**: clusters now drag through an in-place long-press gesture (live 1:1 pointer tracking, clamped only into the safe viewport) instead of the `LongPressDraggable` feedback overlay; cluster buttons use manual-trigger tooltips (semantics preserved) so the drag owns every long press deterministically. Canceled gestures restore the drag-start position.
+- **Orientation-aware defaults**: never-customized fullscreen layouts now derive per orientation — portrait keeps the corner arrangement; landscape places one tool/navigation cluster on the LEFT side and one action cluster on the RIGHT side (vertically centered), leaving the center maximum canvas. First customization materializes defaults into persisted state; Reset returns to orientation-aware defaults.
+- **Idle de-emphasis**: fade floor raised 45% → `kFullscreenIdleOpacity` (0.6) — subdued but clearly visible and usable; interaction restores full prominence; a dragged cluster never fades mid-drag.
+- **Diagnostics**: new `fullscreen_control_drag_start` / `fullscreen_control_drag_cancel` events.
+- **Tests**: +13 → app suite **352/352** on the exact CI pins (Flutter 3.47.0 / Dart 3.13.0): new `duplicate_id_regression_test.dart` (7 tests); `control_layout_test.dart` +2; `fullscreen_landscape_shell_test.dart` +4 plus updates to the new drag/tooltip structure. Analyzer: no new findings (8 pre-existing baseline items). Core 143/143 unchanged.
+- **Docs**: `CURRENT_STATE.md`, `docs/phases/phase-2-status.md`, this entry.
+
+## 2026-08-25 — Physical-device UX fixes: Open/Load project, true immersive, free-form fullscreen controls, hidden reorder
+
+Responds to the 2026-08-24 Redmi Turbo 4 Pro validation round (crash-free diagnostics `2026-08-24T23:14:38Z`): the fixes target UX/behavior findings, not crashes. Feature branch from `main` `b061099`. **Pending device validation — no device claim until the fresh `android-build.yml` APK is tested on the Redmi Turbo 4 Pro.**
+
+- **Open/Load project**: `SavedProjectSummary` + `ProjectStoreListing` on both store adapters (corrupt/invalid entries skipped, most-recent-first); `StudioController.listSavedProjects()` fails closed; new `EditorTopAction.openProject` / `CanvasControl.openProject` → "Open project" sheet that restores through the EXISTING `restore(ProjectStorageKey)` path (no second persistence system; SAF stays a separate milestone). Missing/corrupt projects fail safe. Also fixed: unrelated workspace changes previously dropped `lastProjectKey` (startup restore silently lost the project) — the key is now preserved in every workspace save.
+- **True immersive canvas**: body `SafeArea` top inset not consumed in immersive — the canvas draws edge-to-edge under the hidden status-bar/cutout area (device-reported unused strip addressed) while floating controls clamp into `MediaQuery.viewPadding`. Normal mode unchanged. `immersive_mode` diagnostics record padding/view-padding.
+- **Free-form fullscreen controls**: region/snap model REMOVED (`ControlRegion`, `nearestRegion`). Clusters carry normalized positions (`workspace.fullscreen_clusters`, legacy regions migrate); drag is 1:1 with no snapping or collision relocation; overlapping clusters all render (last-touched on top); idle clusters fade to 45% in place after 6 s and restore on interaction; the immersive exit control stays guaranteed but free-placed.
+- **More menu**: reorder affordances hidden — long-press enters reorder mode (drag handle + arrows), tap executes, release/outside interaction returns to normal.
+- **Tests**: control-layout suite rewritten; fullscreen/landscape suite extended (free drag, overlap, idle); new `more_menu_reorder_test.dart` and `project_open_test.dart`; preferences and store listing tests updated/added.
+- **Docs**: `CURRENT_STATE.md`, `docs/phases/phase-2-status.md`, `docs/architecture/fullscreen-control-and-landscape-plan.md` (supersession), this entry.
+
 ## 2026-08-24 — Mobile workspace shell redesign + device bug fixes
 
 Redesigns the compact (<700px) workspace shell into ONE canonical layout and fixes the two Redmi Turbo 4 Pro device findings of 2026-08-24, on feature branch `feat/mobile-workspace-shell` from `main` (`b926b28`, post-PR #53). No core text-flow architecture change, no TextStory, no linked-text representation change, no schema change. **App 254/254 (Flutter 3.47.0, exact CI pin) and core 143/143 (Dart 3.13.0, exact CI SDK) verified locally; analyzer adds no new findings. Not device-validated — a fresh `android-build.yml` debug APK is the next device-validation candidate.**

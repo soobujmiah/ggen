@@ -226,6 +226,28 @@ void main() {
       expect(controller.revision, 0);
     });
 
+    test('listSavedProjects delegates to the backing listing store', () async {
+      final store = MemoryProjectStore();
+      final first = await store.begin(ProjectStorageKey('alpha'));
+      await first.stage(
+        ProjectEnvelope(
+          project: DocumentProject(
+            id: GgenId('alpha'),
+            name: 'Alpha',
+            revision: 1,
+          ),
+          schemaVersion: ProjectSchemaVersion(ProjectSchemaVersion.current),
+        ),
+      );
+      await first.commit();
+      final controller = StudioController(store: store);
+      final summaries = await controller.listSavedProjects();
+      expect(summaries, hasLength(1));
+      expect(summaries.single.key, 'alpha');
+      expect(summaries.single.name, 'Alpha');
+      expect(summaries.single.revision, 1);
+    });
+
     test('committed edits append bounded journal transactions', () async {
       final journal = MemoryRecoveryJournal(
         AutosavePolicy(

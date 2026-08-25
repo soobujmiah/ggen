@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persisted workspace preferences, including the top action-bar
-/// customization (order + which actions are pinned outside the More menu).
+/// customization (order + which actions are pinned outside the More menu)
+/// and the free-form fullscreen control layout.
 ///
 /// The legacy secondary-toolbar mode/dock keys ('full'/'mini'/'hidden',
 /// 'bottom'/'left'/'right') are retired with the canonical mobile
@@ -12,6 +13,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// collapsible. Stored legacy values are ignored on load and removed on
 /// the next save/clear so stale customization cannot resurrect the old
 /// layout. Project data is untouched.
+///
+/// The region-based fullscreen layout key (`workspace.fullscreen_regions`)
+/// is also retired: fullscreen controls are now free-form floating
+/// clusters persisted under `workspace.fullscreen_clusters`. The legacy
+/// key is still READ on load so existing placements migrate, and it is
+/// removed on the next save/clear.
 class WorkspacePreferences {
   const WorkspacePreferences({
     this.inspectorVisible = true,
@@ -20,6 +27,7 @@ class WorkspacePreferences {
     this.lastProjectKey,
     this.topActionOrder = const <String>[],
     this.topActionPinned = const <String>[],
+    this.fullscreenClusters = const <String, dynamic>{},
     this.fullscreenRegions = const <String, List<String>>{},
   });
 
@@ -39,10 +47,17 @@ class WorkspacePreferences {
   /// order they should appear; bounded and sanitized on load.
   final List<String> topActionPinned;
 
-  /// Fullscreen (immersive) control placement: region name → control ids,
-  /// as edited in the "Customize fullscreen controls" sheet. Empty means the
-  /// built-in default layout. Stored as one JSON string; sanitized by
-  /// `CanvasControlLayout.fromPrefs` on load so unknown ids fail closed.
+  /// Free-form fullscreen control layout in the current format
+  /// (`{"clusters": [{"id", "x", "y", "controls": [...]}]}`), as edited by
+  /// dragging clusters in fullscreen and by the "Customize fullscreen
+  /// controls" sheet. Empty means the built-in default layout. Stored as
+  /// one JSON string; sanitized by `CanvasControlLayout.fromPrefs` on load
+  /// so unknown ids fail closed.
+  final Map<String, dynamic> fullscreenClusters;
+
+  /// LEGACY region-based fullscreen placement (region name → control ids).
+  /// Read on load only, so existing placements migrate to the cluster
+  /// model; never written by `save()` (which removes the stored key).
   final Map<String, List<String>> fullscreenRegions;
 
   static const _inspectorKey = 'workspace.inspector_visible';
@@ -51,6 +66,10 @@ class WorkspacePreferences {
   static const _lastProjectKeyPref = 'workspace.last_project_key';
   static const _topActionOrderKey = 'workspace.top_action_order';
   static const _topActionPinnedKey = 'workspace.top_action_pinned';
+  static const _fullscreenClustersKey = 'workspace.fullscreen_clusters';
+
+  /// Retired region-based fullscreen key: still read for migration, removed
+  /// on save/clear.
   static const _fullscreenRegionsKey = 'workspace.fullscreen_regions';
 
   /// Retired keys of the removed dockable secondary toolbar; cleaned up on
@@ -69,6 +88,7 @@ class WorkspacePreferences {
       topActionOrder: prefs.getStringList(_topActionOrderKey) ?? const <String>[],
       topActionPinned:
           prefs.getStringList(_topActionPinnedKey) ?? const <String>[],
+      fullscreenClusters: _decodeClusters(prefs.getString(_fullscreenClustersKey)),
       fullscreenRegions: _decodeRegions(prefs.getString(_fullscreenRegionsKey)),
     );
   }
@@ -85,14 +105,16 @@ class WorkspacePreferences {
     }
     await prefs.setStringList(_topActionOrderKey, topActionOrder);
     await prefs.setStringList(_topActionPinnedKey, topActionPinned);
-    if (fullscreenRegions.isEmpty) {
-      await prefs.remove(_fullscreenRegionsKey);
+    if (fullscreenClusters.isEmpty) {
+      await prefs.remove(_fullscreenClustersKey);
     } else {
       await prefs.setString(
-        _fullscreenRegionsKey,
-        jsonEncode(fullscreenRegions),
+        _fullscreenClustersKey,
+        jsonEncode(fullscreenClusters),
       );
     }
+    // Migrated: the legacy region format is never written again.
+    await prefs.remove(_fullscreenRegionsKey);
     await prefs.remove(_legacyToolbarModeKey);
     await prefs.remove(_legacyToolbarDockKey);
   }
@@ -105,12 +127,26 @@ class WorkspacePreferences {
     await prefs.remove(_lastProjectKeyPref);
     await prefs.remove(_topActionOrderKey);
     await prefs.remove(_topActionPinnedKey);
+    await prefs.remove(_fullscreenClustersKey);
     await prefs.remove(_fullscreenRegionsKey);
     await prefs.remove(_legacyToolbarModeKey);
     await prefs.remove(_legacyToolbarDockKey);
   }
 
-  /// Decodes the stored fullscreen region JSON, failing closed to an empty
+  /// Decodes the stored fullscreen cluster JSON, failing closed to an empty
+  /// map on any malformed input so a corrupt value cannot crash the shell.
+  static Map<String, dynamic> _decodeClusters(String? raw) {
+    if (raw == null || raw.isEmpty) return const <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return const <String, dynamic>{};
+      return decoded;
+    } catch (_) {
+      return const <String, dynamic>{};
+    }
+  }
+
+  /// Decodes the stored legacy region JSON, failing closed to an empty
   /// map on any malformed input so a corrupt value cannot crash the shell.
   static Map<String, List<String>> _decodeRegions(String? raw) {
     if (raw == null || raw.isEmpty) return const <String, List<String>>{};

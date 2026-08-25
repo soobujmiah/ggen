@@ -112,4 +112,43 @@ void main() {
       expect(store.latest()!.project.revision, 1);
     });
   });
+
+  group('saved project listing', () {
+    test('lists committed projects, most recently committed first',
+        () async {
+      final store = MemoryProjectStore();
+      Future<void> commit(String id, String name, int revision) async {
+        final transaction = await store.begin(ProjectStorageKey(id));
+        await transaction.stage(
+          ProjectEnvelope(
+            project: DocumentProject(
+              id: GgenId(id),
+              name: name,
+              revision: revision,
+            ),
+            schemaVersion: ProjectSchemaVersion(ProjectSchemaVersion.current),
+          ),
+        );
+        await transaction.commit();
+      }
+
+      await commit('alpha', 'Alpha', 0);
+      // Distinct commit times keep the ordering deterministic.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await commit('beta', 'Beta', 3);
+
+      final summaries = await store.listSavedProjects();
+      expect(summaries, hasLength(2));
+      expect(summaries.first.key, 'beta');
+      expect(summaries.first.name, 'Beta');
+      expect(summaries.first.revision, 3);
+      expect(summaries.first.byteSize, greaterThan(0));
+      expect(summaries.last.key, 'alpha');
+      expect(summaries.last.name, 'Alpha');
+    });
+
+    test('an empty store lists nothing', () async {
+      expect(await MemoryProjectStore().listSavedProjects(), isEmpty);
+    });
+  });
 }
