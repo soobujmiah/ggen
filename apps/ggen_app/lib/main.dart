@@ -33,6 +33,13 @@ final Set<String> _loggedLayoutModes = <String>{};
 /// exactly this duration.
 const Duration kFullscreenIdleTimeout = Duration(seconds: 6);
 
+/// The fullscreen floating control clusters de-emphasize visually after
+/// [kFullscreenIdleTimeout] of inactivity, IN PLACE (they never relocate).
+/// The fade stops at this opacity — clearly visible enough to stay
+/// discoverable and usable on-device; any interaction restores full
+/// prominence.
+const double kFullscreenIdleOpacity = 0.6;
+
 enum InspectorDock { left, right }
 
 final Set<String> _loggedCanvasGeometries = <String>{};
@@ -155,6 +162,39 @@ class GgenApp extends StatelessWidget {
   }
 }
 
+/// Live state of one free-form fullscreen cluster drag. Positions are
+/// tracked in the fullscreen Stack's local coordinate space so the math is
+/// exact regardless of where the app is on screen, and the drag-start
+/// values allow a canceled gesture to restore the exact previous position.
+class _ClusterDragSession {
+  _ClusterDragSession({
+    required this.id,
+    required this.startPosition,
+    required this.startTopLeft,
+    required this.pointerStartLocal,
+    required this.clusterSize,
+    required this.viewport,
+    required this.safe,
+    required this.stackBox,
+  });
+
+  final String id;
+
+  /// Normalized position at drag start (restored if the drag is canceled).
+  final Offset startPosition;
+
+  /// Cluster top-left in stack-local pixels at drag start.
+  final Offset startTopLeft;
+
+  /// Pointer position (stack-local) when the long press was accepted.
+  final Offset pointerStartLocal;
+
+  final Size clusterSize;
+  final Size viewport;
+  final EdgeInsets safe;
+  final RenderBox stackBox;
+}
+
 class StudioShell extends StatefulWidget {
   const StudioShell({super.key, this.controller});
 
@@ -200,10 +240,21 @@ class _StudioShellState extends State<StudioShell> {
   bool _fullscreenIdle = false;
   Timer? _fullscreenIdleTimer;
 
-  /// Pointer position captured at the first update of a cluster drag; the
-  /// drop position is `origin + (end - start)`, so the drag is free-form
-  /// and 1:1 with the finger (no snapping).
-  Offset? _clusterDragStartPointer;
+  /// True while the stored fullscreen-cluster config is empty (the user
+  /// has never customized placement). In that state the built-in defaults
+  /// are orientation-aware: portrait keeps the familiar corner
+  /// arrangement, landscape moves the clusters to the LEFT and RIGHT sides
+  /// so the center stays maximum canvas. The first customization
+  /// materializes the currently rendered defaults into real user state.
+  bool _fullscreenLayoutIsDefault = true;
+
+  /// Active free-form fullscreen cluster drag, or null while not dragging.
+  _ClusterDragSession? _clusterDrag;
+
+  /// The immersive-mode body Stack; its RenderBox converts global pointer
+  /// positions into the Stack's local coordinate space during cluster
+  /// drags (exact regardless of SafeArea/inset offsets).
+  final GlobalKey _fullscreenStackKey = GlobalKey();
 
   /// The active primary tool. Typed ([StudioTool]) rather than a raw index:
   /// the on-device RangeError ("Not in inclusive range 0..2: 3") happened
@@ -453,13 +504,17 @@ class _StudioShellState extends State<StudioShell> {
       _topActionOrder = _sanitizeActionOrder(prefs.topActionOrder);
       _topActionPinned = _sanitizePinned(prefs.topActionPinned);
       // Empty stored config means "never customized": keep the built-in
-      // defaults. The current cluster format wins; the retired region
-      // format migrates on first load (and is removed on next save).
-      _fullscreenLayout = prefs.fullscreenClusters.isNotEmpty
+      // orientation-aware defaults (portrait corners / landscape sides).
+      // The current cluster format wins; the retired region format
+      // migrates on first load (and is removed on next save).
+      final hasStoredClusters = prefs.fullscreenClusters.isNotEmpty;
+      final hasLegacyRegions = prefs.fullscreenRegions.isNotEmpty;
+      _fullscreenLayoutIsDefault = !hasStoredClusters && !hasLegacyRegions;
+      _fullscreenLayout = hasStoredClusters
           ? CanvasControlLayout.fromPrefs(prefs.fullscreenClusters)
-          : prefs.fullscreenRegions.isNotEmpty
+          : hasLegacyRegions
           ? CanvasControlLayout.fromLegacyRegions(prefs.fullscreenRegions)
-          : CanvasControlLayout.defaults().resolve();
+          : CanvasControlLayout.defaults();
     });
     debugLog.info('workspace_restore', 'Workspace preferences restored', {
       'inspector_visible': _showInspector,
@@ -527,7 +582,9 @@ class _StudioShellState extends State<StudioShell> {
       for (final a in _topActionOrder)
         if (_topActionPinned.contains(a)) a.name,
     ],
-    fullscreenClusters: _fullscreenLayout.toPrefs(),
+    fullscreenClusters: _fullscreenLayoutIsDefault
+        ? const <String, dynamic>{}
+        : _fullscreenLayout.toPrefs(),
   ).save();
 
   /// Sentinel menu value for the customizer's "New group" option. Generated
@@ -549,6 +606,17 @@ class _StudioShellState extends State<StudioShell> {
   /// and drags it freely, which is the direct manipulation the sheet's
   /// text describes.
   Future<void> _openFullscreenCustomizer() async {
+    // Materialize the currently rendered orientation-aware defaults so the
+    // sheet edits (and persists) exactly what the user is looking at.
+    if (_fullscreenLayoutIsDefault) {
+      setState(() {
+        _fullscreenLayout = CanvasControlLayout.defaults(
+          landscape:
+              MediaQuery.of(context).orientation == Orientation.landscape,
+        );
+        _fullscreenLayoutIsDefault = false;
+      });
+    }
     debugLog.info(
       'fullscreen_customize',
       'Fullscreen customizer opened',
@@ -583,12 +651,18 @@ class _StudioShellState extends State<StudioShell> {
                         TextButton(
                           onPressed: () {
                             setSheetState(() {
-                              setState(
-                                () =>
-                                    _fullscreenLayout = CanvasControlLayout
-                                        .defaults()
-                                        .resolve(),
-                              );
+                              setState(() {
+                                _fullscreenLayout = CanvasControlLayout
+                                    .defaults(
+                                      landscape:
+                                          MediaQuery.of(context).orientation ==
+                                          Orientation.landscape,
+                                    );
+                                // Back to "never customized": the built-in
+                                // orientation-aware defaults take over
+                                // again (persisted as an empty config).
+                                _fullscreenLayoutIsDefault = true;
+                              });
                               unawaited(_persistWorkspace());
                             });
                             debugLog.info(
@@ -850,14 +924,36 @@ class _StudioShellState extends State<StudioShell> {
     );
   }
 
+  /// The layout actually rendered in fullscreen. While the user has never
+  /// customized placement ([_fullscreenLayoutIsDefault]) the built-in
+  /// defaults are derived per orientation — portrait keeps the familiar
+  /// corner arrangement, landscape uses left/right side clusters so the
+  /// center stays maximum canvas. Customized layouts render as stored;
+  /// their normalized positions re-clamp to any viewport at render time.
+  CanvasControlLayout _effectiveFullscreenLayout(BoxConstraints constraints) {
+    if (!_fullscreenLayoutIsDefault) return _fullscreenLayout;
+    return CanvasControlLayout.defaults(
+      landscape: constraints.maxWidth > constraints.maxHeight,
+    );
+  }
+
   /// Builds one free-form fullscreen control cluster: positioned from its
   /// persisted normalized position (clamped into the safe viewport),
   /// draggable anywhere with no snapping, always rendered even when it
   /// overlaps another cluster, and visually subdued after
   /// [kFullscreenIdleTimeout] of inactivity.
+  ///
+  /// Dragging is an in-place long-press gesture (no overlay feedback, no
+  /// arena fight with the buttons): hold the cluster until the long press
+  /// fires, then move — the cluster follows the pointer 1:1 and is clamped
+  /// only at the safe-viewport boundary. The cluster's buttons use manual
+  /// tooltips so the drag owns every long press deterministically (their
+  /// semantics labels keep accessibility intact); taps still execute
+  /// normally.
   Widget _freeCluster(
     FullscreenControlCluster cluster,
     BoxConstraints constraints,
+    CanvasControlLayout layout,
   ) {
     final safe = _fullscreenSafeEdges();
     final viewport = constraints.biggest;
@@ -874,9 +970,13 @@ class _StudioShellState extends State<StudioShell> {
       viewport,
       safe,
     );
+    final dragging = _clusterDrag?.id == cluster.id;
     final clusterWidget = CanvasControlCluster(
       actions: _resolveFullscreenActions(cluster.controls),
       maxWidth: constraints.maxWidth - 16,
+      // The drag IS the cluster's long press: manual tooltips keep the
+      // gesture arena deterministic (no competing long-press recognizer).
+      tooltipTriggerMode: TooltipTriggerMode.manual,
     );
     return Positioned(
       // Identity key: bringClusterToFront reorders the Stack children while
@@ -887,74 +987,136 @@ class _StudioShellState extends State<StudioShell> {
       top: pixelPosition().dy,
       child: AnimatedOpacity(
         key: ValueKey('fullscreen_cluster_${cluster.id}'),
-        opacity: _fullscreenIdle ? 0.45 : 1,
+        opacity: _fullscreenIdle && !dragging ? kFullscreenIdleOpacity : 1,
         duration: const Duration(milliseconds: 250),
-        child: LongPressDraggable<String>(
-          data: cluster.id,
-          // 300ms beats the Tooltip long-press trigger (kLongPressTimeout)
-          // in the gesture arena, so holding a cluster always starts the
-          // move (and never pops the tooltip) — deterministic on device and
-          // in widget tests.
-          delay: const Duration(milliseconds: 300),
-          feedback: Material(
-            elevation: 6,
-            borderRadius: BorderRadius.circular(22),
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: Opacity(opacity: 0.92, child: clusterWidget),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onLongPressStart: (details) => _startClusterDrag(
+            cluster,
+            layout,
+            cappedSize,
+            viewport,
+            safe,
+            details,
           ),
-          childWhenDragging: Opacity(opacity: 0.4, child: clusterWidget),
-          onDragStarted: () {
-            // The dragged cluster comes to the front so it receives
-            // gestures first while overlapping others; positions are only
-            // committed on drop.
-            _clusterDragStartPointer = null;
-            _bumpFullscreenActivity();
-            setState(
-              () => _fullscreenLayout = _fullscreenLayout
-                  .bringClusterToFront(cluster.id),
-            );
-          },
-          onDragUpdate: (details) {
-            _clusterDragStartPointer ??= details.globalPosition;
-          },
-          onDragEnd: (details) {
-            final start = _clusterDragStartPointer;
-            _clusterDragStartPointer = null;
-            if (start == null) return;
-            // Free-form drop: the cluster's origin plus the exact pointer
-            // delta — no nearest-region math, no snapping, no collision
-            // relocation. Normalized before persisting so the placement
-            // survives orientation/size changes.
-            final dropped = pixelPosition() + (details.offset - start);
-            final normalized = CanvasControlLayout.normalizedForClusterPixels(
-              dropped,
-              cappedSize,
-              viewport,
-              safe,
-            );
-            if ((normalized - cluster.position).distance < 0.0005) return;
-            setState(
-              () => _fullscreenLayout = _fullscreenLayout.moveCluster(
-                cluster.id,
-                normalized,
-              ),
-            );
-            unawaited(_persistWorkspace());
-            debugLog.info(
-              'fullscreen_control_move',
-              'Fullscreen control cluster moved',
-              {
-                'cluster': cluster.id,
-                'x': normalized.dx,
-                'y': normalized.dy,
-                'controls': cluster.controls.length,
-              },
-            );
-          },
+          onLongPressMoveUpdate: (details) => _updateClusterDrag(details),
+          onLongPressEnd: (_) => _endClusterDrag(canceled: false),
+          onLongPressCancel: () => _endClusterDrag(canceled: true),
           child: clusterWidget,
         ),
       ),
     );
+  }
+
+  /// Begins a free-form cluster drag at the long-press point. When the
+  /// currently rendered layout is still the built-in default, it is
+  /// materialized into real user state first so the drag (and everything
+  /// after it) edits exactly what the user is looking at.
+  void _startClusterDrag(
+    FullscreenControlCluster cluster,
+    CanvasControlLayout layout,
+    Size clusterSize,
+    Size viewport,
+    EdgeInsets safe,
+    LongPressStartDetails details,
+  ) {
+    if (_clusterDrag != null) return;
+    final stackBox = _fullscreenStackKey.currentContext?.findRenderObject();
+    if (stackBox is! RenderBox) return;
+    if (_fullscreenLayoutIsDefault) {
+      _fullscreenLayout = layout;
+      _fullscreenLayoutIsDefault = false;
+    }
+    final startTopLeft = CanvasControlLayout.clusterPixelsForNormalized(
+      cluster.position,
+      clusterSize,
+      viewport,
+      safe,
+    );
+    _clusterDrag = _ClusterDragSession(
+      id: cluster.id,
+      startPosition: cluster.position,
+      startTopLeft: startTopLeft,
+      pointerStartLocal: stackBox.globalToLocal(details.globalPosition),
+      clusterSize: clusterSize,
+      viewport: viewport,
+      safe: safe,
+      stackBox: stackBox,
+    );
+    _bumpFullscreenActivity();
+    setState(
+      () => _fullscreenLayout = _fullscreenLayout.bringClusterToFront(
+        cluster.id,
+      ),
+    );
+    debugLog.info(
+      'fullscreen_control_drag_start',
+      'Fullscreen control cluster drag started',
+      {
+        'cluster': cluster.id,
+        'x': cluster.position.dx,
+        'y': cluster.position.dy,
+        'controls': cluster.controls.length,
+      },
+    );
+  }
+
+  /// Moves the dragged cluster 1:1 with the pointer, clamped ONLY into the
+  /// safe viewport. No snapping, no nearest-region math, no collision
+  /// relocation.
+  void _updateClusterDrag(LongPressMoveUpdateDetails details) {
+    final drag = _clusterDrag;
+    if (drag == null) return;
+    final pointerLocal = drag.stackBox.globalToLocal(details.globalPosition);
+    final topLeft = drag.startTopLeft + (pointerLocal - drag.pointerStartLocal);
+    final normalized = CanvasControlLayout.normalizedForClusterPixels(
+      topLeft,
+      drag.clusterSize,
+      drag.viewport,
+      drag.safe,
+    );
+    setState(
+      () => _fullscreenLayout = _fullscreenLayout.moveCluster(
+        drag.id,
+        normalized,
+      ),
+    );
+  }
+
+  /// Ends the active drag: commits and persists the free-form position, or
+  /// restores the drag-start position when the gesture was canceled.
+  void _endClusterDrag({required bool canceled}) {
+    final drag = _clusterDrag;
+    if (drag == null) return;
+    _clusterDrag = null;
+    setState(() {
+      if (canceled) {
+        _fullscreenLayout = _fullscreenLayout.moveCluster(
+          drag.id,
+          drag.startPosition,
+        );
+        debugLog.info(
+          'fullscreen_control_drag_cancel',
+          'Fullscreen control cluster drag canceled',
+          {'cluster': drag.id},
+        );
+      } else {
+        final cluster = _fullscreenLayout.clusterById(drag.id);
+        if (cluster != null) {
+          debugLog.info(
+            'fullscreen_control_move',
+            'Fullscreen control cluster moved',
+            {
+              'cluster': drag.id,
+              'x': cluster.position.dx,
+              'y': cluster.position.dy,
+              'controls': cluster.controls.length,
+            },
+          );
+        }
+      }
+    });
+    if (!canceled) unawaited(_persistWorkspace());
   }
 
   /// Opens the workspace settings sheet (moved out of the bottom
@@ -1655,6 +1817,7 @@ class _StudioShellState extends State<StudioShell> {
                 left: false,
                 right: false,
                 child: Stack(
+                key: _fullscreenStackKey,
                 children: [
                   Row(
                     children: [
@@ -1846,9 +2009,17 @@ class _StudioShellState extends State<StudioShell> {
                   // positions, no snapping), replacing the default top bar
                   // and the legacy fixed zoom overlay. All clusters render
                   // even when they overlap; the last-touched one is on top.
+                  // Never-customized defaults are orientation-aware:
+                  // portrait keeps the corner arrangement, landscape places
+                  // the clusters on the LEFT and RIGHT sides.
                   if (_immersive)
-                    for (final cluster in _fullscreenLayout.clusters)
-                      _freeCluster(cluster, constraints),
+                    for (final cluster
+                        in _effectiveFullscreenLayout(constraints).clusters)
+                      _freeCluster(
+                        cluster,
+                        constraints,
+                        _effectiveFullscreenLayout(constraints),
+                      ),
                 ],
                 ),
               );

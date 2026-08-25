@@ -124,10 +124,22 @@ class CanvasControlLayout {
   /// many controls, but keeping them small keeps them usable.
   static const int maxControlsPerCluster = 6;
 
-  /// Sensible first-run layout: project actions top-right, history + zoom
-  /// bottom-right, context tools bottom-left. Anchored at normalized corner
-  /// positions so the layout lands in the corners on any screen.
-  factory CanvasControlLayout.defaults() => CanvasControlLayout(const [
+  /// Sensible first-run layout, orientation-aware.
+  ///
+  /// PORTRAIT: project actions top-right, history + zoom bottom-right,
+  /// context tools bottom-left (anchored at normalized corner positions so
+  /// the layout lands in the corners on any screen).
+  ///
+  /// LANDSCAPE: vertical space is scarce, so the defaults place ONE primary
+  /// tool/navigation cluster on the LEFT side and ONE action cluster on the
+  /// RIGHT side (both vertically centered in the available space) — the
+  /// center of the screen remains maximum canvas.
+  factory CanvasControlLayout.defaults({bool landscape = false}) =>
+      CanvasControlLayout(
+        landscape ? _landscapeDefaults : _portraitDefaults,
+      ).resolve();
+
+  static const List<FullscreenControlCluster> _portraitDefaults = [
     FullscreenControlCluster(
       id: 'document',
       position: Offset(1, 0),
@@ -159,7 +171,34 @@ class CanvasControlLayout {
         CanvasControl.columns,
       ],
     ),
-  ]).resolve();
+  ];
+
+  static const List<FullscreenControlCluster> _landscapeDefaults = [
+    FullscreenControlCluster(
+      id: 'tools',
+      position: Offset(0, 0.5),
+      controls: [
+        CanvasControl.undo,
+        CanvasControl.redo,
+        CanvasControl.zoomOut,
+        CanvasControl.zoomFit,
+        CanvasControl.zoomIn,
+        CanvasControl.layers,
+      ],
+    ),
+    FullscreenControlCluster(
+      id: 'actions',
+      position: Offset(1, 0.5),
+      controls: [
+        CanvasControl.immersive,
+        CanvasControl.openProject,
+        CanvasControl.save,
+        CanvasControl.newProject,
+        CanvasControl.multiSelect,
+        CanvasControl.settings,
+      ],
+    ),
+  ];
 
   /// Loads a stored layout from the current persistence format:
   /// `{"clusters": [{"id", "x", "y", "controls": [...]}, ...]}`.

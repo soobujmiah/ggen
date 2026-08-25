@@ -211,7 +211,7 @@ void main() {
       await enterImmersive(tester);
       // Undo without history: button visible but disabled.
       IconButton undoButton() => tester.widget<IconButton>(
-        find.ancestor(
+        find.descendant(
           of: find.byTooltip('Undo'),
           matching: find.byType(IconButton),
         ),
@@ -314,7 +314,7 @@ void main() {
       // After the idle timeout the controls are subdued IN PLACE.
       await tester.pump(kFullscreenIdleTimeout);
       await tester.pumpAndSettle();
-      expect(documentOpacity().opacity, 0.45);
+      expect(documentOpacity().opacity, kFullscreenIdleOpacity);
       expect(tester.getTopLeft(find.byTooltip('Save project')), before);
 
       // Any interaction restores full prominence.
@@ -326,7 +326,144 @@ void main() {
       // And the idle timer arms again after interaction.
       await tester.pump(kFullscreenIdleTimeout);
       await tester.pumpAndSettle();
-      expect(documentOpacity().opacity, 0.45);
+      expect(documentOpacity().opacity, kFullscreenIdleOpacity);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('landscape defaults place clusters on the LEFT and RIGHT '
+        'sides with the center free for canvas', (tester) async {
+      await pumpAt(tester, const Size(800, 360));
+      await enterImmersive(tester);
+
+      // Never-customized defaults in landscape: ONE tool/navigation cluster
+      // on the left side, ONE action cluster on the right side.
+      final tools = tester.getTopLeft(
+        find.byKey(const ValueKey('fullscreen_cluster_positioned_tools')),
+      );
+      final actions = tester.getTopLeft(
+        find.byKey(const ValueKey('fullscreen_cluster_positioned_actions')),
+      );
+      expect(tools.dx, lessThan(30), reason: 'tools cluster hugs the left');
+      expect(
+        actions.dx,
+        greaterThan(500),
+        reason: 'actions cluster on the right',
+      );
+      // Vertically centered in the available space, not glued to an edge.
+      expect(tools.dy, greaterThan(60));
+      expect(tools.dy, lessThan(300));
+      expect(actions.dy, greaterThan(60));
+      expect(actions.dy, lessThan(300));
+
+      // LEFT: primary tool/navigation cluster. RIGHT: actions incl. the
+      // guaranteed immersive exit.
+      expect(find.byTooltip('Undo'), findsOneWidget);
+      expect(find.byTooltip('Fit to screen'), findsOneWidget);
+      expect(find.byTooltip('Layers'), findsOneWidget);
+      expect(find.byTooltip('Save project'), findsOneWidget);
+      expect(find.byTooltip('New project'), findsOneWidget);
+      expect(find.byTooltip('Multi-select'), findsOneWidget);
+      expect(find.byTooltip('Immersive canvas'), findsOneWidget);
+
+      // No cluster occupies the center strip between the sides.
+      final occupiedX = <double>[tools.dx, actions.dx];
+      expect(
+        occupiedX.any((x) => x > 260 && x < 460),
+        isFalse,
+        reason: 'center stays maximum canvas',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('portrait defaults keep the corner arrangement unchanged',
+        (tester) async {
+      await pumpAt(tester, const Size(471, 1020));
+      await enterImmersive(tester);
+
+      final document = tester.getTopLeft(
+        find.byKey(const ValueKey('fullscreen_cluster_positioned_document')),
+      );
+      final history = tester.getTopLeft(
+        find.byKey(const ValueKey('fullscreen_cluster_positioned_history')),
+      );
+      final tools = tester.getTopLeft(
+        find.byKey(const ValueKey('fullscreen_cluster_positioned_tools')),
+      );
+      // document: top-right corner.
+      expect(document.dy, lessThan(30));
+      expect(document.dx, greaterThan(200));
+      // history: bottom-right corner.
+      expect(history.dy, greaterThan(800));
+      expect(history.dx, greaterThan(150));
+      // tools: bottom-left corner.
+      expect(tools.dy, greaterThan(800));
+      expect(tools.dx, lessThan(30));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('rotating after a drag keeps the cluster inside the new '
+        'viewport (normalized position recovers)', (tester) async {
+      await pumpAt(tester, const Size(471, 1020));
+      await enterImmersive(tester);
+
+      // Drag the bottom-right history cluster toward the MIDDLE of the
+      // portrait canvas (a mid-screen target, not a corner, so the pixel
+      // position genuinely differs across orientations).
+      final zoomIn = find.byTooltip('Zoom in');
+      final gesture = await tester.startGesture(tester.getCenter(zoomIn));
+      await tester.pump(const Duration(milliseconds: 700));
+      await gesture.moveBy(const Offset(-50, -200));
+      await tester.pump();
+      await gesture.moveBy(const Offset(-55, -268));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final before = tester.getTopLeft(find.byTooltip('Zoom in'));
+
+      // Rotate to landscape: the persisted NORMALIZED position re-clamps
+      // into the new viewport — the cluster must stay fully reachable.
+      await pumpAt(tester, const Size(800, 360));
+      final after = tester.getTopLeft(find.byTooltip('Zoom in'));
+      expect(after.dx, greaterThanOrEqualTo(0));
+      expect(after.dy, greaterThanOrEqualTo(0));
+      expect(after.dx, lessThan(800));
+      expect(after.dy, lessThan(360));
+      expect(before, isNot(after), reason: 'viewport changed, so pixels move');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('dragging a subdued (idle) cluster restores full prominence',
+        (tester) async {
+      await pumpAt(tester, const Size(471, 1020));
+      await enterImmersive(tester);
+
+      AnimatedOpacity documentOpacity() => tester.widget<AnimatedOpacity>(
+        find.byKey(const ValueKey('fullscreen_cluster_document')),
+      );
+      await tester.pump(kFullscreenIdleTimeout);
+      await tester.pumpAndSettle();
+      expect(documentOpacity().opacity, kFullscreenIdleOpacity);
+
+      // Long-press-drag the subdued document cluster: it restores full
+      // prominence immediately and stays prominent after the drop.
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byTooltip('Save project')),
+      );
+      await tester.pump(const Duration(milliseconds: 700));
+      await gesture.moveBy(const Offset(-120, -120));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(documentOpacity().opacity, 1);
+      await gesture.moveBy(const Offset(-160, -160));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(documentOpacity().opacity, 1);
+
+      // The cluster moved (free-form) and persisted.
+      final stored = (await SharedPreferences.getInstance())
+          .getString('workspace.fullscreen_clusters');
+      expect(stored, isNotNull);
+      expect(stored, contains('"document"'));
       expect(tester.takeException(), isNull);
     });
   });

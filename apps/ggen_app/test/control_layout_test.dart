@@ -75,6 +75,62 @@ void main() {
       );
     });
 
+    test('landscape defaults place one cluster on the LEFT side and one on '
+        'the RIGHT side (vertically centered)', () {
+      final layout = CanvasControlLayout.defaults(landscape: true).resolve();
+      expect(layout.clusters.length, 2);
+      final tools = layout.clusterById('tools')!;
+      final actions = layout.clusterById('actions')!;
+      // LEFT side: primary tool/navigation cluster.
+      expect(tools.position.dx, 0);
+      expect(tools.position.dy, 0.5);
+      expect(
+        tools.controls,
+        containsAll(<CanvasControl>[
+          CanvasControl.undo,
+          CanvasControl.redo,
+          CanvasControl.zoomIn,
+          CanvasControl.zoomOut,
+          CanvasControl.zoomFit,
+          CanvasControl.layers,
+        ]),
+      );
+      // RIGHT side: actions incl. the guaranteed immersive exit.
+      expect(actions.position.dx, 1);
+      expect(actions.position.dy, 0.5);
+      expect(actions.controls.first, CanvasControl.immersive);
+      expect(
+        actions.controls,
+        containsAll(<CanvasControl>[
+          CanvasControl.openProject,
+          CanvasControl.save,
+          CanvasControl.newProject,
+          CanvasControl.multiSelect,
+          CanvasControl.settings,
+        ]),
+      );
+      // Control identity is conserved: every default control placed once.
+      final all = <CanvasControl>[
+        for (final cluster in layout.clusters) ...cluster.controls,
+      ];
+      expect(all.toSet().length, all.length);
+    });
+
+    test('portrait defaults are unaffected by the orientation parameter', () {
+      final portrait = CanvasControlLayout.defaults().resolve();
+      final explicitPortrait = CanvasControlLayout.defaults(
+        landscape: false,
+      ).resolve();
+      expect(portrait.clusters.length, explicitPortrait.clusters.length);
+      for (var i = 0; i < portrait.clusters.length; i++) {
+        expect(portrait.clusters[i].id, explicitPortrait.clusters[i].id);
+        expect(
+          portrait.clusters[i].position,
+          explicitPortrait.clusters[i].position,
+        );
+      }
+    });
+
     test('a control in two clusters keeps only the first cluster', () {
       final layout = CanvasControlLayout([
         FullscreenControlCluster(

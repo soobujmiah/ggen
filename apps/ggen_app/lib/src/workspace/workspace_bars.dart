@@ -16,6 +16,7 @@ class ToolButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.selected = false,
+    this.tooltipTriggerMode = TooltipTriggerMode.longPress,
     super.key,
   });
 
@@ -28,21 +29,30 @@ class ToolButton extends StatelessWidget {
   /// Selected/active state: filled primary container, obvious at a glance.
   final bool selected;
 
+  /// How the visual tooltip triggers. Fullscreen clusters use
+  /// [TooltipTriggerMode.manual] so the cluster's long-press DRAG owns the
+  /// gesture arena deterministically (the tooltip keeps contributing its
+  /// semantics label either way).
+  final TooltipTriggerMode tooltipTriggerMode;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      isSelected: selected,
-      icon: Icon(icon, size: 20),
-      style: IconButton.styleFrom(
-        padding: EdgeInsets.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: const Size(40, 40),
-        maximumSize: const Size(40, 40),
-        backgroundColor: selected ? scheme.primaryContainer : null,
-        foregroundColor: selected ? scheme.onPrimaryContainer : null,
+    return Tooltip(
+      message: tooltip,
+      triggerMode: tooltipTriggerMode,
+      child: IconButton(
+        onPressed: onPressed,
+        isSelected: selected,
+        icon: Icon(icon, size: 20),
+        style: IconButton.styleFrom(
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          minimumSize: const Size(40, 40),
+          maximumSize: const Size(40, 40),
+          backgroundColor: selected ? scheme.primaryContainer : null,
+          foregroundColor: selected ? scheme.onPrimaryContainer : null,
+        ),
       ),
     );
   }
@@ -296,11 +306,17 @@ class CanvasControlCluster extends StatelessWidget {
   const CanvasControlCluster({
     required this.actions,
     this.maxWidth = 360,
+    this.tooltipTriggerMode = TooltipTriggerMode.longPress,
     super.key,
   });
 
   final List<ResolvedControlAction> actions;
   final double maxWidth;
+
+  /// Forwarded to each [ToolButton]; the fullscreen shell passes
+  /// [TooltipTriggerMode.manual] so long-press always starts the cluster
+  /// drag instead of fighting the tooltip in the gesture arena.
+  final TooltipTriggerMode tooltipTriggerMode;
 
   @override
   Widget build(BuildContext context) {
@@ -330,6 +346,7 @@ class CanvasControlCluster extends StatelessWidget {
                     tooltip: actions[i].control.label,
                     selected: actions[i].selected,
                     onPressed: actions[i].onPressed,
+                    tooltipTriggerMode: tooltipTriggerMode,
                   ),
                 ],
               ],
