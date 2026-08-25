@@ -179,4 +179,4 @@ The physical-device round confirmed the core plan (clusters over the canvas, enf
 - The customizer's per-control picker now assigns controls to floating groups (existing + Hidden + New group); positions are direct-manipulated on the canvas, not configured modally.
 - Immersive mode now also draws the canvas edge-to-edge (body SafeArea top inset not consumed in immersive) while clusters clamp into `MediaQuery.viewPadding` — the device-reported unused status-bar strip is addressed on the Flutter side (bars already hidden via `SystemUiMode.immersiveSticky`).
 
-The landscape device-class model (`WorkspaceClass`, `LandscapeBar`) and the width-bounded scrollable cluster renderer survive unchanged.
+The landscape device-class model (`WorkspaceClass`) survives. The compact-landscape **bottom** `LandscapeBar` was later replaced (2026-08-25 follow-up): tools live on the LEFT `MobileToolRail` and actions on the RIGHT `LandscapeActionRail` so the short vertical axis stays canvas. Fullscreen clusters gained a dedicated drag handle, idle opacity 0.82, and `cluster_drag_*` diagnostics.

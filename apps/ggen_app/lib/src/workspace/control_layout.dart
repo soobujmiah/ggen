@@ -40,15 +40,26 @@ const double kControlButtonExtent = 40;
 const double kControlButtonGap = 2;
 const double kClusterHorizontalInset = 8; // 4 + 4
 const double kClusterVerticalInset = 4; // 2 + 2
+/// Dedicated drag-grip on each fullscreen cluster. Immediate pan from the
+/// grip moves the cluster; individual control buttons stay tappable.
+const double kClusterDragHandleExtent = 20;
+const double kClusterDragHandleGap = 2;
 
 /// Exact rendered size of a fullscreen control cluster holding
 /// [controlCount] controls. Pure math, unit tested; the renderer uses the
 /// same constants so hit-testing and clamping stay exact.
-Size estimatedClusterSize(int controlCount) {
+///
+/// When [dragHandle] is true the dedicated grip is included so the shell's
+/// clamp math matches the rendered cluster (the grip is how free-form
+/// positioning starts without a long-press on a control).
+Size estimatedClusterSize(int controlCount, {bool dragHandle = false}) {
   final n = math.max(0, controlCount);
-  final width = kClusterHorizontalInset +
+  var width = kClusterHorizontalInset +
       n * kControlButtonExtent +
       (n == 0 ? 0 : (n - 1) * kControlButtonGap);
+  if (dragHandle) {
+    width += kClusterDragHandleExtent + kClusterDragHandleGap;
+  }
   const height = kClusterVerticalInset + kControlButtonExtent;
   return Size(width, height);
 }

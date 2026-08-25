@@ -38,7 +38,7 @@ const Duration kFullscreenIdleTimeout = Duration(seconds: 6);
 /// The fade stops at this opacity — clearly visible enough to stay
 /// discoverable and usable on-device; any interaction restores full
 /// prominence.
-const double kFullscreenIdleOpacity = 0.6;
+const double kFullscreenIdleOpacity = 0.82;
 
 enum InspectorDock { left, right }
 
@@ -250,6 +250,9 @@ class _StudioShellState extends State<StudioShell> {
 
   /// Active free-form fullscreen cluster drag, or null while not dragging.
   _ClusterDragSession? _clusterDrag;
+
+  /// Last time a `cluster_drag_update` diagnostic was emitted (throttled).
+  DateTime? _lastClusterDragUpdateLog;
 
   /// The immersive-mode body Stack; its RenderBox converts global pointer
   /// positions into the Stack's local coordinate space during cluster
@@ -957,7 +960,10 @@ class _StudioShellState extends State<StudioShell> {
   ) {
     final safe = _fullscreenSafeEdges();
     final viewport = constraints.biggest;
-    final clusterSize = estimatedClusterSize(cluster.controls.length);
+    final clusterSize = estimatedClusterSize(
+      cluster.controls.length,
+      dragHandle: true,
+    );
     // If the cluster is wider than the safe viewport it scrolls internally;
     // the layout math must use the capped size so clamping stays exact.
     final cappedSize = Size(
@@ -977,6 +983,20 @@ class _StudioShellState extends State<StudioShell> {
       // The drag IS the cluster's long press: manual tooltips keep the
       // gesture arena deterministic (no competing long-press recognizer).
       tooltipTriggerMode: TooltipTriggerMode.manual,
+      showDragHandle: true,
+      ignoreControlPresses: dragging,
+      onHandlePanStart: (details) => _startClusterDrag(
+        cluster,
+        layout,
+        cappedSize,
+        viewport,
+        safe,
+        details.globalPosition,
+      ),
+      onHandlePanUpdate: (details) =>
+          _updateClusterDrag(details.globalPosition),
+      onHandlePanEnd: (_) => _endClusterDrag(canceled: false),
+      onHandlePanCancel: () => _endClusterDrag(canceled: true),
     );
     return Positioned(
       // Identity key: bringClusterToFront reorders the Stack children while
@@ -997,9 +1017,10 @@ class _StudioShellState extends State<StudioShell> {
             cappedSize,
             viewport,
             safe,
-            details,
+            details.globalPosition,
           ),
-          onLongPressMoveUpdate: (details) => _updateClusterDrag(details),
+          onLongPressMoveUpdate: (details) =>
+              _updateClusterDrag(details.globalPosition),
           onLongPressEnd: (_) => _endClusterDrag(canceled: false),
           onLongPressCancel: () => _endClusterDrag(canceled: true),
           child: clusterWidget,
@@ -1018,7 +1039,7 @@ class _StudioShellState extends State<StudioShell> {
     Size clusterSize,
     Size viewport,
     EdgeInsets safe,
-    LongPressStartDetails details,
+    Offset globalPosition,
   ) {
     if (_clusterDrag != null) return;
     final stackBox = _fullscreenStackKey.currentContext?.findRenderObject();
@@ -1037,7 +1058,7 @@ class _StudioShellState extends State<StudioShell> {
       id: cluster.id,
       startPosition: cluster.position,
       startTopLeft: startTopLeft,
-      pointerStartLocal: stackBox.globalToLocal(details.globalPosition),
+      pointerStartLocal: stackBox.globalToLocal(globalPosition),
       clusterSize: clusterSize,
       viewport: viewport,
       safe: safe,
@@ -1050,7 +1071,7 @@ class _StudioShellState extends State<StudioShell> {
       ),
     );
     debugLog.info(
-      'fullscreen_control_drag_start',
+      'cluster_drag_start',
       'Fullscreen control cluster drag started',
       {
         'cluster': cluster.id,
@@ -1064,10 +1085,10 @@ class _StudioShellState extends State<StudioShell> {
   /// Moves the dragged cluster 1:1 with the pointer, clamped ONLY into the
   /// safe viewport. No snapping, no nearest-region math, no collision
   /// relocation.
-  void _updateClusterDrag(LongPressMoveUpdateDetails details) {
+  void _updateClusterDrag(Offset globalPosition) {
     final drag = _clusterDrag;
     if (drag == null) return;
-    final pointerLocal = drag.stackBox.globalToLocal(details.globalPosition);
+    final pointerLocal = drag.stackBox.globalToLocal(globalPosition);
     final topLeft = drag.startTopLeft + (pointerLocal - drag.pointerStartLocal);
     final normalized = CanvasControlLayout.normalizedForClusterPixels(
       topLeft,
@@ -1075,12 +1096,40 @@ class _StudioShellState extends State<StudioShell> {
       drag.viewport,
       drag.safe,
     );
+    final clamped = normalized.dx <= 0 ||
+        normalized.dx >= 1 ||
+        normalized.dy <= 0 ||
+        normalized.dy >= 1;
     setState(
       () => _fullscreenLayout = _fullscreenLayout.moveCluster(
         drag.id,
         normalized,
       ),
     );
+    final now = DateTime.now();
+    final shouldLog = _lastClusterDragUpdateLog == null ||
+        now.difference(_lastClusterDragUpdateLog!) >=
+            const Duration(milliseconds: 120);
+    if (shouldLog) {
+      _lastClusterDragUpdateLog = now;
+      debugLog.info(
+        'cluster_drag_update',
+        'Fullscreen control cluster drag update',
+        {
+          'cluster': drag.id,
+          'x': normalized.dx,
+          'y': normalized.dy,
+          'clamped': clamped,
+        },
+      );
+      if (clamped) {
+        debugLog.info(
+          'cluster_clamp',
+          'Fullscreen control cluster at safe-viewport bound',
+          {'cluster': drag.id, 'x': normalized.dx, 'y': normalized.dy},
+        );
+      }
+    }
   }
 
   /// Ends the active drag: commits and persists the free-form position, or
@@ -1478,6 +1527,11 @@ class _StudioShellState extends State<StudioShell> {
     _fullscreenIdleTimer = Timer(kFullscreenIdleTimeout, () {
       if (mounted && _immersive) {
         setState(() => _fullscreenIdle = true);
+        debugLog.info(
+          'cluster_idle_fade',
+          'Fullscreen control clusters faded in place',
+          {'opacity': kFullscreenIdleOpacity},
+        );
       }
     });
     if (_fullscreenIdle) setState(() => _fullscreenIdle = false);
@@ -1825,7 +1879,8 @@ class _StudioShellState extends State<StudioShell> {
                       // rail on the left (phone portrait) — primary tools
                       // never move between edges.
                       if (showPanels &&
-                          cls == WorkspaceClass.compactPortrait)
+                          (cls == WorkspaceClass.compactPortrait ||
+                              cls == WorkspaceClass.compactLandscape))
                         MobileToolRail(
                           activeTool: _tool,
                           onSelected: _selectTool,
@@ -1919,6 +1974,36 @@ class _StudioShellState extends State<StudioShell> {
                           _showInspector &&
                           _inspectorDock == InspectorDock.right)
                         inspector,
+                      if (showPanels &&
+                          cls == WorkspaceClass.compactLandscape)
+                        LandscapeActionRail(
+                          controller: _studio,
+                          zoomController: _zoomController,
+                          activeTool: _tool,
+                          gridVisible: _showGrid,
+                          onToggleGrid: _toggleGrid,
+                          onToggleMultiSelect: () {
+                            setState(() => _multiSelect = !_multiSelect);
+                            debugLog.info(
+                              'multi_select_toggle',
+                              _multiSelect
+                                  ? 'Multi-select enabled'
+                                  : 'Multi-select disabled',
+                            );
+                          },
+                          onShowLayers: () {
+                            _showLayersSheet();
+                            debugLog.info(
+                              'layers_toggle',
+                              'Layers via landscape rail',
+                            );
+                          },
+                          multiSelect: _multiSelect,
+                          columnsEnabled: _columnsEnabled,
+                          onConfigureColumns: _showColumnsSheet,
+                          onDiagnostic: (event) =>
+                              debugLog.info(event, 'Landscape rail control used'),
+                        ),
                       if (showPanels &&
                           cls == WorkspaceClass.wide &&
                           _showLayers)
@@ -2025,7 +2110,8 @@ class _StudioShellState extends State<StudioShell> {
               );
             },
           ),
-          bottomNavigationBar: _immersive
+          bottomNavigationBar: (_immersive ||
+                  cls == WorkspaceClass.compactLandscape)
               ? null
               : LayoutBuilder(
                   builder: (context, constraints) {
@@ -2058,40 +2144,6 @@ class _StudioShellState extends State<StudioShell> {
                         onConfigureColumns: _showColumnsSheet,
                         onDiagnostic: (event) =>
                             debugLog.info(event, 'Action bar control used'),
-                      );
-                    }
-                    if (cls == WorkspaceClass.compactLandscape) {
-                      // Landscape phones: ONE compact bar (tools | history |
-                      // zoom | view | context), no left rail and no status
-                      // bar, so the canvas keeps the maximum usable area.
-                      return LandscapeBar(
-                        controller: _studio,
-                        zoomController: _zoomController,
-                        activeTool: _tool,
-                        onSelectedTool: _selectTool,
-                        gridVisible: _showGrid,
-                        onToggleGrid: _toggleGrid,
-                        onToggleMultiSelect: () {
-                          setState(() => _multiSelect = !_multiSelect);
-                          debugLog.info(
-                            'multi_select_toggle',
-                            _multiSelect
-                                ? 'Multi-select enabled'
-                                : 'Multi-select disabled',
-                          );
-                        },
-                        onShowLayers: () {
-                          _showLayersSheet();
-                          debugLog.info(
-                            'layers_toggle',
-                            'Layers via landscape bar',
-                          );
-                        },
-                        multiSelect: _multiSelect,
-                        columnsEnabled: _columnsEnabled,
-                        onConfigureColumns: _showColumnsSheet,
-                        onDiagnostic: (event) =>
-                            debugLog.info(event, 'Landscape bar control used'),
                       );
                     }
                     return StatusBar(
@@ -3569,6 +3621,17 @@ class _ColorSwatchRow extends StatelessWidget {
                   color: c == selected
                       ? Theme.of(context).colorScheme.primary
                       : Colors.white24,
+                  width: c == selected ? 2.5 : 1,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+24,
                   width: c == selected ? 2.5 : 1,
                 ),
               ),

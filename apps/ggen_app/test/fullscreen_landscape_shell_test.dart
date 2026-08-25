@@ -11,8 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// milestone).
 ///
 /// Pins:
-/// - landscape phones (800×360, 640×360) get ONE compact landscape bar and
-///   no left rail / status bar / fixed zoom overlay (maximum usable canvas);
+/// - landscape phones (800×360, 640×360) get a LEFT tool rail + RIGHT
+///   action rail and no bottom bar / status bar / fixed zoom overlay;
 /// - wide (1280×800) keeps the rail + status bar + zoom overlay;
 /// - immersive renders only the user's free-form floating control clusters
 ///   (default top bar and legacy fixed zoom overlay gone), with an enforced
@@ -64,11 +64,12 @@ void main() {
   }
 
   group('landscape device class', () {
-    testWidgets('landscape phone (800×360): one compact bar, no rail, no '
-        'status bar, no zoom overlay', (tester) async {
+    testWidgets('landscape phone (800×360): left tool rail + right action '
+        'rail, no bottom bar, no status bar, no zoom overlay', (tester) async {
       await pumpAt(tester, const Size(800, 360));
-      expect(find.byKey(LandscapeBar.barKey), findsOneWidget);
-      expect(find.byKey(MobileToolRail.railKey), findsNothing);
+      expect(find.byKey(MobileToolRail.railKey), findsOneWidget);
+      expect(find.byKey(LandscapeActionRail.railKey), findsOneWidget);
+      expect(find.byKey(ContextualActionBar.barKey), findsNothing);
       expect(find.byType(NavigationRail), findsNothing);
       expect(find.byType(StatusBar), findsNothing);
       expect(find.textContaining('%'), findsNothing);
@@ -78,18 +79,22 @@ void main() {
     testWidgets('landscape phone (640×360) fits without overflow',
         (tester) async {
       await pumpAt(tester, const Size(640, 360));
-      expect(find.byKey(LandscapeBar.barKey), findsOneWidget);
+      expect(find.byKey(MobileToolRail.railKey), findsOneWidget);
+      expect(find.byKey(LandscapeActionRail.railKey), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('landscape bar exposes tools, history and zoom',
-        (tester) async {
+    testWidgets('landscape rails expose tools on the left and history/zoom '
+        'on the right', (tester) async {
       await pumpAt(tester, const Size(800, 360));
       expect(find.byTooltip('Rectangle'), findsOneWidget);
       expect(find.byTooltip('Select'), findsOneWidget);
       expect(find.byTooltip('Undo'), findsOneWidget);
       expect(find.byTooltip('Zoom in'), findsOneWidget);
       expect(find.byTooltip('Fit to screen'), findsOneWidget);
+      final tools = tester.getTopLeft(find.byKey(MobileToolRail.railKey));
+      final actions = tester.getTopLeft(find.byKey(LandscapeActionRail.railKey));
+      expect(tools.dx, lessThan(actions.dx));
     });
 
     testWidgets('wide (1280×800) keeps rail, status bar and zoom overlay',
@@ -97,7 +102,7 @@ void main() {
       await pumpAt(tester, const Size(1280, 800));
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.byType(StatusBar), findsOneWidget);
-      expect(find.byKey(LandscapeBar.barKey), findsNothing);
+      expect(find.byKey(LandscapeActionRail.railKey), findsNothing);
       expect(find.textContaining('%'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -107,7 +112,7 @@ void main() {
       await pumpAt(tester, const Size(471, 1020));
       expect(find.byKey(MobileToolRail.railKey), findsOneWidget);
       expect(find.byKey(ContextualActionBar.barKey), findsOneWidget);
-      expect(find.byKey(LandscapeBar.barKey), findsNothing);
+      expect(find.byKey(LandscapeActionRail.railKey), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -123,8 +128,9 @@ void main() {
 
       // Rotate to landscape: same shell state, different layout class.
       await pumpAt(tester, const Size(800, 360));
-      expect(find.byKey(LandscapeBar.barKey), findsOneWidget);
-      // Rectangle still selected (filled selected icon) on the landscape bar.
+      expect(find.byKey(MobileToolRail.railKey), findsOneWidget);
+      expect(find.byKey(LandscapeActionRail.railKey), findsOneWidget);
+      // Rectangle still selected (filled selected icon) on the left rail.
       expect(find.byIcon(Icons.rectangle), findsOneWidget);
       // Grid still off (tooltip means "grid hidden").
       expect(find.byTooltip('Show grid'), findsOneWidget);
@@ -160,7 +166,7 @@ void main() {
       // Default chrome is gone in fullscreen.
       expect(find.byTooltip('More actions'), findsNothing);
       expect(find.byKey(ContextualActionBar.barKey), findsNothing);
-      expect(find.byKey(LandscapeBar.barKey), findsNothing);
+      expect(find.byKey(LandscapeActionRail.railKey), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -464,6 +470,27 @@ void main() {
           .getString('workspace.fullscreen_clusters');
       expect(stored, isNotNull);
       expect(stored, contains('"document"'));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('drag handle pans a cluster immediately without long-press',
+        (tester) async {
+      await pumpAt(tester, const Size(800, 600));
+      await enterImmersive(tester);
+
+      final handle = find.byKey(CanvasControlCluster.dragHandleKey);
+      expect(handle, findsWidgets);
+      final start = tester.getCenter(handle.first);
+      final gesture = await tester.startGesture(start);
+      await tester.pump(const Duration(milliseconds: 40));
+      await gesture.moveBy(const Offset(-180, -80));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      final storedAfter = (await SharedPreferences.getInstance())
+          .getString('workspace.fullscreen_clusters');
+      expect(storedAfter, isNotNull);
       expect(tester.takeException(), isNull);
     });
   });

@@ -43,6 +43,11 @@ void main() {
       expect(estimatedClusterSize(2), const Size(90, 44));
       // 8 + 6*40 + 5*2 = 258 — the full default history cluster.
       expect(estimatedClusterSize(6), const Size(258, 44));
+      // Dedicated drag grip is opt-in so clamp math can include it.
+      expect(
+        estimatedClusterSize(1, dragHandle: true),
+        const Size(48 + kClusterDragHandleExtent + kClusterDragHandleGap, 44),
+      );
     });
   });
 

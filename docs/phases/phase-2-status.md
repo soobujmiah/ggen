@@ -271,3 +271,13 @@ Follows the 2026-08-25 Redmi Turbo 4 Pro validation round (diagnostics export `2
 **Verification so far:** app suite **352/352** locally on the exact CI pins (Flutter 3.47.0 / Dart 3.13.0) — new `duplicate_id_regression_test.dart` (7 tests: shape/text/group after restore, delete/group/ungroup, non-contiguous high numeric suffixes, empty-project baseline, same-controller restore), `control_layout_test.dart` +2 (landscape left/right defaults, portrait unaffected), `fullscreen_landscape_shell_test.dart` +4 (landscape side placement with the center free, portrait corner arrangement pinned, rotation keeps a dragged cluster in-bounds, idle-drag restores prominence) plus updates to the new drag/tooltip structure; `flutter analyze` adds no new findings (8 pre-existing baseline items); core 143/143 unchanged. GitHub Actions re-run on the pushed branch (PR #61); a fresh debug APK must be built from the new head via the manual `android-build.yml` workflow.
 
 **Pending on-device:** open an existing project → add rectangle/ellipse/text/group immediately with no duplicate-ID errors or uncaught exceptions; immersive fullscreen; drag clusters freely with no edge snapping; overlap two clusters without losing either; idle fade stays usable; landscape shows left/right clusters with the center free; positions persist across rotation/restart; More-menu reorder; export fresh diagnostics. No device claim is made here.
+
+## 2026-08-25 Fullscreen drag handle + landscape side rails
+
+Post-fix device round verified Duplicate-ID PASS (open existing project → 6 rectangles + 5 ellipses + `text-1`, zero duplicate-ID / uncaught errors). Remaining UX: faded/edge-stuck fullscreen clusters and a landscape bottom bar (1020×471 screen → 1020×367 canvas). Same PR #61 branch. **No device claim for this chrome change.**
+
+- Dedicated cluster drag handle (immediate pan); long-press-on-body retained; buttons ignore presses during drag.
+- Idle fade floor 0.6 → 0.82. Clamp only at the safe viewport (not snap).
+- Diagnostics: `cluster_drag_start` / `cluster_drag_update` / `cluster_drag_end` / `cluster_position` / `cluster_clamp` / `cluster_idle_fade`.
+- Compact landscape: LEFT `MobileToolRail` + RIGHT `LandscapeActionRail`; no bottom bar. Portrait unchanged.
+- Duplicate-ID reseeding and More-menu reorder untouched.

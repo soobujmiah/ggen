@@ -39,7 +39,21 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 6. Relevant architecture/ADR documents
 7. Relevant source and tests
 
-## Latest working change (2026-08-25 — Physical-device fixes follow-up: duplicate-node-ID regression + free-form fullscreen control UX refinements)
+## Latest working change (2026-08-25 — Fullscreen cluster drag handle + landscape side rails)
+
+Continues PR #61 (`feat/device-ux-freeform-fullscreen-project-open`) after the post-fix Redmi Turbo 4 Pro round: Duplicate-ID is device-PASS (open existing project → 6 rectangles + 5 ellipses + `text-1`, zero duplicate-ID / uncaught errors; selection/multi-select/group/layers/profile/More-open all worked). Remaining complaints: fullscreen clusters still felt faded/edge-stuck, and compact landscape still used a bottom bar (`compact_landscape`, screen 1020×471, canvas 1020×367).
+
+**Changes (this commit):**
+
+- Dedicated cluster drag handle with immediate pan; long-press-on-body retained; buttons ignore presses during drag.
+- Idle fade floor 0.6 → 0.82. No edge snap (clamp only at the safe viewport).
+- Diagnostics: `cluster_drag_start` / `cluster_drag_update` / `cluster_drag_end` / `cluster_position` / `cluster_clamp` / `cluster_idle_fade`.
+- Compact landscape: LEFT tool rail + RIGHT action rail, no bottom bar.
+- Duplicate-ID reseeding and More-menu reorder left untouched.
+
+**Status:** CI + a fresh debug APK must be produced from the new branch head. Device validation of this chrome change is NOT claimed. The 27-item linked-flow checklist remains NOT TESTED on this APK.
+
+## Previous working change (2026-08-25 — Physical-device fixes follow-up: duplicate-node-ID regression + free-form fullscreen control UX refinements)
 
 Follows the 2026-08-25 Redmi Turbo 4 Pro validation round (diagnostics `2026-08-25T07:26:32Z`) on the SAME feature branch as the previous entry (PR #61, branch `feat/device-ux-freeform-fullscreen-project-open` from `main` `b061099d0c7f87d760cb123a701cf9fab6828863`). That round proved Open Project, true immersive fullscreen and the editing core on-device, and exposed two follow-up areas: a duplicate-node-ID regression that made the FIRST shape after Open Project silently fail and text-add crash, and fullscreen control clusters that still felt stuck at the screen edges, faded too faint, and had no landscape placement.
 

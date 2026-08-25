@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-25 — Fullscreen cluster drag handle + landscape side rails
+
+Follows the post-fix Redmi Turbo 4 Pro round that verified the Duplicate-ID fix (open existing project → 6 rectangles + 5 ellipses + `text-1`, zero duplicate-ID / uncaught errors) and still reported faded/snapping fullscreen clusters plus a landscape bottom bar eating canvas height (1020×471 screen → 1020×367 canvas). Same PR #61 branch. **Pending device validation of this commit — no device claim until a fresh `android-build.yml` APK is tested.**
+
+- **Fullscreen drag handle**: each floating cluster now has a dedicated grip. Immediate pan from the grip moves the cluster 1:1 with no long-press delay; long-press on the cluster body still works. Control buttons are `IgnorePointer` while a drag is active so a drag cannot fire undo/save/exit. Size math includes the grip via `estimatedClusterSize(..., dragHandle: true)`.
+- **Idle fade floor** 0.6 → `kFullscreenIdleOpacity` 0.82 — subdued but clearly discoverable/usable. Dragged clusters never fade.
+- **Diagnostics**: `cluster_drag_start`, throttled `cluster_drag_update`, `cluster_drag_end`, `cluster_position`, `cluster_clamp` (safe-viewport bound only — not snap), `cluster_idle_fade`.
+- **Landscape chrome**: compact landscape no longer uses a bottom bar. LEFT `MobileToolRail` (Select/Rectangle/Ellipse/Text) + RIGHT `LandscapeActionRail` (history/zoom/view/context, vertically scrollable). Maximum canvas height. Portrait bottom `ContextualActionBar` unchanged. Immersive still replaces both rails with free-form clusters.
+- Duplicate-ID reseeding is **unchanged** (`restore()` still seeds `node-`/`text-`/`group-` counters from the loaded document).
+- More-menu long-press reorder is **unchanged**.
+- Tests: `control_layout_test` handle-size case; `fullscreen_landscape_shell_test` rewritten for side rails + new immediate-handle-drag case.
+
 ## 2026-08-25 — Physical-device fixes follow-up: duplicate-node-ID regression + free-form fullscreen control UX refinements
 
 Follows the 2026-08-25 Redmi Turbo 4 Pro validation round (diagnostics `2026-08-25T07:26:32Z`) on the same feature branch as the previous entry (PR #61). That round exercised Open Project, true immersive fullscreen and the editing core successfully but exposed two follow-up areas, fixed here. **Pending device validation — no device claim until the fresh `android-build.yml` APK is tested on the Redmi Turbo 4 Pro.**
