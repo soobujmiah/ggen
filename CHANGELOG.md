@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-25 — Physical-device UX fixes: Open/Load project, true immersive, free-form fullscreen controls, hidden reorder
+
+Responds to the 2026-08-24 Redmi Turbo 4 Pro validation round (crash-free diagnostics `2026-08-24T23:14:38Z`): the fixes target UX/behavior findings, not crashes. Feature branch from `main` `b061099`. **Pending device validation — no device claim until the fresh `android-build.yml` APK is tested on the Redmi Turbo 4 Pro.**
+
+- **Open/Load project**: `SavedProjectSummary` + `ProjectStoreListing` on both store adapters (corrupt/invalid entries skipped, most-recent-first); `StudioController.listSavedProjects()` fails closed; new `EditorTopAction.openProject` / `CanvasControl.openProject` → "Open project" sheet that restores through the EXISTING `restore(ProjectStorageKey)` path (no second persistence system; SAF stays a separate milestone). Missing/corrupt projects fail safe. Also fixed: unrelated workspace changes previously dropped `lastProjectKey` (startup restore silently lost the project) — the key is now preserved in every workspace save.
+- **True immersive canvas**: body `SafeArea` top inset not consumed in immersive — the canvas draws edge-to-edge under the hidden status-bar/cutout area (device-reported unused strip addressed) while floating controls clamp into `MediaQuery.viewPadding`. Normal mode unchanged. `immersive_mode` diagnostics record padding/view-padding.
+- **Free-form fullscreen controls**: region/snap model REMOVED (`ControlRegion`, `nearestRegion`). Clusters carry normalized positions (`workspace.fullscreen_clusters`, legacy regions migrate); drag is 1:1 with no snapping or collision relocation; overlapping clusters all render (last-touched on top); idle clusters fade to 45% in place after 6 s and restore on interaction; the immersive exit control stays guaranteed but free-placed.
+- **More menu**: reorder affordances hidden — long-press enters reorder mode (drag handle + arrows), tap executes, release/outside interaction returns to normal.
+- **Tests**: control-layout suite rewritten; fullscreen/landscape suite extended (free drag, overlap, idle); new `more_menu_reorder_test.dart` and `project_open_test.dart`; preferences and store listing tests updated/added.
+- **Docs**: `CURRENT_STATE.md`, `docs/phases/phase-2-status.md`, `docs/architecture/fullscreen-control-and-landscape-plan.md` (supersession), this entry.
+
 ## 2026-08-24 — Mobile workspace shell redesign + device bug fixes
 
 Redesigns the compact (<700px) workspace shell into ONE canonical layout and fixes the two Redmi Turbo 4 Pro device findings of 2026-08-24, on feature branch `feat/mobile-workspace-shell` from `main` (`b926b28`, post-PR #53). No core text-flow architecture change, no TextStory, no linked-text representation change, no schema change. **App 254/254 (Flutter 3.47.0, exact CI pin) and core 143/143 (Dart 3.13.0, exact CI SDK) verified locally; analyzer adds no new findings. Not device-validated — a fresh `android-build.yml` debug APK is the next device-validation candidate.**
