@@ -3631,14 +3631,3 @@ class _ColorSwatchRow extends StatelessWidget {
   }
 }
 
-24,
-                  width: c == selected ? 2.5 : 1,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
