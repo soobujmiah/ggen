@@ -51,7 +51,7 @@ Continues PR #61 (`feat/device-ux-freeform-fullscreen-project-open`) after the p
 - Compact landscape: LEFT tool rail + RIGHT action rail, no bottom bar.
 - Duplicate-ID reseeding and More-menu reorder left untouched.
 
-**Status:** CI + a fresh debug APK must be produced from the new branch head. Device validation of this chrome change is NOT claimed. The 27-item linked-flow checklist remains NOT TESTED on this APK.
+**Status:** CI GREEN at `2beacc48ab64eecdc8f813dfc58a64ed9a5d29f9` — core **143/143**, app **353/353**, governance green. Debug APK: workflow run `32848917825`, artifact `ggen-debug-apk` (74,695,255 bytes). Device validation of this chrome change is NOT claimed. The 27-item linked-flow checklist remains NOT TESTED on this APK. PR #61 left open (not merged): chrome/layout still needs Redmi evidence.
 
 ## Previous working change (2026-08-25 — Physical-device fixes follow-up: duplicate-node-ID regression + free-form fullscreen control UX refinements)
 

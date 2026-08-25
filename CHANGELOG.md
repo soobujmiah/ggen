@@ -10,7 +10,7 @@ Follows the post-fix Redmi Turbo 4 Pro round that verified the Duplicate-ID fix 
 - **Landscape chrome**: compact landscape no longer uses a bottom bar. LEFT `MobileToolRail` (Select/Rectangle/Ellipse/Text) + RIGHT `LandscapeActionRail` (history/zoom/view/context, vertically scrollable). Maximum canvas height. Portrait bottom `ContextualActionBar` unchanged. Immersive still replaces both rails with free-form clusters.
 - Duplicate-ID reseeding is **unchanged** (`restore()` still seeds `node-`/`text-`/`group-` counters from the loaded document).
 - More-menu long-press reorder is **unchanged**.
-- Tests: `control_layout_test` handle-size case; `fullscreen_landscape_shell_test` rewritten for side rails + new immediate-handle-drag case.
+- Tests: `control_layout_test` handle-size case; `fullscreen_landscape_shell_test` rewritten for side rails + new immediate-handle-drag case. CI at `2beacc4`: core 143/143, app 353/353, governance green. APK run `32848917825`, artifact `ggen-debug-apk`.
 
 ## 2026-08-25 — Physical-device fixes follow-up: duplicate-node-ID regression + free-form fullscreen control UX refinements
 
