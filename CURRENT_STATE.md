@@ -51,7 +51,7 @@ Continues PR #61 (`feat/device-ux-freeform-fullscreen-project-open`) after the p
 - Compact landscape: LEFT tool rail + RIGHT action rail, no bottom bar.
 - Duplicate-ID reseeding and More-menu reorder left untouched.
 
-**Status:** CI GREEN at `2beacc48ab64eecdc8f813dfc58a64ed9a5d29f9` — core **143/143**, app **353/353**, governance green. Debug APK: workflow run `32848917825`, artifact `ggen-debug-apk` (74,695,255 bytes). Device validation of this chrome change is NOT claimed. The 27-item linked-flow checklist remains NOT TESTED on this APK. PR #61 left open (not merged): chrome/layout still needs Redmi evidence.
+**Status:** Redmi Turbo 4 Pro export `2026-08-25T13:30:49Z` (APK from run `32848917825` / code `2beacc4`) **device-PASS** for the PR #61 chrome: free-form cluster drag (`cluster_drag_start`/`update`, `clamped:false` through mid-canvas, `cluster_clamp` only at y=0/y=1), idle fade `opacity: 0.82`, landscape side rails (`compact_landscape` 1020×471 → canvas **916×415**; `landscape_history_undo`/`redo`), Duplicate-ID still clean (10 rect + 5 ellipse + `text-1`/`text-2` + group + post-reopen adds; **zero** `flutter_error` / `uncaught_error` / duplicate-ID). Save `project-1787664264727601` r24 / 4481 B / SHA-256 `6dff796a…`; in-session `project_open` of that key. More-menu **pin** proven; **reorder** still no `top_action_reorder`. Linked-flow 27-item items 2–14 / 19 / 21 / 24 remain NOT TESTED. Startup restore this install was `No prior project stored` (fresh prefs).
 
 ## Previous working change (2026-08-25 — Physical-device fixes follow-up: duplicate-node-ID regression + free-form fullscreen control UX refinements)
 

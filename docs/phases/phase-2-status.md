@@ -281,3 +281,5 @@ Post-fix device round verified Duplicate-ID PASS (open existing project → 6 re
 - Diagnostics: `cluster_drag_start` / `cluster_drag_update` / `cluster_drag_end` / `cluster_position` / `cluster_clamp` / `cluster_idle_fade`.
 - Compact landscape: LEFT `MobileToolRail` + RIGHT `LandscapeActionRail`; no bottom bar. Portrait unchanged.
 - Duplicate-ID reseeding and More-menu reorder untouched.
+
+**Device evidence (Redmi Turbo 4 Pro, export `2026-08-25T13:30:49.911483Z`, APK run `32848917825`):** zero Flutter/uncaught/duplicate-ID errors. Portrait `compact_bottom_navigation` 471×1020, canvas 419×912. Immersive canvas 471×1020. Cluster drags of `document` and `tools` through interior normalized positions (`clamped: false`); `cluster_clamp` only at safe y=0 / y=1. `cluster_idle_fade` opacity 0.82. Landscape `compact_landscape` 1020×471, canvas **916×415** (left+right 52px rails, no bottom bar); `landscape_history_undo` / `landscape_history_redo`. 10 rectangles + 5 ellipses + two text frames (`cuycj`, Bangla) + group of 3; save r24/4481 B; reopen same key; further adds after reopen. More pins recorded; no `top_action_reorder`. No columns/link/overflow events.
