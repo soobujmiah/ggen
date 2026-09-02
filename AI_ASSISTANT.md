@@ -2,6 +2,10 @@
 
 This file is mandatory reading for every AI assistant before it changes GGEN. GitHub is the canonical memory and source of truth; a local workspace is disposable. Model chat history is not authoritative project memory.
 
+## Local vs. cloud execution
+
+Only the build/compile step (Flutter/Gradle/native builds, CI) belongs on GitHub Actions by default — that is a **device-health policy choice** (avoiding sustained CPU/thermal/battery/storage load on Sobuj's phone), not a missing local toolchain: his Termux/PRoot environment has a real local ARM64 native Android toolchain (see `soobujmiah/adt`), so a local build is technically possible when specifically needed. Everything else in the loop is local, on the phone/PRoot + ADB setup: downloading a CI artifact, installing it, launching/running it, using the feature under test, reading logs (logcat/stdout/stderr/crash traces), debugging an observed failure, and fixing the source. That local setup is also Sobuj's actual repo workstation — clone/edit/branch/commit happen there directly. Full policy: `soobujmiah/skb` → `engineering/HEAVY_BUILD_AND_ARTIFACT_WORKFLOW.md`.
+
 ## SKB knowledge continuity
 
 This repository is connected to Sobuj's canonical knowledge base: `soobujmiah/skb`.
@@ -34,7 +38,7 @@ AI assistants are interchangeable implementers. A new model MUST be able to cont
 3. Update relevant documentation and phase/status files.
 4. Record evidence, failures, known defects, deferred work, and reproduction/verification steps.
 5. Perform the SKB Knowledge Return Review.
-6. Commit and push only when authorized by the applicable workflow.
+6. Commit and push only when authorized by the applicable workflow — once authorized and the change is validated, push it right away rather than leaving it staged/unpushed on the single working copy where it could be lost.
 7. Record the resulting SHA and verification status for substantial milestones.
 8. Leave no unexplained dirty changes.
 
