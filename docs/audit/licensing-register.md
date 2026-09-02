@@ -8,7 +8,7 @@
 | RGENCalligraphy fonts | Bundled `RGENCalligraphy-LICENSE.md`; derived from TeX Gyre Chorus/GUST-LPPL account in source docs | DOCUMENTED, review needed | Preserve notice; legal review before public release |
 | Genuine Lucida fonts | Proprietary according to RGEN docs; files included | BLOCKED | Private owner use only; exclude from public builds unless license proof exists |
 | Noto fonts | Files included; no notices copied with current RGEN asset set | INCOMPLETE | Add exact upstream/OFL notices before distribution |
-| `ben.traineddata` | SHA matches reviewed upstream profile in NpuHub; expected Apache-2.0 | PARTIAL | Record exact commit/source/license file |
+| `ben.traineddata` | SHA matches reviewed upstream profile from the now-deleted `soobujmiah/NpuHub` (repo deleted 2026-09-02; profile archived in `soobujmiah/skb` → `repositories/npuhub.md`, no live source left to re-verify against); expected Apache-2.0 | PARTIAL | Record exact commit/source/license file |
 | `eng.traineddata` | Exact hash recorded; upstream commit not recorded | INCOMPLETE | Resolve source/commit/license |
 | PDF templates | Source RGEN production files; ownership/authorization not separately documented | UNRESOLVED | Private approved use only |
 | Government logo, seals, borders, watermarks | Source files present; rights not documented | UNRESOLVED/SENSITIVE | No public redistribution until owner/usage authority confirmed |
