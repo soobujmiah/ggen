@@ -6,6 +6,16 @@ This file is mandatory reading for every AI assistant before it changes GGEN. Gi
 
 Only the build/compile step (Flutter/Gradle/native builds, CI) belongs on GitHub Actions by default — that is a **device-health policy choice** (avoiding sustained CPU/thermal/battery/storage load on Sobuj's phone), not a missing local toolchain: his Termux/PRoot environment has a real local ARM64 native Android toolchain (see `soobujmiah/adt`), so a local build is technically possible when specifically needed. Everything else in the loop is local, on the phone/PRoot + ADB setup: downloading a CI artifact, installing it, launching/running it, using the feature under test, reading logs (logcat/stdout/stderr/crash traces), debugging an observed failure, and fixing the source. That local setup is also Sobuj's actual repo workstation — clone/edit/branch/commit happen there directly. Full policy: `soobujmiah/skb` → `engineering/HEAVY_BUILD_AND_ARTIFACT_WORKFLOW.md`.
 
+## Android device testing
+
+ADB-first is the default methodology for any real-device interaction — see
+`docs/ADB_FIRST_TESTING.md` and `soobujmiah/skb` → `standards/agent-device-testing.md` for the
+full priority order (app-native intents/interfaces → ADB → instrumentation → UIAutomator →
+coordinate taps, last resort) and `soobujmiah/lai`'s `scripts/device/lai_adb.sh` for the
+reusable helper shape. Never poll with an arbitrary sleep; wait on an observable condition
+(process state, activity draw completion, a specific logcat pattern) instead, and read logs
+through a tag/regex filter, not a raw dump.
+
 ## SKB knowledge continuity
 
 This repository is connected to Sobuj's canonical knowledge base: `soobujmiah/skb`.
