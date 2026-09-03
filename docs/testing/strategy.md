@@ -9,7 +9,7 @@
 5. Job/recovery tests: cancel at every phase, disk full, process death, partial commit, resume, duplicate execution.
 6. Flutter interaction/accessibility/golden tests with original design.
 7. Android instrumentation: SAF, Keystore, WorkManager, memory pressure, rotation, background restrictions.
-8. Physical device: backend verification, thermals, memory, latency, canvas frame budget, stylus/touch.
+8. Physical device: backend verification, thermals, memory, latency, canvas frame budget, stylus/touch. Driven ADB-first — see `../ADB_FIRST_TESTING.md`.
 
 ## Claims
 
