@@ -56,7 +56,7 @@ class MainActivity : FlutterActivity() {
 MANIFEST_DEBUG_ENTRY = """        <activity
             android:name=".DebugActivity"
             android:exported="true"
-            android:label="@string/app_name">
+            android:label="GGEN Debug">
         </activity>
 """
 
