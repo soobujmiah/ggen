@@ -92,6 +92,9 @@ class DebugLogStore {
       );
 }
 
+/// Singleton debug log instance available throughout the app.
+final debugLog = DebugLogStore();
+
 class DebugLogEntry {
   const DebugLogEntry({required this.timestampUtc, required this.level, required this.event, required this.message, required this.details});
   final DateTime timestampUtc;
