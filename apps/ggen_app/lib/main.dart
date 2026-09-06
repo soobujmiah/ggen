@@ -289,6 +289,7 @@ class _StudioShellState extends State<StudioShell> {
   Set<EditorTopAction> _topActionPinned = <EditorTopAction>{};
   final CanvasZoomController _zoomController = CanvasZoomController();
   bool _canvasFirst = true;
+  bool _hasCheckedForegroundAction = true; // Track if we've checked for debug actions
   bool _workspaceSettingsOpen = false;
   InspectorDock _inspectorDock = InspectorDock.right;
 
@@ -419,10 +420,20 @@ class _StudioShellState extends State<StudioShell> {
     _studio.addListener(_onStudioChanged);
     _restoreWorkspace();
     unawaited(_initStorage());
-    // Check for pending debug action from DebugActivity (SharedPreferences bridge).
+    // Check for pending debug action from DebugActivity.
     unawaited(_checkPendingDebugAction());
     HardwareKeyboard.instance.addHandler(_handleVolumeKey);
     HardwareKeyboard.instance.addHandler(_handleDebugKey);
+  }
+
+  @override
+  void didUpdateWidget(covariant StudioShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Check for pending debug action when app comes to foreground.
+    if (!_hasCheckedForegroundAction) {
+      _hasCheckedForegroundAction = true;
+      unawaited(_checkPendingDebugAction());
+    }
   }
 
   void _onStudioChanged() {

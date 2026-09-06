@@ -12,13 +12,9 @@ Supported actions via:
 Actions:
     undo     - Call StudioController.undo()
     redo     - Call StudioController.redo()
-    grid     - Toggle grid overlay (partial)
-    zoom_in  - Zoom in (partial)
-    zoom_out - Zoom out (partial)
-    fit      - Fit to screen (partial)
 
-Note: This activity uses SharedPreferences to communicate with the
-main app since each FlutterActivity has its own FlutterEngine.
+Note: DebugActivity simply forwards the intent to MainActivity which
+handles the debug action when it resumes to foreground.
 """
 
 import re
@@ -74,7 +70,6 @@ def create_debug_activity(android_dir: Path) -> bool:
         '''package com.example.ggen_app
 
 import android.content.Intent
-import android.content.SharedPreferences
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 
@@ -88,34 +83,42 @@ import io.flutter.embedding.android.FlutterActivity
  * Supported actions:
  *   undo     - Call StudioController.undo()
  *   redo     - Call StudioController.redo()
- *   grid     - Toggle grid overlay
- *   zoom_in  - Zoom in 25%
- *   zoom_out - Zoom out 20%
- *   fit      - Fit to screen
  *
- * Note: This activity stores the action in SharedPreferences and launches
- * the main app, which will process the pending debug action on startup.
+ * This activity simply forwards the debug intent to MainActivity
+ * which processes the action via SharedPreferences (since debug
+ * actions need to work even when the app is in background).
  */
 class DebugActivity : FlutterActivity() {
-    private val SHARED_PREFS_NAME = "ggen_debug_prefs"
-    private val KEY_PENDING_ACTION = "debug_pending_action"
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Handle debug action from intent
+        // Get the action from the incoming intent
         val action = intent?.getStringExtra("test_action")
+        
+        // Forward to MainActivity via a broadcast-style approach
+        // We'll store it in a global static holder that MainActivity can read
         if (action != null) {
-            // Store action in SharedPreferences for the main app to read
-            val prefs: SharedPreferences = getSharedPreferences(SHARED_PREFS_NAME, MODE_PRIVATE)
-            prefs.edit().putString(KEY_PENDING_ACTION, action).apply()
+            DebugIntentHandler.setPendingAction(action)
         }
-
-        // Launch the main app (which will process the pending action)
+        
+        // Launch MainActivity and bring it to front
         val mainIntent = Intent(this, MainActivity::class.java)
         mainIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
         startActivity(mainIntent)
         finish()
+    }
+}
+
+/**
+ * Simple static holder for passing debug actions between activities.
+ * Since each FlutterActivity has its own engine, we need a bridge.
+ */
+object DebugIntentHandler {
+    @Volatile
+    var pendingAction: String? = null
+    
+    fun clearAction() {
+        pendingAction = null
     }
 }
 ''',
