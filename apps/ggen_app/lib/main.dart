@@ -72,6 +72,27 @@ void _handleDebugAction(dynamic args) {
   }
 }
 
+/// Check for pending debug action from SharedPreferences (set by DebugActivity).
+/// This bridges the gap since DebugActivity has its own FlutterEngine.
+Future<void> _checkPendingDebugAction() async {
+  final prefs = await SharedPreferences.getInstance();
+  final pendingAction = prefs.getString('debug_pending_action');
+  if (pendingAction == null || pendingAction.isEmpty) return;
+  // Clear the pending action
+  await prefs.remove('debug_pending_action');
+  debugLog.info('debug_intent', 'Debug action from SharedPreferences: $pendingAction');
+  if (_debugStudioController == null) return;
+  final controller = _debugStudioController!;
+  switch (pendingAction) {
+    case 'undo':
+      if (controller.canUndo) controller.undo();
+      break;
+    case 'redo':
+      if (controller.canRedo) controller.redo();
+      break;
+  }
+}
+
 final Set<String> _loggedLayoutModes = <String>{};
 
 /// How long the fullscreen floating controls stay fully prominent after the
@@ -391,12 +412,14 @@ class _StudioShellState extends State<StudioShell> {
     super.initState();
     _ownsStudio = widget.controller == null;
     _studio = widget.controller ?? StudioController();
-    // Wire global reference for debug intent actions from Android.
+    // Wire global reference for debug actions.
     _debugStudioController = _studio;
     _setupDebugChannel();
     _studio.addListener(_onStudioChanged);
     _restoreWorkspace();
     unawaited(_initStorage());
+    // Check for pending debug action from DebugActivity (SharedPreferences bridge).
+    unawaited(_checkPendingDebugAction());
     HardwareKeyboard.instance.addHandler(_handleVolumeKey);
     HardwareKeyboard.instance.addHandler(_handleDebugKey);
   }

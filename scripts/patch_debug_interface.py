@@ -10,48 +10,20 @@ Supported actions via:
         --es test_action <action> [--es target <value>]
 
 Actions:
-    undo     - Call StudioController.undo() (via platform channel)
+    undo     - Call StudioController.undo()
     redo     - Call StudioController.redo()
-    grid     - Toggle grid overlay
-    zoom_in  - Zoom in 25%
-    zoom_out - Zoom out 20%
-    fit      - Fit to screen
-    save     - Trigger project save
+    grid     - Toggle grid overlay (partial)
+    zoom_in  - Zoom in (partial)
+    zoom_out - Zoom out (partial)
+    fit      - Fit to screen (partial)
 
-Note: This activity launches the main app with the action applied
-through a platform channel call to Flutter.
+Note: This activity uses SharedPreferences to communicate with the
+main app since each FlutterActivity has its own FlutterEngine.
 """
 
 import re
 import sys
 from pathlib import Path
-
-DEBUG_ACTIVITY_KOTLIN = '''package com.example.ggen_app
-
-import android.content.Intent
-import android.os.Bundle
-import io.flutter.embedding.android.FlutterActivity
-import io.flutter.plugin.common.MethodChannel
-
-class MainActivity : FlutterActivity() {
-    private lateinit var debugChannel: MethodChannel
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        debugChannel = MethodChannel(
-            flutterEngine?.dartExecutor?.binaryMessenger ?: return,
-            "com.example.ggen/debug"
-        )
-
-        // Handle debug action from intent
-        val action = intent?.getStringExtra("test_action")
-        if (action != null) {
-            debugChannel.invokeMethod("debugAction", mapOf("action" to action))
-        }
-    }
-}
-'''
 
 MANIFEST_DEBUG_ENTRY = """        <activity
             android:name=".DebugActivity"
@@ -102,16 +74,16 @@ def create_debug_activity(android_dir: Path) -> bool:
         '''package com.example.ggen_app
 
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
-import io.flutter.plugin.common.MethodChannel
 
 /**
  * Debug activity for agent-driven device testing.
  *
  * Exports a deterministic control surface accessible via:
  *   adb shell am start -n com.example.ggen/com.example.ggen_app.DebugActivity
- *       --es test_action <action> [--es target <value>]
+ *       --es test_action <action>
  *
  * Supported actions:
  *   undo     - Call StudioController.undo()
@@ -120,24 +92,30 @@ import io.flutter.plugin.common.MethodChannel
  *   zoom_in  - Zoom in 25%
  *   zoom_out - Zoom out 20%
  *   fit      - Fit to screen
- *   save     - Trigger project save
+ *
+ * Note: This activity stores the action in SharedPreferences and launches
+ * the main app, which will process the pending debug action on startup.
  */
 class DebugActivity : FlutterActivity() {
-    private lateinit var debugChannel: MethodChannel
+    private val SHARED_PREFS_NAME = "ggen_debug_prefs"
+    private val KEY_PENDING_ACTION = "debug_pending_action"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        debugChannel = MethodChannel(
-            flutterEngine?.dartExecutor?.binaryMessenger ?: return,
-            "com.example.ggen/debug"
-        )
-
         // Handle debug action from intent
         val action = intent?.getStringExtra("test_action")
         if (action != null) {
-            debugChannel.invokeMethod("debugAction", mapOf("action" to action))
+            // Store action in SharedPreferences for the main app to read
+            val prefs: SharedPreferences = getSharedPreferences(SHARED_PREFS_NAME, MODE_PRIVATE)
+            prefs.edit().putString(KEY_PENDING_ACTION, action).apply()
         }
+
+        // Launch the main app (which will process the pending action)
+        val mainIntent = Intent(this, MainActivity::class.java)
+        mainIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        startActivity(mainIntent)
+        finish()
     }
 }
 ''',
