@@ -289,7 +289,7 @@ class _StudioShellState extends State<StudioShell> {
   Set<EditorTopAction> _topActionPinned = <EditorTopAction>{};
   final CanvasZoomController _zoomController = CanvasZoomController();
   bool _canvasFirst = true;
-  bool _hasCheckedForegroundAction = true; // Track if we've checked for debug actions
+  bool _hasCheckedForegroundAction = false; // Track if we've checked for debug actions
   bool _workspaceSettingsOpen = false;
   InspectorDock _inspectorDock = InspectorDock.right;
 
@@ -426,6 +426,10 @@ class _StudioShellState extends State<StudioShell> {
     HardwareKeyboard.instance.addHandler(_handleDebugKey);
   }
 
+  void _onStudioChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void didUpdateWidget(covariant StudioShell oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -434,15 +438,6 @@ class _StudioShellState extends State<StudioShell> {
       _hasCheckedForegroundAction = true;
       unawaited(_checkPendingDebugAction());
     }
-  }
-
-  void _onStudioChanged() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void didUpdateWidget(covariant StudioShell oldWidget) {
-    super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.removeListener(_onStudioChanged);
       // Re-wire to the new controller (injected for tests).
