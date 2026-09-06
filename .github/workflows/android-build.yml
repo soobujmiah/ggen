@@ -11,17 +11,10 @@ on:
         description: "Target device"
         required: true
         default: "Redmi Turbo 4 Pro"
-      build_increment:
-        description: "Increment build counter"
-        required: false
-        default: "true"
-        type: boolean
 
 env:
   FLUTTER_VERSION: '3.47.0'
-  APP_VERSION_MAJOR: '0'
-  APP_VERSION_MINOR: '1'
-  APP_VERSION_PATCH: '0'
+  APP_VERSION_BASE: '0.1.0'
 
 jobs:
   debug-apk:
@@ -34,23 +27,6 @@ jobs:
           channel: stable
           cache: false
       
-      # Track build number per branch in GitHub repo variable
-      - name: Get or increment build number
-        id: build_num
-        run: |
-          BRANCH=${{ github.ref_name }}
-          # Try to get existing build count from repo variable, default to 1
-          BUILD_COUNT=$(gh variable get GGEN_BUILD_${BRANCH#refs/heads/} --json value -q '.value' 2>/dev/null || echo "1")
-          if [ -z "$BUILD_COUNT" ] || [ "$BUILD_COUNT" = "null" ]; then
-            BUILD_COUNT=1
-          fi
-          if [ "${{ github.event.inputs.build_increment }}" = "true" ]; then
-            BUILD_COUNT=$((BUILD_COUNT + 1))
-            gh variable set "GGEN_BUILD_${BRANCH#refs/heads/}" --body "$BUILD_COUNT"
-          fi
-          echo "build_count=$BUILD_COUNT" >> $GITHUB_OUTPUT
-          echo "Build: $BUILD_COUNT"
-      
       - name: Generate temporary Android wrapper
         working-directory: apps/ggen_app
         run: flutter create --platforms=android --project-name=ggen_app .
@@ -61,10 +37,11 @@ jobs:
       - name: Set Android app identity to ggen
         run: python3 scripts/prepare_android_identity.py apps/ggen_app/android
       
-      - name: Apply version with build number
+      - name: Apply version with build identifier
         run: |
-          BUILD_COUNT=${{ steps.build_num.outputs.build_count }}
-          VERSION="${{ env.APP_VERSION_MAJOR }}.${{ env.APP_VERSION_MINOR }}.${{ env.APP_VERSION_PATCH }}+${BUILD_COUNT}"
+          # Use run number as unique build identifier
+          BUILD_ID=${{ github.run_number }}
+          VERSION="${{ env.APP_VERSION_BASE }}+${BUILD_ID}"
           sed -i "s/^version: .*/version: $VERSION/" apps/ggen_app/pubspec.yaml
           echo "Version: $VERSION"
           cat apps/ggen_app/pubspec.yaml | grep "^version:"
@@ -75,19 +52,19 @@ jobs:
       
       - name: Record build metadata
         run: |
-          BUILD_COUNT=${{ steps.build_num.outputs.build_count }}
-          VERSION="${{ env.APP_VERSION_MAJOR }}.${{ env.APP_VERSION_MINOR }}.${{ env.APP_VERSION_PATCH }}+${BUILD_COUNT}"
+          BUILD_ID=${{ github.run_number }}
+          VERSION="${{ env.APP_VERSION_BASE }}+${BUILD_ID}"
           echo "## Build Metadata" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Run ID:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build #:** $BUILD_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build #:** $BUILD_ID" >> $GITHUB_STEP_SUMMARY
       
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ggen-debug-apk-v${{ steps.build_num.outputs.build_count }}
+          name: ggen-debug-apk-v${{ github.run_number }}
           path: apps/ggen_app/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 7
