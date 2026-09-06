@@ -370,7 +370,7 @@ class _StudioShellState extends State<StudioShell> {
       case LogicalKeyboardKey.keyG: // Toggle grid
         _toggleGrid();
         return true;
-      case LogicalKeyboardKey.equals: // Zoom in
+      case LogicalKeyboardKey.equal: // Zoom in
         _zoomController.zoomIn();
         debugLog.info('debug_zoom_in', 'Debug zoom in triggered');
         return true;
