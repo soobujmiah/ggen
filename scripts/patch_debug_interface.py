@@ -2,116 +2,98 @@
 """Patch generated MainActivity.kt to add debug intent handling.
 
 This script is called by CI after flutter create and before build.
-It adds an exported debug activity that accepts intent extras for
-deterministic agent testing.
+It modifies the existing MainActivity.kt to accept debug intent extras
+for deterministic agent testing.
 
 Supported actions via:
-    adb shell am start -n com.example.ggen/com.example.ggen_app.DebugActivity
-        --es test_action <action> [--es target <value>]
+    adb shell am start -n com.example.ggen/com.example.ggen_app.MainActivity
+        --es test_action <action>
 
 Actions:
     undo     - Call StudioController.undo()
     redo     - Call StudioController.redo()
 
-Note: DebugActivity stores the action in a static handler object,
-then launches MainActivity which processes it on foreground resume.
+The app reads the intent extra on startup and processes it before
+showing the Flutter UI.
 """
 
 import re
 import sys
 from pathlib import Path
 
-MANIFEST_DEBUG_ENTRY = """        <activity
-            android:name=".DebugActivity"
-            android:exported="true"
-            android:label="GGEN Debug">
-        </activity>
-"""
 
-
-def patch_manifest(android_dir: Path) -> bool:
-    """Add DebugActivity to AndroidManifest.xml."""
-    manifest = android_dir / "app" / "src" / "main" / "AndroidManifest.xml"
-    if not manifest.exists():
-        print(f"ERROR: Manifest not found: {manifest}")
+def patch_main_activity(android_dir: Path) -> bool:
+    """Modify MainActivity.kt to handle debug intent."""
+    activity_path = android_dir / "app" / "src" / "main" / "kotlin" / "com" / "example" / "ggen_app" / "MainActivity.kt"
+    if not activity_path.exists():
+        print(f"ERROR: MainActivity.kt not found at {activity_path}")
         return False
 
-    text = manifest.read_text(encoding="utf-8")
+    content = activity_path.read_text(encoding="utf-8")
 
     # Check if already patched
-    if "DebugActivity" in text:
-        print("DebugActivity already in manifest; skipping.")
+    if "debugIntentAction" in content:
+        print("Debug intent already patched in MainActivity.kt; skipping.")
         return False
 
-    # Insert DebugActivity entry before </application>
-    close_pattern = r"</application>"
-    match = re.search(close_pattern, text)
-    if not match:
-        print("ERROR: </application> tag not found in manifest")
-        return False
+    # Insert imports after the first import line
+    import_insert = "import io.flutter.embedding.android.FlutterActivity\n"
+    new_imports = import_insert + "import android.content.Intent\n"
 
-    insert_pos = match.start()
-    new_text = text[:insert_pos] + MANIFEST_DEBUG_ENTRY + text[insert_pos:]
+    content = content.replace(import_insert, new_imports, 1)
 
-    manifest.write_text(new_text, encoding="utf-8")
-    print(f"Patched manifest: {manifest}")
-    return True
-
-
-def create_debug_activity(android_dir: Path) -> bool:
-    """Create DebugActivity.kt if it doesn't exist."""
-    activity_path = android_dir / "app" / "src" / "main" / "kotlin" / "com" / "example" / "ggen_app" / "DebugActivity.kt"
-    if activity_path.exists():
-        print(f"DebugActivity already exists: {activity_path}")
-        return False
-
-    activity_path.parent.mkdir(parents=True, exist_ok=True)
-    activity_path.write_text(
-        '''package com.example.ggen_app
-
-import android.content.Intent
-import android.os.Bundle
-import io.flutter.embedding.android.FlutterActivity
-
-/**
- * Debug activity for agent-driven device testing.
- *
- * Exports a deterministic control surface accessible via:
- *   adb shell am start -n com.example.ggen/com.example.ggen_app.DebugActivity
- *       --es test_action <action>
- *
- * Supported actions:
- *   undo     - Call StudioController.undo()
- *   redo     - Call StudioController.redo()
- *
- * This activity stores the pending action via DebugIntentHandler
- * and then launches MainActivity to process it.
- */
-class DebugActivity : FlutterActivity() {
+    # Add the debug intent handling before onCreate returns
+    debug_handler = '''
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Get the action from the incoming intent
-        val action = intent?.getStringExtra("test_action")
         
-        // Store via static handler for MainActivity to read
-        if (action != null) {
-            DebugIntentHandler.setPendingAction(action)
+        // Handle debug intent action from ADB
+        val debugAction = intent?.getStringExtra("test_action")
+        if (debugAction != null) {
+            // Store for Flutter to read via MethodChannel
+            FlutterMain.startInitialization(this)
         }
-        
-        // Launch MainActivity and bring it to front
-        val mainIntent = Intent(this, MainActivity::class.java)
-        mainIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        startActivity(mainIntent)
-        finish()
     }
-}
+'''
+
+    # Find the onCreate method and replace it
+    oncreate_pattern = r'override fun onCreate\(savedInstanceState: Bundle\?\) \{\s*super\.onCreate\(savedInstanceState\)\s*\}'
+    match = re.search(oncreate_pattern, content)
+    if match:
+        new_oncreate = '''override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Handle debug intent action from ADB
+        val debugAction = intent?.getStringExtra("test_action")
+        if (debugAction != null) {
+            // Store for Flutter to read
+            DebugIntentBridge.setPendingAction(debugAction)
+        }
+    }'''
+        content = content[:match.start()] + new_oncreate + content[match.end():]
+        print(f"Patched MainActivity.kt: {activity_path}")
+        activity_path.write_text(content, encoding="utf-8")
+        return True
+    
+    print(f"ERROR: Could not find onCreate in {activity_path}")
+    return False
+
+
+def create_debug_bridge(android_dir: Path) -> bool:
+    """Create DebugIntentBridge.kt singleton."""
+    bridge_path = android_dir / "app" / "src" / "main" / "kotlin" / "com" / "example" / "ggen_app" / "DebugIntentBridge.kt"
+    if bridge_path.exists():
+        print(f"DebugIntentBridge already exists: {bridge_path}")
+        return False
+
+    bridge_path.parent.mkdir(parents=True, exist_ok=True)
+    bridge_path.write_text(
+        '''package com.example.ggen_app
 
 /**
- * Simple static holder for passing debug actions between activities.
- * Since each FlutterActivity has its own engine, we use this bridge.
+ * Simple static bridge for passing debug actions from Android to Flutter.
  */
-object DebugIntentHandler {
+object DebugIntentBridge {
     @Volatile
     var pendingAction: String? = null
     
@@ -119,14 +101,14 @@ object DebugIntentHandler {
         pendingAction = action
     }
     
-    fun clearAction() {
-        pendingAction = null
+    fun consumeAction(): String? {
+        return pendingAction.also { pendingAction = null }
     }
 }
 ''',
         encoding="utf-8",
     )
-    print(f"Created: {activity_path}")
+    print(f"Created: {bridge_path}")
     return True
 
 
@@ -139,8 +121,8 @@ def main() -> None:
     print(f"Patching Android wrapper at: {android_dir}")
 
     changed = False
-    changed |= patch_manifest(android_dir)
-    changed |= create_debug_activity(android_dir)
+    changed |= patch_main_activity(android_dir)
+    changed |= create_debug_bridge(android_dir)
 
     if changed:
         print("Debug interface patching complete.")
