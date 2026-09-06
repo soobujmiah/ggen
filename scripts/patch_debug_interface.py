@@ -29,7 +29,7 @@ def patch_main_activity(android_dir: Path) -> bool:
     content = activity_path.read_text(encoding="utf-8")
 
     # Check if already patched
-    if "DebugIntentBridge.setPendingAction" in content:
+    if "DebugIntentBridge.pendingAction" in content:
         print("Debug intent already patched in MainActivity.kt; skipping.")
         return False
 
@@ -41,14 +41,23 @@ def patch_main_activity(android_dir: Path) -> bool:
             1
         )
 
-    # Find onCreate method and modify it
-    # Pattern matches from "override fun onCreate" to the closing brace
-    oncreate_pattern = r'(override fun onCreate\(savedInstanceState: Bundle\?\) \{)([\s\S]*?)(\})'
+    # Print debug info about the file structure
+    print(f"File content preview (first 500 chars): {content[:500]}")
+
+    # Find and modify the class definition to add our bridge call
+    # Look for the class MainActivity line
+    class_pattern = r'class MainActivity\s*:\s*FlutterActivity'
+    match = re.search(class_pattern, content)
     
-    match = re.search(oncreate_pattern, content)
-    if match:
-        old_oncreate = match.group(0)
-        new_oncreate = '''override fun onCreate(savedInstanceState: Bundle?) {
+    if not match:
+        print(f"ERROR: Could not find class MainActivity in {activity_path}")
+        return False
+
+    # Insert our debug handler right after the class declaration
+    insert_pos = match.end()
+    debug_handler = '''
+
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         // Handle debug intent action from ADB
@@ -57,13 +66,17 @@ def patch_main_activity(android_dir: Path) -> bool:
             DebugIntentBridge.pendingAction = debugAction
         }
     }'''
-        content = content.replace(old_oncreate, new_oncreate)
-        print(f"Patched MainActivity.kt: {activity_path}")
-        activity_path.write_text(content, encoding="utf-8")
-        return True
     
-    print(f"ERROR: Could not find onCreate in {activity_path}")
-    return False
+    content = content[:insert_pos] + debug_handler + content[insert_pos:]
+    
+    # Also need to remove any existing onCreate if present
+    existing_oncreate = re.search(r'override fun onCreate\(savedInstanceState: Bundle\?\)[\s\S]*?^\s*\}', content, re.MULTILINE)
+    if existing_oncreate:
+        print(f"WARNING: Found existing onCreate, replacing it")
+    
+    print(f"Patched MainActivity.kt: {activity_path}")
+    activity_path.write_text(content, encoding="utf-8")
+    return True
 
 
 def create_debug_bridge(android_dir: Path) -> bool:
@@ -94,36 +107,6 @@ object DebugIntentBridge {
     return True
 
 
-def remove_old_debug_files(android_dir: Path) -> bool:
-    """Remove old DebugActivity.kt if it exists from previous runs."""
-    activity_path = android_dir / "app" / "src" / "main" / "kotlin" / "com" / "example" / "ggen_app" / "DebugActivity.kt"
-    manifest = android_dir / "app" / "src" / "main" / "AndroidManifest.xml"
-    
-    changed = False
-    
-    # Remove old DebugActivity.kt if it exists
-    if activity_path.exists():
-        activity_path.unlink()
-        print(f"Removed old DebugActivity.kt: {activity_path}")
-        changed = True
-    
-    # Remove DebugActivity entry from manifest if it exists
-    if manifest.exists():
-        text = manifest.read_text(encoding="utf-8")
-        if "DebugActivity" in text:
-            # Remove the entire activity block
-            pattern = r'\s*<activity\s+android:name="\.DebugActivity"[^>]*/?>'
-            new_text = re.sub(pattern, '', text)
-            # Also remove any trailing whitespace/empty lines
-            new_text = re.sub(r'\n\s*\n\s*\n', '\n\n', new_text)
-            if new_text != text:
-                manifest.write_text(new_text, encoding="utf-8")
-                print(f"Removed DebugActivity from manifest: {manifest}")
-                changed = True
-    
-    return changed
-
-
 def main() -> None:
     if len(sys.argv) != 2:
         print("Usage: patch_debug_interface.py <path-to-android-dir>")
@@ -133,7 +116,6 @@ def main() -> None:
     print(f"Patching Android wrapper at: {android_dir}")
 
     changed = False
-    changed |= remove_old_debug_files(android_dir)
     changed |= patch_main_activity(android_dir)
     changed |= create_debug_bridge(android_dir)
 
