@@ -2,9 +2,9 @@ name: ggen_app
 description: Original Android-first GGEN creative and document studio shell.
 publish_to: "none"
 # Version format: MAJOR.MINOR.PATCH+BUILDCOUNT
-# Example: 0.1.0+1 means v0.1.0 build 1
-# CI increments BUILD by 1 for each run via environment variable
-version: 0.1.0+${{ vars.BUILD_COUNT || '1' }}
+# Example: 0.1.0+5 means v0.1.0 build 5
+# CI increments BUILD via environment variable override
+version: 0.1.0+1
 
 environment:
   sdk: ">=3.7.0 <4.0.0"
