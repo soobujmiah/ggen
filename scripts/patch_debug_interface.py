@@ -31,7 +31,7 @@ def patch_main_activity(android_dir: Path) -> bool:
     content = activity_path.read_text(encoding="utf-8")
 
     # Check if already patched
-    if "debugIntentAction" in content:
+    if "DebugIntentBridge.setPendingAction" in content:
         print("Debug intent already patched in MainActivity.kt; skipping.")
         return False
 
