@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch generated MainActivity.kt to add debug intent handling.
+"""Patch generated Android wrapper to add debug intent handling.
 
 This script is called by CI after flutter create and before build.
 It modifies the existing MainActivity.kt to accept debug intent extras
@@ -12,8 +12,6 @@ Supported actions via:
 Actions:
     undo     - Call StudioController.undo()
     redo     - Call StudioController.redo()
-
-The app reads the intent extra on startup and processes it.
 """
 
 import re
@@ -36,30 +34,30 @@ def patch_main_activity(android_dir: Path) -> bool:
         return False
 
     # Add imports
-    if "import io.flutter.embedding.android.FlutterActivity\n" in content:
+    if "import io.flutter.embedding.android.FlutterActivity" in content:
         content = content.replace(
             "import io.flutter.embedding.android.FlutterActivity\n",
             "import io.flutter.embedding.android.FlutterActivity\nimport android.content.Intent\n",
             1
         )
 
-    # Find and replace the onCreate method
-    oncreate_pattern = r'override fun onCreate\(savedInstanceState: Bundle\?\) \{[\s\S]*?super\.onCreate\(savedInstanceState\)[\s\S]*?\}'
+    # Find onCreate method and modify it
+    # Pattern matches from "override fun onCreate" to the closing brace
+    oncreate_pattern = r'(override fun onCreate\(savedInstanceState: Bundle\?\) \{)([\s\S]*?)(\})'
     
-    new_oncreate = '''override fun onCreate(savedInstanceState: Bundle?) {
+    match = re.search(oncreate_pattern, content)
+    if match:
+        old_oncreate = match.group(0)
+        new_oncreate = '''override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         // Handle debug intent action from ADB
         val debugAction = intent?.getStringExtra("test_action")
         if (debugAction != null) {
-            DebugIntentBridge.setPendingAction(debugAction)
+            DebugIntentBridge.pendingAction = debugAction
         }
     }'''
-
-    # Replace the onCreate method
-    match = re.search(oncreate_pattern, content)
-    if match:
-        content = content[:match.start()] + new_oncreate + content[match.end():]
+        content = content.replace(old_oncreate, new_oncreate)
         print(f"Patched MainActivity.kt: {activity_path}")
         activity_path.write_text(content, encoding="utf-8")
         return True
@@ -83,12 +81,7 @@ def create_debug_bridge(android_dir: Path) -> bool:
  * Simple static bridge for passing debug actions from Android to Flutter.
  */
 object DebugIntentBridge {
-    @Volatile
     var pendingAction: String? = null
-    
-    fun setPendingAction(action: String) {
-        pendingAction = action
-    }
     
     fun consumeAction(): String? {
         return pendingAction.also { pendingAction = null }
