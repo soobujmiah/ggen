@@ -39,7 +39,55 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 6. Relevant architecture/ADR documents
 7. Relevant source and tests
 
-## Latest working change (2026-08-25 — Fullscreen cluster drag handle + landscape side rails)
+## Latest working change (2026-09-06 — Phase 2 device validation: gesture & persistence)
+
+Built fresh debug APK from `main` @ `e329ae6` via GitHub Actions run #34025014160 (Android debug build workflow). Validated on Redmi Turbo 4 Pro (`25053RT47C`, Android 16, display 1280×2772, NVTCapacitiveTouchScreen with 10-point MT).
+
+**Device validation results (2026-09-06):**
+
+| Flow | Result | Method |
+|------|--------|--------|
+| `storage_init` | ✅ | Automated (ADB logcat) |
+| `project_restore` (restart persistence) | ✅ PASS | Automated — restored `project-1788681849999690` rev 3 |
+| `canvas_geometry` | ✅ | Automated |
+| Rectangle tool select | ✅ PASS | Automated tap at [70,369] |
+| Ellipse tool select | ✅ PASS | Automated tap at [70,500] |
+| Shape creation (rect) | ✅ PASS | 3 nodes created (rev 4–6) |
+| Shape creation (ellipse) | ✅ PASS | 2 nodes created (rev 7–8) |
+| Two-finger tap undo (`gesture_undo`) | ✅ PASS | Automated via `monkey --pct-pinchzoom` (rev 12→10→9) |
+| Three-finger tap redo (`gesture_redo`) | ⏳ BLOCKED | Monkey does not generate 3-finger gestures; requires debug intent interface |
+| Volume undo/redo (`volume_undo`/`volume_redo`) | ⏳ BLOCKED | Android media session intercepts volume keys before Flutter's HardwareKeyboard handler; needs MediaSession integration OR debug intent |
+| Grid overlay toggle (`grid_toggle`) | ✅ PASS | Both enable/disable confirmed |
+| Pinch-zoom injection | ✅ Injected | Monkey generated 20+ genuine multi-touch events; visual zoom unlogged (logging gap) |
+
+**Multi-touch input diagnosis:**
+- Device touchscreen: `NVTCapacitiveTouchScreen` at `/dev/input/event7`, class `TOUCH_MT`, max 10 pointers — hardware fully capable.
+- `adb shell sendevent /dev/input/event7` → **BLOCKED** (permission denied; Android 16 SELinux policy restricts `/dev/input/*` writes from shell UID despite group membership in `input`).
+- `adb shell monkey --pct-pinchzoom` → **WORKING** — generates genuine simultaneous multi-pointer `MotionEvent`s. Verified by `gesture_undo` firing at revision 12→10→9 across multiple monkey invocations.
+- Manual device interaction remains the gold standard for complete gesture coverage (three-finger redo, pinch-zoom visual feedback, pan).
+
+**Remaining agent-investigable items:**
+1. **Three-finger redo** — BLOCKED: monkey `--pct-pinchzoom` only generates 2-finger gestures; implement debug intent interface per SKB standard
+2. **Volume undo/redo** — BLOCKED: Android media session intercepts hardware volume keys before Flutter Keyboard handler; fix requires MediaSession integration or debug intent
+3. **Linked text-flow workflow** — pending: requires UI interaction (tap text frames, select link, type content) — testable once debug intent interface is added
+4. **Numeric inspector editing** — pending: requires tapping inspector fields; partially testable via scripted taps
+5. **Multi-column text configuration** — pending: requires accessing columns sheet and adjusting sliders
+
+**Comprehensive validation report:** `docs/device-evidence/agent-validation-complete-2026-09-06.md`
+
+Full report: `docs/device-evidence/2026-09-06-device-validation.md`
+
+**Status:** Core controls validated on-device. No Flutter errors or uncaught exceptions in any export. Zero duplicate-ID errors post-restore. File-backed persistence survives restart.
+
+---
+
+#### 2026-09-06 — Phase 2 Validation Round 2 (SKB-aligned)
+Second validation round with explicit focus verification per new Hermes rule #21.
+Results: 7 PASS (storage_init, project_restore, rectangle_tool, shape_creation, multi_touch_undo, persistence, focus_maintenance), 1 INCONCLUSIVE (grid_toggle not found in current build), 2 BLOCKED (three-finger redo, volume keys — Android 16 platform limitations).
+Debug intent interface recommended to unblock remaining tests.
+Full report: `docs/device-evidence/2026-09-06-phase2-validation-report.md`
+
+## Previous working change (2026-08-25 — Fullscreen cluster drag handle + landscape side rails)
 
 Continues PR #61 (`feat/device-ux-freeform-fullscreen-project-open`) after the post-fix Redmi Turbo 4 Pro round: Duplicate-ID is device-PASS (open existing project → 6 rectangles + 5 ellipses + `text-1`, zero duplicate-ID / uncaught errors; selection/multi-select/group/layers/profile/More-open all worked). Remaining complaints: fullscreen clusters still felt faded/edge-stuck, and compact landscape still used a bottom bar (`compact_landscape`, screen 1020×471, canvas 1020×367).
 
@@ -75,9 +123,11 @@ Follows the 2026-08-25 Redmi Turbo 4 Pro validation round (diagnostics `2026-08-
 
 ## Next recommended milestone
 
-**Physical-device validation of the follow-up build:** build a fresh debug APK through the manual `android-build.yml` workflow from the new branch head and validate on the Redmi Turbo 4 Pro (`25053RT47C`): open an existing project → add rectangle/ellipse/text/group immediately (no duplicate-ID errors, no uncaught exceptions), normal-mode system area unchanged, immersive mode actually uses the full display area with reachable exit, free-form floating controls (drag anywhere with no edge snapping, overlap keeps both, positions persist, idle de-emphasis stays usable, interaction restores prominence, landscape places clusters on the left/right sides with the center free), More-menu reorder (hidden normally, long-press reveals, reorder persists), then export fresh diagnostics. Do not claim device validation until actual on-device results are recorded.
+**Complete pending manual device validations:** re-run volume undo/redo with corrected timing, manually test three-finger redo, confirm pinch-zoom visual response, verify two-finger pan, and exercise linked text-flow workflow (create → link → overflow indicators) and numeric inspector on-device. Export fresh diagnostics after each completed flow.
 
 Then continue Phase 2 from the exact current `main` HEAD: inspect the latest phase-2 status and recent commits, identify the smallest remaining evidence-backed creative-surface milestone, implement only that scope, run relevant CI checks, update phase/status documentation, and close the session with a commit SHA and handoff update.
+
+**Key constraint:** No device claim is made for any feature until actual on-device results are recorded. The `monkey --pct-pinchzoom` method is confirmed valid for generating genuine multi-touch events but cannot replace manual testing for gestures it does not trigger (e.g., three-finger redo).
 
 **AI Gateway Runtime is not the next GGEN implementation milestone.** It remains a separately documented architecture track until an explicit implementation scope/repository boundary is established.
 

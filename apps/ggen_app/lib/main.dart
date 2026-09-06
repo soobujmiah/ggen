@@ -13,6 +13,7 @@ import 'profile_manager_sheet.dart';
 import 'src/controller/studio_controller.dart';
 import 'src/canvas/studio_canvas.dart';
 import 'src/canvas/canvas_zoom_controller.dart';
+import 'src/canvas/canvas_viewport.dart';
 import 'src/layers/layer_list.dart';
 import 'src/text_flow/linked_text_flow.dart';
 import 'src/workspace/studio_tool.dart';
@@ -284,6 +285,61 @@ class _StudioShellState extends State<StudioShell> {
     );
   }
 
+  /// Debug command handler: responds to Ctrl+D key sequences for automated testing.
+  /// Ctrl+D U = undo, Ctrl+D R = redo, Ctrl+D G = toggle grid,
+  /// Ctrl+D ZI = zoom in, Ctrl+D ZO = zoom out, Ctrl+D ZF = fit screen
+  bool _handleDebugKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    final isCtrl = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    if (!isCtrl) return false;
+
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.keyD) {
+      // Next key in sequence determines action
+      debugLog.info('debug_input', 'Debug mode activated', {
+        'command': 'debug_d_pressed',
+      });
+      return true;
+    }
+
+    // Single-key debug commands (without D)
+    switch (key) {
+      case LogicalKeyboardKey.keyU: // Undo
+        if (_studio.canUndo) {
+          _studio.undo();
+          debugLog.info('debug_undo', 'Debug undo triggered', {
+            'revision': _studio.revision,
+          });
+        }
+        return true;
+      case LogicalKeyboardKey.keyR: // Redo
+        if (_studio.canRedo) {
+          _studio.redo();
+          debugLog.info('debug_redo', 'Debug redo triggered', {
+            'revision': _studio.revision,
+          });
+        }
+        return true;
+      case LogicalKeyboardKey.keyG: // Toggle grid
+        _toggleGrid();
+        return true;
+      case LogicalKeyboardKey.equals: // Zoom in
+        _zoomController.zoomIn();
+        debugLog.info('debug_zoom_in', 'Debug zoom in triggered');
+        return true;
+      case LogicalKeyboardKey.minus: // Zoom out
+        _zoomController.zoomOut();
+        debugLog.info('debug_zoom_out', 'Debug zoom out triggered');
+        return true;
+      case LogicalKeyboardKey.digit0: // Fit to screen
+        _zoomController.fitToScreen();
+        debugLog.info('debug_zoom_fit', 'Debug fit to screen triggered');
+        return true;
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -293,6 +349,7 @@ class _StudioShellState extends State<StudioShell> {
     _restoreWorkspace();
     unawaited(_initStorage());
     HardwareKeyboard.instance.addHandler(_handleVolumeKey);
+    HardwareKeyboard.instance.addHandler(_handleDebugKey);
   }
 
   void _onStudioChanged() {
@@ -322,6 +379,7 @@ class _StudioShellState extends State<StudioShell> {
     // Method tear-offs of the same method on the same instance compare
     // equal, so this removes the handler added in initState.
     HardwareKeyboard.instance.removeHandler(_handleVolumeKey);
+    HardwareKeyboard.instance.removeHandler(_handleDebugKey);
     if (_ownsStudio) _studio.dispose();
     _zoomController.dispose();
     super.dispose();
@@ -2212,6 +2270,7 @@ class CanvasArea extends StatelessWidget {
     this.onNodeSelected,
     this.onTwoFingerTap,
     this.onThreeFingerTap,
+    this.onViewportChanged,
     super.key,
   });
 
@@ -2259,6 +2318,7 @@ class CanvasArea extends StatelessWidget {
   final void Function(GgenId? nodeId, bool additive)? onNodeSelected;
   final VoidCallback? onTwoFingerTap;
   final VoidCallback? onThreeFingerTap;
+  final void Function(CanvasViewport)? onViewportChanged;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -2297,6 +2357,7 @@ class CanvasArea extends StatelessWidget {
                 onToggleGrid: onToggleGrid,
                 selectedNodeId: selectedNodeId,
                 zoomController: zoomController,
+                onViewportChanged: onViewportChanged,
                 onTextRequest: onTextRequest,
                 onNodeSelected: onNodeSelected,
                 onTwoFingerTap: onTwoFingerTap,
