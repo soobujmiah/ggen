@@ -13,8 +13,8 @@ Actions:
     undo     - Call StudioController.undo()
     redo     - Call StudioController.redo()
 
-Note: DebugActivity simply forwards the intent to MainActivity which
-handles the debug action when it resumes to foreground.
+Note: DebugActivity stores the action in a static handler object,
+then launches MainActivity which processes it on foreground resume.
 """
 
 import re
@@ -84,9 +84,8 @@ import io.flutter.embedding.android.FlutterActivity
  *   undo     - Call StudioController.undo()
  *   redo     - Call StudioController.redo()
  *
- * This activity simply forwards the debug intent to MainActivity
- * which processes the action via SharedPreferences (since debug
- * actions need to work even when the app is in background).
+ * This activity stores the pending action via DebugIntentHandler
+ * and then launches MainActivity to process it.
  */
 class DebugActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,8 +94,7 @@ class DebugActivity : FlutterActivity() {
         // Get the action from the incoming intent
         val action = intent?.getStringExtra("test_action")
         
-        // Forward to MainActivity via a broadcast-style approach
-        // We'll store it in a global static holder that MainActivity can read
+        // Store via static handler for MainActivity to read
         if (action != null) {
             DebugIntentHandler.setPendingAction(action)
         }
@@ -111,11 +109,15 @@ class DebugActivity : FlutterActivity() {
 
 /**
  * Simple static holder for passing debug actions between activities.
- * Since each FlutterActivity has its own engine, we need a bridge.
+ * Since each FlutterActivity has its own engine, we use this bridge.
  */
 object DebugIntentHandler {
     @Volatile
     var pendingAction: String? = null
+    
+    fun setPendingAction(action: String) {
+        pendingAction = action
+    }
     
     fun clearAction() {
         pendingAction = null
