@@ -26,6 +26,52 @@ import 'src/storage/saved_project_summary.dart';
 import 'package:ggen_core/ggen_core.dart';
 
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
+
+/// Platform channel for debug intent actions from Android.
+/// Accessed via: adb shell am start -n com.example.ggen/com.example.ggen_app.DebugActivity --es test_action <action>
+final MethodChannel _debugChannel = MethodChannel('com.example.ggen/debug');
+
+/// Global reference to the current controller for debug actions.
+/// Set by the shell when initialized; accessed by the platform channel handler.
+StudioController? _debugStudioController;
+
+void _setupDebugChannel() {
+  _debugChannel.setMethodCallHandler((call) async {
+    if (call.method != 'debugAction') return;
+    final args = call.arguments as Map?;
+    _handleDebugAction(args);
+  });
+}
+
+void _handleDebugAction(dynamic args) {
+  if (args is! Map || _debugStudioController == null) return;
+  final action = args['action'] as String?;
+  if (action == null) return;
+  final controller = _debugStudioController!;
+  debugLog.info('debug_intent', 'Debug action received: $action');
+  switch (action) {
+    case 'undo':
+      if (controller.canUndo) controller.undo();
+      break;
+    case 'redo':
+      if (controller.canRedo) controller.redo();
+      break;
+    case 'grid':
+      // Grid toggle handled via setState in the shell
+      break;
+    case 'zoom_in':
+      // Zoom requires canvas reference; skip for now
+      break;
+    case 'zoom_out':
+      break;
+    case 'fit':
+      break;
+    case 'save':
+      // Save triggers UI; not available via intent
+      break;
+  }
+}
+
 final Set<String> _loggedLayoutModes = <String>{};
 
 /// How long the fullscreen floating controls stay fully prominent after the
@@ -345,6 +391,9 @@ class _StudioShellState extends State<StudioShell> {
     super.initState();
     _ownsStudio = widget.controller == null;
     _studio = widget.controller ?? StudioController();
+    // Wire global reference for debug intent actions from Android.
+    _debugStudioController = _studio;
+    _setupDebugChannel();
     _studio.addListener(_onStudioChanged);
     _restoreWorkspace();
     unawaited(_initStorage());

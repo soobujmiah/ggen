@@ -28,6 +28,8 @@ jobs:
       - name: Generate temporary Android wrapper
         working-directory: apps/ggen_app
         run: flutter create --platforms=android --project-name=ggen_app .
+      - name: Patch debug intent interface
+        run: python3 scripts/patch_debug_interface.py apps/ggen_app/android
       - name: Set Android app identity to ggen
         run: python3 scripts/prepare_android_identity.py apps/ggen_app/android
       - name: Build debug APK
