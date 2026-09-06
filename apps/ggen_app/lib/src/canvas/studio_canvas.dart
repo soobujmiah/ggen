@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:ggen_core/ggen_core.dart';
 
+import '../../debug_log.dart';
 import '../controller/studio_controller.dart';
 import '../geometry/shape_geometry.dart';
 import '../text_flow/linked_text_flow.dart';
@@ -691,12 +692,26 @@ class _StudioCanvasState extends State<StudioCanvas> {
               final artboardPoint = _viewport.toArtboard(
                 details.localPosition,
               );
+              debugLog.info('canvas_tap', 'Canvas tap received', {
+                'local_x': details.localPosition.dx.toStringAsFixed(1),
+                'local_y': details.localPosition.dy.toStringAsFixed(1),
+                'artboard_x': artboardPoint.dx.toStringAsFixed(1),
+                'artboard_y': artboardPoint.dy.toStringAsFixed(1),
+                'drawEnabled': widget.drawEnabled,
+                'ellipseEnabled': widget.ellipseEnabled,
+                'selectMode': widget.selectMode,
+                'textEnabled': widget.textEnabled,
+              });
               if (widget.drawEnabled) {
                 widget.controller.addShapeNode(
                   artboardPoint.dx,
                   artboardPoint.dy,
                 );
                 widget.onNodeAdded();
+                debugLog.info('shape_added', 'Shape node added', {
+                  'object_count': widget.controller.objectCount,
+                  'revision': widget.controller.revision,
+                });
               } else if (widget.ellipseEnabled) {
                 widget.controller.addEllipseNode(
                   artboardPoint.dx,

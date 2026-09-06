@@ -107,6 +107,8 @@ void main() {
     });
     return false;
   };
+  // Initialize persistent debug log file for ADB access
+  unawaited(debugLog.initLogFile());
   runApp(const GgenApp());
 }
 
