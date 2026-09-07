@@ -1,6 +1,6 @@
 # GGEN Current State
 
-Snapshot date: 2026-08-24
+Snapshot date: 2026-09-08
 Repository: `soobujmiah/ggen`
 Default branch: `main`
 Source of truth: GitHub repository state, tests/CI evidence, and documented physical-device evidence.

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -73,24 +75,219 @@ void _handleDebugAction(dynamic args) {
   }
 }
 
-/// Check for pending debug action from SharedPreferences (set by DebugActivity).
-/// This bridges the gap since DebugActivity has its own FlutterEngine.
-Future<void> _checkPendingDebugAction() async {
-  final prefs = await SharedPreferences.getInstance();
-  final pendingAction = prefs.getString('debug_pending_action');
-  if (pendingAction == null || pendingAction.isEmpty) return;
-  // Clear the pending action
-  await prefs.remove('debug_pending_action');
-  debugLog.info('debug_intent', 'Debug action from SharedPreferences: $pendingAction');
+/// File-based debug command interface.
+/// 
+/// An agent writes a JSON command to `/data/user/0/com.example.ggen/app_flutter/debug_cmd.json`:
+/// ```json
+/// {"cmd": "link", "source": "text-1", "target": "text-2"}
+/// ```
+/// 
+/// Flutter polls this file every 500ms, executes the command, and appends
+/// the result to the debug log. This enables full autonomous qualification
+/// without requiring manual UI interaction.
+/// 
+/// Supported commands:
+/// - `state` - return current project state (nodes, selection, revision)
+/// - `undo` / `redo` - history operations
+/// - `link` / `unlink` - linked text flow operations (requires `source`, `target`)
+/// - `group` / `ungroup` - group operations (requires `nodes` list)
+/// - `addShape` / `addText` - create objects (requires `x`, `y`)
+/// - `select` / `move` / `delete` - node operations
+/// - `save` / `load` - persistence operations
+/// - `clear` - clear all debug commands
+Future<void> _processDebugCommands() async {
   if (_debugStudioController == null) return;
-  final controller = _debugStudioController!;
-  switch (pendingAction) {
-    case 'undo':
-      if (controller.canUndo) controller.undo();
-      break;
-    case 'redo':
-      if (controller.canRedo) controller.redo();
-      break;
+  
+  try {
+    final docs = await getApplicationDocumentsDirectory();
+    final cmdFile = File('${docs.path}/debug_cmd.json');
+    if (!cmdFile.existsSync()) return;
+    
+    final content = await cmdFile.readAsString();
+    if (content.trim().isEmpty) return;
+    
+    // Clear command file immediately to prevent re-execution
+    await cmdFile.writeAsString('');
+    
+    final Map<String, Object?> cmd;
+    try {
+      cmd = jsonDecode(content) as Map<String, Object?>;
+    } catch (e) {
+      debugLog.warning('debug_cmd', 'Invalid JSON command', {'error': e.toString()});
+      return;
+    }
+    
+    final command = cmd['cmd'] as String?;
+    if (command == null) return;
+    
+    final controller = _debugStudioController!;
+    final Map<String, Object?> result = {'cmd': command};
+    
+    switch (command) {
+      case 'state':
+        result['revision'] = controller.revision;
+        result['objectCount'] = controller.objectCount;
+        result['canUndo'] = controller.canUndo;
+        result['canRedo'] = controller.canRedo;
+        result['selectedNodeIds'] = controller.selectedNodeIds.map((e) => e.value).toList();
+        result['nodes'] = controller.project.artboards.first.nodes.map((n) => <String, Object?>{
+          'id': n.id.value,
+          'name': n.name,
+          'x': n.extensions['x'],
+          'y': n.extensions['y'],
+          'w': n.extensions['w'],
+          'h': n.extensions['h'],
+          'text': n.extensions['text'],
+          'nextFrame': n.extensions['nextFrame'],
+        }).toList();
+        break;
+        
+      case 'undo':
+        if (controller.canUndo) {
+          controller.undo();
+          result['success'] = true;
+          result['revision'] = controller.revision;
+        } else {
+          result['success'] = false;
+          result['error'] = 'Nothing to undo';
+        }
+        break;
+        
+      case 'redo':
+        if (controller.canRedo) {
+          controller.redo();
+          result['success'] = true;
+          result['revision'] = controller.revision;
+        } else {
+          result['success'] = false;
+          result['error'] = 'Nothing to redo';
+        }
+        break;
+        
+      case 'addShape':
+        final x = (cmd['x'] as num?)?.toDouble() ?? 100;
+        final y = (cmd['y'] as num?)?.toDouble() ?? 100;
+        controller.addShapeNode(x, y);
+        result['success'] = true;
+        result['revision'] = controller.revision;
+        break;
+        
+      case 'addText':
+        final x = (cmd['x'] as num?)?.toDouble() ?? 100;
+        final y = (cmd['y'] as num?)?.toDouble() ?? 100;
+        final text = cmd['text'] as String? ?? 'Hello';
+        controller.addTextNode(x, y, text);
+        result['success'] = true;
+        result['revision'] = controller.revision;
+        break;
+        
+      case 'link':
+        final sourceId = cmd['source'] as String?;
+        final targetId = cmd['target'] as String?;
+        if (sourceId == null || targetId == null) {
+          result['success'] = false;
+          result['error'] = 'Missing source or target';
+        } else {
+          try {
+            final ok = controller.linkTextFrames(GgenId(sourceId), GgenId(targetId));
+            result['success'] = ok;
+          } catch (e) {
+            result['success'] = false;
+            result['error'] = e.toString();
+          }
+        }
+        break;
+        
+      case 'unlink':
+        final sourceId = cmd['source'] as String?;
+        if (sourceId == null) {
+          result['success'] = false;
+          result['error'] = 'Missing source';
+        } else {
+          final ok = controller.unlinkTextFrame(GgenId(sourceId));
+          result['success'] = ok;
+        }
+        break;
+        
+      case 'group':
+        final nodeIds = (cmd['nodes'] as List?)?.cast<String>() ?? [];
+        if (nodeIds.isEmpty) {
+          result['success'] = false;
+          result['error'] = 'Missing nodes';
+        } else {
+          final ok = controller.createGroup(nodeIds.map((e) => GgenId(e)).toList());
+          result['success'] = ok;
+        }
+        break;
+        
+      case 'select':
+        final nodeId = cmd['node'] as String?;
+        if (nodeId != null) {
+          controller.selectNode(GgenId(nodeId));
+          result['success'] = true;
+        } else {
+          controller.deselectNode();
+          result['success'] = true;
+        }
+        break;
+        
+      case 'move':
+        final nodeId = cmd['node'] as String?;
+        final dx = (cmd['dx'] as num?)?.toDouble() ?? 0;
+        final dy = (cmd['dy'] as num?)?.toDouble() ?? 0;
+        if (nodeId != null) {
+          final ok = controller.moveNode(GgenId(nodeId), dx, dy);
+          result['success'] = ok;
+        } else {
+          result['success'] = false;
+          result['error'] = 'Missing node';
+        }
+        break;
+        
+      case 'delete':
+        final nodeId = cmd['node'] as String?;
+        if (nodeId != null) {
+          final ok = controller.deleteNode(GgenId(nodeId));
+          result['success'] = ok;
+        }
+        break;
+        
+      case 'setText':
+        final nodeId = cmd['node'] as String?;
+        final text = cmd['text'] as String?;
+        if (nodeId != null && text != null) {
+          final ok = controller.updateTextNode(GgenId(nodeId), text: text);
+          result['success'] = ok;
+        } else {
+          result['success'] = false;
+          result['error'] = 'Missing node or text';
+        }
+        break;
+        
+      case 'save':
+        await controller.save();
+        result['success'] = true;
+        result['receipt'] = controller.lastReceipt?.toJson();
+        break;
+        
+      case 'load':
+        final ok = await controller.restore(controller.storageKey);
+        result['success'] = ok;
+        break;
+        
+      case 'newProject':
+        controller.newProject('Untitled project');
+        result['success'] = true;
+        break;
+        
+      default:
+        result['success'] = false;
+        result['error'] = 'Unknown command: $command';
+    }
+    
+    debugLog.info('debug_cmd', 'Command executed', result);
+  } catch (e) {
+    debugLog.error('debug_cmd', 'Command processing error', {'error': e.toString()});
   }
 }
 
@@ -283,6 +480,7 @@ class _StudioShellState extends State<StudioShell> {
   bool _showLayers = false;
   bool _multiSelect = false;
   bool _showGrid = true;
+  Timer? _debugCmdTimer; // Poll for file-based debug commands
   List<EditorTopAction> _topActionOrder = List<EditorTopAction>.of(
     EditorTopAction.values,
   );
@@ -422,6 +620,8 @@ class _StudioShellState extends State<StudioShell> {
     unawaited(_initStorage());
     // Check for pending debug action from DebugActivity.
     unawaited(_checkPendingDebugAction());
+    // Start polling for file-based debug commands.
+    _startDebugCommandPolling();
     HardwareKeyboard.instance.addHandler(_handleVolumeKey);
     HardwareKeyboard.instance.addHandler(_handleDebugKey);
   }
@@ -453,6 +653,7 @@ class _StudioShellState extends State<StudioShell> {
 
   @override
   void dispose() {
+    _debugCmdTimer?.cancel();
     _fullscreenIdleTimer?.cancel();
     _studio.removeListener(_onStudioChanged);
     // Method tear-offs of the same method on the same instance compare
@@ -462,6 +663,18 @@ class _StudioShellState extends State<StudioShell> {
     if (_ownsStudio) _studio.dispose();
     _zoomController.dispose();
     super.dispose();
+  }
+
+  /// Poll for file-based debug commands every 500ms.
+  /// This enables full autonomous agent testing via ADB.
+  void _startDebugCommandPolling() {
+    _debugCmdTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      try {
+        await _processDebugCommands();
+      } catch (e) {
+        debugLog.error('debug_cmd', 'Polling error', {'error': e.toString()});
+      }
+    });
   }
 
   /// Volume buttons act as undo (down) and redo (up) while editing. The
