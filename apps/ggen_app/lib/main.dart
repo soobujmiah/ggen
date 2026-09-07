@@ -267,7 +267,10 @@ Future<void> _processDebugCommands() async {
       case 'save':
         await controller.save();
         result['success'] = true;
-        result['receipt'] = controller.lastReceipt?.toJson();
+        final r = controller.lastReceipt;
+        if (r != null) {
+          result['receipt'] = {'key': r.key.value, 'revision': r.committedRevision, 'bytes': r.byteSize};
+        }
         break;
         
       case 'load':
@@ -619,7 +622,7 @@ class _StudioShellState extends State<StudioShell> {
     _restoreWorkspace();
     unawaited(_initStorage());
     // Check for pending debug action from DebugActivity.
-    unawaited(_checkPendingDebugAction());
+    unawaited(_processDebugCommands());
     // Start polling for file-based debug commands.
     _startDebugCommandPolling();
     HardwareKeyboard.instance.addHandler(_handleVolumeKey);
@@ -633,11 +636,6 @@ class _StudioShellState extends State<StudioShell> {
   @override
   void didUpdateWidget(covariant StudioShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Check for pending debug action when app comes to foreground.
-    if (!_hasCheckedForegroundAction) {
-      _hasCheckedForegroundAction = true;
-      unawaited(_checkPendingDebugAction());
-    }
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.removeListener(_onStudioChanged);
       // Re-wire to the new controller (injected for tests).
