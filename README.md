@@ -2,7 +2,11 @@
 
 **AI Creative & Document Studio — public documentation-first foundation**
 
+[![SEO audited](https://img.shields.io/badge/SEO-audited%202026--09--16-22c55e?style=flat-square)](docs/SEO.md)
+
 GGEN is an Android-first, platform-neutral creative and document foundation intended to grow into a professional manual vector, raster, painting, font, 3D, document and PDF environment with optional local/cloud/custom AI. The public source is independently designed and does not copy BG, RGEN or competitor UI, UX, branding or visual identity.
+
+In plain terms: GGEN is an **Android-first creative and document studio built with Flutter and Dart** — vector graphics, layered canvas, multi-column and page-linked text flow, and document generation, working locally on the device with AI as an optional layer. Built and maintained by [Sobuj Miah](https://soobujmiah.github.io/) ([@soobujmiah](https://github.com/soobujmiah)).
 
 ## Repository boundary
 
