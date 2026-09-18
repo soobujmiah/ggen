@@ -1,6 +1,6 @@
 # Contributing to GGEN
 
-Read [`AI_ASSISTANT.md`](AI_ASSISTANT.md), [`docs/legal/licensing-policy.md`](docs/legal/licensing-policy.md), and [`docs/legal/contributor-ip-policy.md`](docs/legal/contributor-ip-policy.md) before contributing.
+Read [`docs/legal/licensing-policy.md`](docs/legal/licensing-policy.md) and [`docs/legal/contributor-ip-policy.md`](docs/legal/contributor-ip-policy.md) before contributing.
 
 GGEN prefers small, complete, documented, tested platform-neutral foundations over demo-quality buttons. Computer-quality semantics and mobile-friendly interaction are both mandatory. Do not copy BG/RGEN or competitor UI, branding or implementation. Do not modify or submit private protected asset bytes.
 
