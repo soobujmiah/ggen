@@ -12,7 +12,7 @@ In plain terms: GGEN is an **Android-first creative and document studio built wi
 
 - **Public source:** [`soobujmiah/ggen`](https://github.com/soobujmiah/ggen), fresh Git history, Apache-2.0 for GGEN-owned source and documentation.
 - **Private vault:** [`soobujmiah/ggen-protected-assets`](https://github.com/soobujmiah/ggen-protected-assets), private owner-controlled history and restricted RGEN asset bytes.
-- **Read-only references:** [`bg`](https://github.com/soobujmiah/bg) and [`rgen`](https://github.com/soobujmiah/rgen). They must not be modified or treated as GGEN dependencies.
+- **Read-only references:** [`rgen`](https://github.com/soobujmiah/rgen) and, historically, [`bg`](https://github.com/soobujmiah/bg) (repository deleted by owner decision on 2026-09-19; its audited capability inventory survives in `docs/audit/bg-capability-inventory.md`). They must not be modified or treated as GGEN dependencies.
 
 The public repository contains no Lucida or other protected font binaries, signatures, institutional/government marks, protected production templates, OCR/model binaries, APK/AAB files, credentials or private user data. [`config/protected-asset-registry.json`](config/protected-asset-registry.json) contains metadata and SHA-256 receipts only; it is not a license or an asset download.
 
@@ -30,21 +30,20 @@ Protected features report `UNAVAILABLE_NO_PACK` until an owner-supplied pack is 
 
 ## Read first
 
-1. [`AI_ASSISTANT.md`](AI_ASSISTANT.md) — the AI working agreement (session start/close contract, evidence rules)
-2. [`CURRENT_STATE.md`](CURRENT_STATE.md) — the canonical current-state record and session handoff (current phase, verified baseline, evidence boundary, required reading for the next AI)
-3. [`MASTER_SPEC.md`](MASTER_SPEC.md)
-4. [`docs/product/computer-quality-tool-standard.md`](docs/product/computer-quality-tool-standard.md)
-5. [`docs/design/mobile-first-professional-ui.md`](docs/design/mobile-first-professional-ui.md)
-6. [`config/development-environments.yaml`](config/development-environments.yaml)
-7. [`config/tool-quality-standard.yaml`](config/tool-quality-standard.yaml)
-8. [`config/toolchain.yaml`](config/toolchain.yaml)
+1. [`CURRENT_STATE.md`](CURRENT_STATE.md) — the canonical current-state record (current phase, verified baseline, evidence boundary)
+2. [`MASTER_SPEC.md`](MASTER_SPEC.md)
+3. [`docs/product/computer-quality-tool-standard.md`](docs/product/computer-quality-tool-standard.md)
+4. [`docs/design/mobile-first-professional-ui.md`](docs/design/mobile-first-professional-ui.md)
+5. [`config/development-environments.yaml`](config/development-environments.yaml)
+6. [`config/tool-quality-standard.yaml`](config/tool-quality-standard.yaml)
+7. [`config/toolchain.yaml`](config/toolchain.yaml)
 9. [`docs/legal/licensing-policy.md`](docs/legal/licensing-policy.md)
 10. [`docs/security/import-and-resource-policy.md`](docs/security/import-and-resource-policy.md)
 11. [`docs/phases/phase-0-status.md`](docs/phases/phase-0-status.md)
 12. [`docs/phases/phase-1-status.md`](docs/phases/phase-1-status.md)
 13. Relevant architecture, interface, source and test files
 
-> Session continuity: `CURRENT_STATE.md` is the authoritative, up-to-date snapshot; phase/status docs carry the deeper detail and dated evidence. Reconstruct state from these plus repository evidence — never from a previous chat session's claims.
+> State continuity: `CURRENT_STATE.md` is the authoritative, up-to-date snapshot; phase/status docs carry the deeper detail and dated evidence.
 
 ## Non-negotiable boundaries
 

@@ -5,7 +5,7 @@
 **Status:** Master Specification  
 **Priority:** Highest  
 **Repository type:** Public Apache-2.0 source repository with a separate private protected-asset vault  
-**Reference repositories:** `soobujmiah/bg`, `soobujmiah/rgen`  
+**Reference repositories:** `soobujmiah/rgen`; historically `soobujmiah/bg` (repository deleted by owner decision 2026-09-19 — capability inventory preserved in `docs/audit/bg-capability-inventory.md`)  
 **Initial platform:** Android-first Flutter  
 **Core rule:** Reference functionality and engineering knowledge only. Never copy BG/RGEN UI, UX, visual identity, layout, branding, interaction design, colors, typography system, icons, or navigation.
 
