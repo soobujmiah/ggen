@@ -4,7 +4,7 @@ publish_to: "none"
 # Version format: MAJOR.MINOR.PATCH+BUILDCOUNT
 # Example: 0.1.0+5 means v0.1.0 build 5
 # CI increments BUILD via environment variable override
-version: 0.1.0+1
+version: 0.1.0+75
 
 environment:
   sdk: ">=3.7.0 <4.0.0"
