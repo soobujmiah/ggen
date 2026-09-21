@@ -154,7 +154,7 @@ def main() -> None:
     changed |= normalize_manifest(manifest, version)
     for name in ("build.gradle", "build.gradle.kts"):
         changed |= normalize_build_file(android_dir / "app" / name)
-    changed |= write_version_file(android_dir.parent.parent, version)
+    changed |= write_version_file(android_dir.parent, version)
 
     if changed:
         print("Android app identity normalized to ggen.")
