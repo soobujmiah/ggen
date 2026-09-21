@@ -35,7 +35,10 @@ jobs:
         run: python3 scripts/patch_debug_interface.py apps/ggen_app/android
       
       - name: Set Android app identity to ggen
-        run: python3 scripts/prepare_android_identity.py apps/ggen_app/android --version "${{ env.APP_VERSION_BASE }}+${BUILD_ID}"
+        run: |
+          BUILD_ID=${{ github.run_number }}
+          VERSION="${{ env.APP_VERSION_BASE }}+${BUILD_ID}"
+          python3 scripts/prepare_android_identity.py apps/ggen_app/android --version "$VERSION"
       
       - name: Apply version with build identifier
         run: |
