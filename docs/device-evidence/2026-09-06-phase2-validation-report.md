@@ -1,5 +1,13 @@
 # GGEN Phase 2 Device Validation Report — 2026-09-06
 
+> **SUPERSEDED — HISTORICAL ONLY.** This record documents work performed under the four-tier
+> autonomous control hierarchy (ADB-first → application-native control → raw `adb shell input` →
+> UIAutomator), which is superseded in full. See `soobujmiah/skb` →
+> `operations/decisions/2026-09-21--skb--human-operated-testing-model.md` (`DEC-2026-09-21-001`,
+> 2026-09-21). The record is preserved verbatim as evidence of that work; it is not an
+> authorization, and it does not describe current practice. The only operative input path is
+> **owner human interaction**; the Supervisor observes, records scoped evidence, analyzes and fixes.
+
 ## Executive Summary
 Completed autonomous device validation of `com.example.ggen` v0.1.0 on physical Redmi Turbo 4 Pro (Android 16/API 36). Seven tests passed, one inconclusive (grid toggle), two blocked by platform limitations.
 

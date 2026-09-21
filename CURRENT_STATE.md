@@ -60,17 +60,25 @@ Built fresh debug APK from `main` @ `e329ae6` via GitHub Actions run #3402501416
 | Grid overlay toggle (`grid_toggle`) | ✅ PASS | Both enable/disable confirmed |
 | Pinch-zoom injection | ✅ Injected | Monkey generated 20+ genuine multi-touch events; visual zoom unlogged (logging gap) |
 
+> **Superseded method — retained for its technical findings only.** The multi-touch injection work
+> recorded below (Monkey `--pct-pinchzoom`, debug-intent control) belongs to the four-tier autonomous
+> control model, which is superseded in full: see `soobujmiah/skb` →
+> `operations/decisions/2026-09-21--skb--human-operated-testing-model.md` (`DEC-2026-09-21-001`,
+> 2026-09-21). The hardware / SELinux / Monkey capability findings are true technical observations;
+> they are **not** authorization to drive the application autonomously. The only operative input
+> path is **owner human interaction**.
+
 **Multi-touch input diagnosis:**
 - Device touchscreen: `NVTCapacitiveTouchScreen` at `/dev/input/event7`, class `TOUCH_MT`, max 10 pointers — hardware fully capable.
 - `adb shell sendevent /dev/input/event7` → **BLOCKED** (permission denied; Android 16 SELinux policy restricts `/dev/input/*` writes from shell UID despite group membership in `input`).
 - `adb shell monkey --pct-pinchzoom` → **WORKING** — generates genuine simultaneous multi-pointer `MotionEvent`s. Verified by `gesture_undo` firing at revision 12→10→9 across multiple monkey invocations.
-- Manual device interaction remains the gold standard for complete gesture coverage (three-finger redo, pinch-zoom visual feedback, pan).
+- Owner human interaction is the **only operative input path** for the application UI (three-finger redo, pinch-zoom visual feedback, pan) — not merely the gold standard, but the required path (`DEC-2026-09-21-001`).
 
-**Remaining agent-investigable items:**
-1. **Three-finger redo** — BLOCKED: monkey `--pct-pinchzoom` only generates 2-finger gestures; implement debug intent interface per SKB standard
-2. **Volume undo/redo** — BLOCKED: Android media session intercepts hardware volume keys before Flutter Keyboard handler; fix requires MediaSession integration or debug intent
-3. **Linked text-flow workflow** — pending: requires UI interaction (tap text frames, select link, type content) — testable once debug intent interface is added
-4. **Numeric inspector editing** — pending: requires tapping inspector fields; partially testable via scripted taps
+**Remaining items (owner interaction required — no autonomous input path):**
+1. **Three-finger redo** — not reachable by the superseded injection path (monkey `--pct-pinchzoom` only generates 2-finger gestures). The remedy once proposed (build a debug-intent interface to drive it) is **not authorized** under `DEC-2026-09-21-001`; verify by owner interaction.
+2. **Volume undo/redo** — BLOCKED: Android media session intercepts hardware volume keys before Flutter Keyboard handler; fix requires MediaSession integration; the debug-intent route is not an authorized input path
+3. **Linked text-flow workflow** — pending: requires owner UI interaction (tap text frames, select link, type content); the debug-intent route is not authorized
+4. **Numeric inspector editing** — pending: requires owner interaction (tapping inspector fields); scripted taps are not authorized
 5. **Multi-column text configuration** — pending: requires accessing columns sheet and adjusting sliders
 
 **Comprehensive validation report:** `docs/device-evidence/agent-validation-complete-2026-09-06.md`

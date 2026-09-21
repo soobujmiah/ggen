@@ -32,6 +32,11 @@ final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 
 /// Platform channel for debug intent actions from Android.
 /// Accessed via: adb shell am start -n com.example.ggen/com.example.ggen_app.DebugActivity --es test_action <action>
+///
+/// NOTE (2026-09-21): this application-native deterministic control surface is a superseded
+/// tier-1 mechanism (soobujmiah/skb -> DEC-2026-09-21-001). It is retained as app/debug
+/// functionality, but it is NOT an authorized path for autonomous agent interaction with the
+/// application UI. Owner human interaction is the only operative input path.
 final MethodChannel _debugChannel = MethodChannel('com.example.ggen/debug');
 
 /// Global reference to the current controller for debug actions.

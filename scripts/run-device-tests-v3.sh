@@ -1,4 +1,12 @@
 #!/bin/bash
+# ─────────────────────────────────────────────────────────────────────────────
+# SUPERSEDED — HISTORICAL ONLY. NOT AUTHORIZED FOR AUTONOMOUS SUPERVISOR USE.
+# This script drives the application by ADB/Monkey input injection, part of the
+# superseded four-tier control model. See soobujmiah/skb ->
+# operations/decisions/2026-09-21--skb--human-operated-testing-model.md
+# (DEC-2026-09-21-001, 2026-09-21). Retained as historical tooling. The only
+# operative input path is owner human interaction.
+# ─────────────────────────────────────────────────────────────────────────────
 # GGEN Device Test Runner v3 - With correct canvas coordinates
 # Canvas: [141,152]-[1280,2631], Artboard: 419x912
 # Tools at x≈70, spaced ~130px apart vertically
