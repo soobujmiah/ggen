@@ -1,5 +1,13 @@
 # GGEN Phase 2 — Final Handoff (2026-09-06)
 
+> **SUPERSEDED — HISTORICAL ONLY.** This record documents work performed under the four-tier
+> autonomous control hierarchy (ADB-first → application-native control → raw `adb shell input` →
+> UIAutomator), which is superseded in full. See `soobujmiah/skb` →
+> `operations/decisions/2026-09-21--skb--human-operated-testing-model.md` (`DEC-2026-09-21-001`,
+> 2026-09-21). The record is preserved verbatim as evidence of that work; it is not an
+> authorization, and it does not describe current practice. The only operative input path is
+> **owner human interaction**; the Supervisor observes, records scoped evidence, analyzes and fixes.
+
 ## Session Status
 
 This session continues the GGEN Phase 2 device-validation project from a previous Hermes session that hit the 256K context limit. The previous session preserved work at commit `6e42b76` and pushed it to GitHub.
