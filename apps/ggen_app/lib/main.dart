@@ -27,6 +27,7 @@ import 'src/storage/file_recovery_journal.dart';
 import 'src/storage/saved_project_summary.dart';
 
 import 'package:ggen_core/ggen_core.dart';
+import 'version.dart' as version_info;
 
 final debugLog = DebugLogStore()..info('app_start', 'GGEN shell started');
 
@@ -389,18 +390,23 @@ void main() {
 Future<void> _showDiagnostics(BuildContext context) async {
   debugLog.info('diagnostics_export', 'Diagnostics JSON opened');
   final payload = debugLog.exportJson();
+  // Prepend build version header for traceability
+  final versionString = (version_info.ggenBuildVersion.isNotEmpty
+      ? 'build_version: ${version_info.ggenBuildVersion}\n'
+      : '');
+  final fullPayload = '$versionString$payload';
   await showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('Diagnostics export'),
       content: SizedBox(
         width: 640,
-        child: SingleChildScrollView(child: SelectableText(payload)),
+        child: SingleChildScrollView(child: SelectableText(fullPayload)),
       ),
       actions: [
         TextButton(
           onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: payload));
+            await Clipboard.setData(ClipboardData(text: fullPayload));
             if (context.mounted) Navigator.pop(context);
           },
           child: const Text('Copy JSON'),
