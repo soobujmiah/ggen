@@ -925,24 +925,6 @@ class _StudioShellState extends State<StudioShell> {
       if (!_topActionOrder.contains(action)) action,
   ];
 
-  /// Default high-frequency project actions always visible on the top bar.
-  static const List<EditorTopAction> _defaultPrimaryActions = [
-    EditorTopAction.newProject,
-    EditorTopAction.openProject,
-    EditorTopAction.save,
-    EditorTopAction.immersive,
-  ];
-
-  /// Default secondary workspace actions shown as scroller buttons.
-  /// Settings and More are always at far-right and excluded from this list.
-  static final List<EditorTopAction> _defaultSecondaryActions = [
-    for (final a in EditorTopAction.values)
-      if (!EditorTopAction._isPrimaryOrTerminal(a)) a,
-  ];
-
-  /// Default ordering for the More menu (same as enum declaration order).
-  static const List<EditorTopAction> _defaultMenuOrder = EditorTopAction.values;
-
   /// True when exactly the selected node is a text frame; enables the
   /// Columns action on the compact and landscape bars.
   bool get _columnsEnabled =>
@@ -1637,9 +1619,7 @@ class _StudioShellState extends State<StudioShell> {
     }
   }
 
-  /// Shows the More menu: every top action in configurable order, grouped
-  /// by category for discoverability. Primary project actions are excluded
-  /// (they live on the top bar) but remain reorderable inside the menu.
+  /// Shows the More menu: every top action in configurable order.
   ///
   /// Normal state shows actions only — no reorder affordances take up
   /// space. Press-and-hold a row to enter reorder mode for that row: the
@@ -1663,112 +1643,91 @@ class _StudioShellState extends State<StudioShell> {
             _topActionOrder.insert(to, action);
           }
 
-          // Categorize actions for grouped display
-          final workspaceActions = <EditorTopAction>[
-            EditorTopAction.dockInspector,
-          ].where(_topActionOrder.contains).toList();
-          final documentActions = <EditorTopAction>[
-            EditorTopAction.diagnostics,
-          ].where(_topActionOrder.contains).toList();
-          final otherActions = _topActionOrder
-              .where((a) =>
-                  !workspaceActions.contains(a) &&
-                  !documentActions.contains(a))
-              .toList();
-
           return SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
                   child: Text(
                     'More actions',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      letterSpacing: 0.3,
+                      fontSize: 14,
                     ),
                   ),
                 ),
-
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.dashboard_customize_outlined),
+                  title: const Text('Customize fullscreen controls'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    unawaited(_openFullscreenCustomizer());
+                  },
+                ),
+                const Divider(height: 8),
                 Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // ── Workspace ──────────────────────────────────
-                        if (workspaceActions.isNotEmpty) ...[
-                          _SectionHeader('Workspace'),
-                          const SizedBox(height: 4),
-                          ...workspaceActions.map((a) => _buildCategorizedRow(
-                            sheetContext: sheetContext,
-                            action: a,
-                            reorderIndex: reorderIndex,
-                            reorderActive: reorderIndex != null,
-                            setSheetState: setSheetState,
-                            exitReorder: exitReorder,
-                            moveRow: moveRow,
-                            shellSetState: setState,
-                          )),
-                          const SizedBox(height: 12),
-                        ],
-
-                        // ── Document ───────────────────────────────────
-                        if (documentActions.isNotEmpty) ...[
-                          _SectionHeader('Document'),
-                          const SizedBox(height: 4),
-                          ...documentActions.map((a) => _buildCategorizedRow(
-                            sheetContext: sheetContext,
-                            action: a,
-                            reorderIndex: reorderIndex,
-                            reorderActive: reorderIndex != null,
-                            setSheetState: setSheetState,
-                            exitReorder: exitReorder,
-                            moveRow: moveRow,
-                            shellSetState: setState,
-                          )),
-                          const SizedBox(height: 12),
-                        ],
-
-                        // ── Other actions ──────────────────────────────
-                        if (otherActions.isNotEmpty) ...[
-                          _SectionHeader('Commands'),
-                          const SizedBox(height: 4),
-                          ...otherActions.map((a) => _buildCategorizedRow(
-                            sheetContext: sheetContext,
-                            action: a,
-                            reorderIndex: reorderIndex,
-                            reorderActive: reorderIndex != null,
-                            setSheetState: setSheetState,
-                            exitReorder: exitReorder,
-                            moveRow: moveRow,
-                            shellSetState: setState,
-                          )),
-                          const SizedBox(height: 12),
-                        ],
-
-                        // ── Fullscreen customization ───────────────────
-                        const Divider(height: 8),
-                        ListTile(
-                          dense: true,
-                          leading: const Icon(
-                            Icons.dashboard_customize_outlined,
-                            color: Color(0xFF6B7280),
-                          ),
-                          title: const Text(
-                            'Customize fullscreen controls',
-                            style: TextStyle(fontSize: 13),
-                          ),
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            unawaited(_openFullscreenCustomizer());
-                          },
+                  child: ReorderableListView(
+                    shrinkWrap: true,
+                    buildDefaultDragHandles: false,
+                    padding: const EdgeInsets.only(bottom: 16),
+                    onReorderItem: (oldIndex, newIndex) {
+                      setSheetState(() {
+                        moveRow(oldIndex, newIndex);
+                        reorderIndex = null;
+                      });
+                      setState(() {}); // shell: the bar reflects immediately
+                      debugLog.info(
+                        'top_action_reorder',
+                        'Action reordered via drag',
+                        {
+                          'action': _topActionOrder[newIndex].name,
+                          'from': oldIndex,
+                          'to': newIndex,
+                        },
+                      );
+                      unawaited(_persistWorkspace());
+                    },
+                    onReorderEnd: (_) => exitReorder(),
+                    children: [
+                      for (var i = 0; i < _topActionOrder.length; i++)
+                        _buildMoreRow(
+                          sheetContext: sheetContext,
+                          index: i,
+                          reorderMode: reorderIndex == i,
+                          reorderActive: reorderIndex != null,
+                          setSheetState: setSheetState,
+                          onEnterReorder: () =>
+                              setSheetState(() => reorderIndex = i),
+                          onExitReorder: exitReorder,
+                          onMoveUp: i == 0
+                              ? null
+                              : () {
+                                  setSheetState(() => moveRow(i, i - 1));
+                                  setState(() {});
+                                  debugLog.info(
+                                    'top_action_reorder',
+                                    'Action moved up',
+                                    {'action': _topActionOrder[i - 1].name},
+                                  );
+                                  unawaited(_persistWorkspace());
+                                },
+                          onMoveDown:
+                              i == _topActionOrder.length - 1
+                              ? null
+                              : () {
+                                  setSheetState(() => moveRow(i, i + 1));
+                                  setState(() {});
+                                  debugLog.info(
+                                    'top_action_reorder',
+                                    'Action moved down',
+                                    {'action': _topActionOrder[i + 1].name},
+                                  );
+                                  unawaited(_persistWorkspace());
+                                },
                         ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ],
@@ -1779,22 +1738,22 @@ class _StudioShellState extends State<StudioShell> {
     );
   }
 
-  Widget _buildCategorizedRow(
-    BuildContext sheetContext,
-    EditorTopAction action,
-    int? reorderIndex, {
+  Widget _buildMoreRow({
+    required BuildContext sheetContext,
+    required int index,
+    required bool reorderMode,
     required bool reorderActive,
     required StateSetter setSheetState,
-    required VoidCallback exitReorder,
-    required void Function(int, int) moveRow,
-    required StateSetter shellSetState,
+    required VoidCallback onEnterReorder,
+    required VoidCallback onExitReorder,
+    required VoidCallback? onMoveUp,
+    required VoidCallback? onMoveDown,
   }) {
-    final idx = _topActionOrder.indexOf(action);
+    final action = _topActionOrder[index];
     final pinned = _topActionPinned.contains(action);
     return ListTile(
       key: ValueKey(action.name),
       dense: true,
-      horizontalTitleGap: 12,
       leading: IconButton(
         tooltip: pinned ? 'Hide from top bar' : 'Show in top bar',
         iconSize: 20,
@@ -1802,7 +1761,7 @@ class _StudioShellState extends State<StudioShell> {
         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
         visualDensity: VisualDensity.compact,
         onPressed: () {
-          exitReorder();
+          onExitReorder();
           setSheetState(() {
             if (pinned) {
               _topActionPinned.remove(action);
@@ -1810,7 +1769,7 @@ class _StudioShellState extends State<StudioShell> {
               _topActionPinned.add(action);
             }
           });
-          shellSetState(() {});
+          setState(() {}); // shell: the bar must reflect the pin immediately
           debugLog.info(
             pinned ? 'top_action_unpin' : 'top_action_pin',
             pinned ? 'Action hidden from top bar' : 'Action pinned to top bar',
@@ -1820,16 +1779,16 @@ class _StudioShellState extends State<StudioShell> {
         },
         icon: Icon(
           pinned ? Icons.star : Icons.star_border,
-          color: pinned ? const Color(0xFFF59E0B) : const Color(0xFF6B7280),
+          color: pinned ? Colors.amber.shade300 : Colors.white54,
         ),
       ),
-      title: Text(
-        action.label,
-        style: const TextStyle(fontSize: 13),
-      ),
+      title: Text(action.label),
+      // Press-and-hold enters reorder mode; a normal tap runs the action.
+      // While ANY row is in reorder mode, tapping anywhere only leaves
+      // reorder mode — it never accidentally executes an action.
       onTap: () {
         if (reorderActive) {
-          exitReorder();
+          onExitReorder();
           return;
         }
         debugLog.info('top_action_run', 'Action run from More menu', {
@@ -1838,67 +1797,52 @@ class _StudioShellState extends State<StudioShell> {
         Navigator.pop(sheetContext);
         unawaited(_runTopAction(action));
       },
-      onLongPress: () => setSheetState(() => reorderIndex = idx),
-      trailing: reorderIndex == idx
-          ? Row(
+      onLongPress: onEnterReorder,
+      trailing: !reorderMode
+          ? null
+          : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
                   tooltip: 'Move up',
                   iconSize: 18,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
                   visualDensity: VisualDensity.compact,
-                  onPressed: idx == 0 ? null : () {
-                    setSheetState(() => moveRow(idx, idx - 1));
-                    shellSetState(() {});
-                    debugLog.info('top_action_reorder', 'Action moved up',
-                        {'action': _topActionOrder[idx - 1].name});
-                    unawaited(_persistWorkspace());
-                  },
+                  onPressed: onMoveUp,
                   icon: const Icon(Icons.arrow_upward),
                 ),
                 IconButton(
                   tooltip: 'Move down',
                   iconSize: 18,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
                   visualDensity: VisualDensity.compact,
-                  onPressed: idx == _topActionOrder.length - 1 ? null : () {
-                    setSheetState(() => moveRow(idx, idx + 1));
-                    shellSetState(() {});
-                    debugLog.info('top_action_reorder', 'Action moved down',
-                        {'action': _topActionOrder[idx + 1].name});
-                    unawaited(_persistWorkspace());
-                  },
+                  onPressed: onMoveDown,
                   icon: const Icon(Icons.arrow_downward),
                 ),
-                ReorderableDragStartListener(
-                  index: idx,
-                  child: const Icon(
-                    Icons.drag_indicator,
-                    size: 20,
-                    color: Color(0xFF6B7280),
+                // Drag handle: the only direct-drag entry point, visible
+                // exclusively in reorder mode.
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: ReorderableDragStartListener(
+                    index: index,
+                    child: const Icon(
+                      Icons.drag_indicator,
+                      size: 22,
+                      color: Colors.white54,
+                    ),
                   ),
                 ),
               ],
-            )
-          : null,
+            ),
     );
-  }
-
-  static Widget _SectionHeader(String title) => Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 4),
-        child: Text(
-          title,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF6B7280),
-            letterSpacing: 0.8,
-          ),
-        ),
-      );
   }
 
   void _setImmersive(bool value) {
@@ -2332,12 +2276,8 @@ class _StudioShellState extends State<StudioShell> {
                           topBar: _immersive
                               ? null
                               : _TopActionBar(
-                                  primaryActions: _defaultPrimaryActions,
-                                  secondaryActions: _defaultSecondaryActions,
-                                  onRunPrimary: (action) => unawaited(
-                                    _runTopAction(action),
-                                  ),
-                                  onRunSecondary: (action) => unawaited(
+                                  actions: _pinnedInOrder,
+                                  onRun: (action) => unawaited(
                                     _runTopAction(action),
                                   ),
                                   onMore: () => unawaited(_showMoreMenu()),
@@ -3943,266 +3883,83 @@ enum EditorTopAction {
 
   final String label;
   final IconData icon;
-
-  /// Returns true for actions that are either always-primary (new/open/save/
-  /// immersive) or terminal (settings/more) and should not appear in the
-  /// secondary scroller row.
-  static bool _isPrimaryOrTerminal(EditorTopAction a) =>
-      a == openProject ||
-      a == newProject ||
-      a == save ||
-      a == immersive ||
-      a == settings;
 }
 
-/// Robust desktop-class top command surface for GGEN on mobile.
+/// Transparent, icon-only action bar drawn INSIDE the canvas bounds at the
+/// status-bar boundary (`CanvasArea.topBar`). No background, no title: the
+/// icons render in the contrast color of the surface they float over (the
+/// dark canvas background, so white with a soft shadow) and every action
+/// without a pinned slot lives behind the More menu.
 ///
-/// Layout hierarchy (left → center → right):
-///   [brand] ............ [primary-actions segmented] ......... [settings][more]
-///
-/// Primary actions are always visible outside the menu (new, open, save,
-/// immersive). All other workspace/document commands live inside the More
-/// sheet where they can be reordered and pinned/unpinned.
-///
-/// The primary-action region is a bounded scroller so even heavy pinning
-/// cannot push Settings or More off-screen. Safe-area insets are consumed
-/// by the caller (SafeArea); this widget never draws into system chrome.
-///
-/// Touch targets meet 48dp minimums. Icons use 24px with 12px padding
-/// yielding ~48dp hit areas. Brand text uses semibold weight for
-/// instant app recognition at small sizes.
+/// Layout contract (device finding: "RenderFlex overflowed by 1.2 pixels
+/// on the right" at 471px-class widths): the pinned region is a
+/// [Flexible] horizontal scroller, so however many actions the user pins
+/// — including all of them — the Row's intrinsic width can never exceed
+/// its constraints. The More button keeps its fixed slot at the right
+/// edge and is never pushed out.
 class _TopActionBar extends StatelessWidget {
   const _TopActionBar({
-    required this.primaryActions,
-    required this.secondaryActions,
-    required this.onRunPrimary,
-    required this.onRunSecondary,
+    required this.actions,
+    required this.onRun,
     required this.onMore,
   });
 
-  /// High-frequency project actions always visible (new, open, save, immersive).
-  final List<EditorTopAction> primaryActions;
-
-  /// Secondary workspace actions available from the More menu; also shown as
-  /// a scroller between brand and settings so the user can reach them without
-  /// opening the sheet.
-  final List<EditorTopAction> secondaryActions;
-
-  final ValueChanged<EditorTopAction> onRunPrimary;
-  final ValueChanged<EditorTopAction> onRunSecondary;
+  /// Pinned actions, in user order, drawn before the More button (left
+  /// side of the bar).
+  final List<EditorTopAction> actions;
+  final ValueChanged<EditorTopAction> onRun;
   final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF1A1D27),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      child: Row(
-        children: [
-          // ── Brand ──────────────────────────────────────────────
-          const Padding(
-            padding: EdgeInsets.only(right: 12),
-            child: Text(
-              'GGEN',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-
-          // ── Primary actions (segmented control) ───────────────
-          _PrimaryActionSegmented(
-            actions: primaryActions,
-            onRun: onRunPrimary,
-          ),
-
-          const Spacer(),
-
-          // ── Secondary actions scroller (compact pill buttons) ──
-          if (secondaryActions.isNotEmpty)
+    const shadow = <Shadow>[
+      Shadow(blurRadius: 6, color: Colors.black87),
+      Shadow(blurRadius: 12, color: Colors.black45),
+    ];
+    return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Row(
+          children: [
+            // Bounded pinned region: shrinks to its content when it fits
+            // and scrolls when it does not, so this Row is mathematically
+            // incapable of overflowing its incoming constraints.
             Flexible(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (final action in secondaryActions)
-                      _SecondaryActionButton(
-                        action: action,
-                        onPressed: () => onRunSecondary(action),
+                    for (final action in actions)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: IconButton(
+                          tooltip: action.label,
+                          onPressed: () => onRun(action),
+                          icon: Icon(
+                            action.icon,
+                            size: 22,
+                            color: Colors.white,
+                            shadows: shadow,
+                          ),
+                        ),
                       ),
                   ],
                 ),
               ),
             ),
-
-          const SizedBox(width: 4),
-
-          // ── Settings (dedicated, always visible) ──────────────
-          _TopBarIconButton(
-            icon: Icons.tune,
-            tooltip: 'Settings',
-            onTap: () => onRunSecondary(EditorTopAction.settings),
-          ),
-
-          const SizedBox(width: 4),
-
-          // ── More menu ──────────────────────────────────────────
-          _TopBarIconButton(
-            icon: Icons.more_horiz,
-            tooltip: 'More actions',
-            onTap: onMore,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Segmented control for primary actions — always-visible project commands.
-class _PrimaryActionSegmented extends StatelessWidget {
-  const _PrimaryActionSegmented({
-    required this.actions,
-    required this.onRun,
-  });
-
-  final List<EditorTopAction> actions;
-  final ValueChanged<EditorTopAction> onRun;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF252836),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF3A3D4A), width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < actions.length; i++) ...[
-            if (i > 0)
-              Container(
-                width: 1,
-                height: 20,
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                color: const Color(0xFF3A3D4A),
+            const Spacer(),
+            IconButton(
+              tooltip: 'More actions',
+              onPressed: onMore,
+              icon: Icon(
+                Icons.more_horiz,
+                size: 26,
+                color: Colors.white,
+                shadows: shadow,
               ),
-            _SegmentedButton(
-              action: actions[i],
-              onPressed: () => onRun(actions[i]),
             ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SegmentedButton extends StatelessWidget {
-  const _SegmentedButton({
-    required this.action,
-    required this.onPressed,
-  });
-
-  final EditorTopAction action;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(7),
-        child: SizedBox(
-          width: 44,
-          height: 32,
-          child: Icon(
-            action.icon,
-            size: 18,
-            color: Colors.white70,
-          ),
         ),
-      ),
-    );
-  }
-}
-
-/// Compact pill-style button for secondary actions in the scroller row.
-class _SecondaryActionButton extends StatelessWidget {
-  const _SecondaryActionButton({
-    required this.action,
-    required this.onPressed,
-  });
-
-  final EditorTopAction action;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(right: 4),
-      child: Material(
-        color: const Color(0xFF252836),
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(action.icon, size: 16, color: Colors.white70),
-                const SizedBox(width: 4),
-                Text(
-                  action.label,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Minimal icon-only button for Settings and More — always at far right.
-class _TopBarIconButton extends StatelessWidget {
-  const _TopBarIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.all(6),
-            child: Icon(icon, size: 22, color: Colors.white70),
-          ),
-        ),
-      ),
     );
   }
 }
