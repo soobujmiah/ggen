@@ -1,13 +1,13 @@
 schema_version: 1
 project_id: ggen
 repository: soobujmiah/ggen
-generated_at: '2026-09-25T11:28:38Z'
+generated_at: '2026-09-25T11:44:25Z'
 generated_by: tools/repo_knowledge collect
-version: 750635a
+version: '9136499'
 head:
-  commit: 750635a43b82ceae0a97c94a771000892ee2b339
+  commit: 9136499ea86bff74b755a0a35731d07b97864232
   branch: main
-  committed_at: '2026-09-25T11:26:20Z'
+  committed_at: '2026-09-25T11:42:00Z'
 phases:
   source: not_configured
   completed: []
@@ -15,19 +15,19 @@ phases:
   next: null
 build:
   status: passed
-  run_id: '36129390149'
-  at: '2026-09-25T11:28:38Z'
+  run_id: '36130818819'
+  at: '2026-09-25T11:44:25Z'
 test:
   status: failed
   run_id: null
-  at: '2026-09-25T11:28:38Z'
+  at: '2026-09-25T11:44:25Z'
   summary: 'core: dart test (success), app: flutter test (failure)'
 last_successful_build:
-  commit: 750635a43b82ceae0a97c94a771000892ee2b339
-  at: '2026-09-25T11:28:38Z'
-  run_id: '36129390149'
+  commit: 9136499ea86bff74b755a0a35731d07b97864232
+  at: '2026-09-25T11:44:25Z'
+  run_id: '36130818819'
 last_failed_build: null
 sync:
   status: ok
-  last_synced_at: '2026-09-25T11:28:38Z'
+  last_synced_at: '2026-09-25T11:44:25Z'
   source: ci
