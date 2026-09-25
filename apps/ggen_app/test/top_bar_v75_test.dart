@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ggen_app/main.dart';
+import 'package:ggen_app/src/canvas/studio_canvas.dart';
 import 'package:ggen_app/workspace_preferences.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -109,7 +110,8 @@ void main() {
     testWidgets('new project action creates empty project', (tester) async {
       await pumpShell(tester);
       
-      final beforeCount = tester.widget(find.byType(Stack)).children.length;
+      final beforeCount =
+          tester.widget<Stack>(find.byType(Stack)).children.length;
       
       await tester.tap(find.byIcon(Icons.note_add_outlined));
       await tester.pumpAndSettle();
