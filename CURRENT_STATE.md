@@ -29,15 +29,36 @@ Source of truth: GitHub repository state, tests/CI evidence, and documented phys
 - Keep measured product limits and migration fixtures explicit before accepting another schema version.
 - Keep SAF/MediaStore import/export as a separate storage milestone rather than implying it is complete from file-backed persistence.
 
+## Deterministic repository state (added 2026-09-25)
+
+This repository now has `.repo/` — a machine-generated, non-LLM record of the exact head commit,
+build status (`dart analyze`), test status (`dart test` + `flutter test`), and event history,
+produced by `tools/repo_knowledge/` (vendored from `soobujmiah/skb`) and kept current by
+`.github/workflows/repo-knowledge-sync.yml` on every push to `main`. Read `.repo/project.yaml`/
+`.repo/STATUS.md` for the current mechanical state instead of trusting a hand-typed commit SHA or
+CI result anywhere else in this document — those fields are not updated by an agent by hand.
+Canonical policy: `soobujmiah/skb` → `governance/DETERMINISTIC_STATE_SYNC_POLICY.md`. This does
+not change what remains human-authored here: phase narrative, evidence interpretation, and next
+milestone are still written by hand below.
+
+`.repo/phases.yaml` is deliberately not configured yet — phase completion there is tag-gated
+(a phase is "complete" only when its declared Git tag exists), and this repository has no tags
+yet. The "Current phase" section below remains the authoritative phase narrative until that
+changes.
+
 ## Required reading for the next AI
 
-1. `AI_ASSISTANT.md`
+1. `AI_ASSISTANT.md` — **note (2026-09-25): this file does not currently exist in this
+   repository** despite being listed here as required reading #1. This was discovered during the
+   `.repo/` rollout reconciliation, not introduced by it; it is recorded here rather than
+   silently fixed or silently ignored. Read `MASTER_SPEC.md` and this file in the meantime.
 2. `MASTER_SPEC.md`
 3. `README.md`
-4. `docs/phases/phase-1-status.md`
-5. `docs/phases/phase-2-status.md`
-6. Relevant architecture/ADR documents
-7. Relevant source and tests
+4. `.repo/project.yaml` / `.repo/STATUS.md` — current deterministic state, see above.
+5. `docs/phases/phase-1-status.md`
+6. `docs/phases/phase-2-status.md`
+7. Relevant architecture/ADR documents
+8. Relevant source and tests
 
 ## Latest working change (2026-09-06 — Phase 2 device validation: gesture & persistence)
 
