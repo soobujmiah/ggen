@@ -8,6 +8,12 @@ GGEN is an Android-first, platform-neutral creative and document foundation inte
 
 In plain terms: GGEN is an **Android-first creative and document studio built with Flutter and Dart** — vector graphics, layered canvas, multi-column and page-linked text flow, and document generation, working locally on the device with AI as an optional layer. Built and maintained by [Sobuj Miah](https://soobujmiah.github.io/) ([@soobujmiah](https://github.com/soobujmiah)).
 
+![GGEN creative and document studio architecture](docs/assets/ggen-studio-architecture.svg)
+
+## Architecture at a glance
+
+The diagram summarizes the separation between the pure-Dart core, Flutter workspace, transactional document state, and the verification boundary.
+
 ## Repository boundary
 
 - **Public source:** [`soobujmiah/ggen`](https://github.com/soobujmiah/ggen), fresh Git history, Apache-2.0 for GGEN-owned source and documentation.
