@@ -1,0 +1,7 @@
+event_id: test-fb8fdb2-20260926093504Z
+repository: soobujmiah/ggen
+commit: fb8fdb225d8dbb87fb7c26a5a333ba1e194d7637
+kind: test
+occurred_at: '2026-09-26T09:35:04Z'
+status: failed
+summary: 'core: dart test (success), app: flutter test (failure)'
