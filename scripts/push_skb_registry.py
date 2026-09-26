@@ -170,10 +170,13 @@ def write_file_via_gh(
     sha: str | None = None,
 ) -> dict[str, Any]:
     """Create or update a file in the SKB repository via the GitHub API."""
-    encoded = subprocess.run(
-        ["git", "ls-remote", "--heads", skb_repo, branch],
-        capture_output=True, text=True, env={**subprocess.os.environ, "GIT_TERMINAL_PROMPT": "0"},
-    )
+    try:
+        encoded = subprocess.run(
+            ["gh", "api", f"repos/{skb_repo}/branches/{branch}", "--jq", ".commit.sha"],
+            capture_output=True, text=True, env={**subprocess.os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except Exception:
+        encoded = None
     if encoded.returncode != 0:
         raise RuntimeError(f"Could not resolve branch {branch} in {skb_repo}")
 
