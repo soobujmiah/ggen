@@ -2,15 +2,15 @@
 # ggen -- deterministic status
 
 - Repository: `soobujmiah/ggen`
-- Generated at: 2026-09-26T10:40:11Z (by `tools/repo_knowledge collect`)
-- Version: `392b205`
-- Head: `392b205fb196b7c626e6ed3179d66b59a5904edf` on `main` (2026-09-26T10:37:24Z)
+- Generated at: 2026-09-26T21:59:20Z (by `tools/repo_knowledge collect`)
+- Version: `d1bdcc9`
+- Head: `d1bdcc9800381ec39417afd9ad4ada92a5368fad` on `main` (2026-09-26T21:56:54Z)
 
 ## Build / test
 
-- Build: **passed** (run `36236350747`)
+- Build: **passed** (run `36274644482`)
 - Test: **failed** -- core: dart test (success), app: flutter test (failure)
-- Last successful build: `392b205fb196b7c626e6ed3179d66b59a5904edf` at 2026-09-26T10:40:11Z
+- Last successful build: `d1bdcc9800381ec39417afd9ad4ada92a5368fad` at 2026-09-26T21:59:20Z
 
 ## Phases
 - Not configured (no `.repo/phases.yaml`).
@@ -19,4 +19,4 @@
 
 - Status: ok
 - Source: ci
-- Last synced at: 2026-09-26T10:40:11Z
+- Last synced at: 2026-09-26T21:59:20Z
