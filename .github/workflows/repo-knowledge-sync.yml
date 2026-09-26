@@ -135,12 +135,3 @@ jobs:
           git add .repo
           git commit -m "chore(repo-knowledge): sync deterministic state for ${{ github.sha }}"
           git push origin HEAD:${{ github.ref_name }}
-
-      - name: Push to SKB registry
-        if: always()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python3 scripts/push_skb_registry.py \
-            --project-id ggen \
-            --participation active
