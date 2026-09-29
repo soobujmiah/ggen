@@ -1,0 +1,8 @@
+event_id: commit-fbbbdb20a8cb-f7ee378b33866f1f
+repository: soobujmiah/ggen
+commit: fbbbdb20a8cbb455740387638743c9e4d6816520
+kind: commit
+occurred_at: '2026-09-29T17:16:59Z'
+status: completed
+summary: 'feat(repo-knowledge): upgrade vendored tooling, schemas, and final-run sync
+  contract'

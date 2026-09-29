@@ -1,13 +1,13 @@
 schema_version: 1
 project_id: ggen
 repository: soobujmiah/ggen
-generated_at: '2026-09-26T21:59:20Z'
+generated_at: '2026-09-29T17:20:54Z'
 generated_by: tools/repo_knowledge collect
-version: d1bdcc9
+version: fbbbdb2
 head:
-  commit: d1bdcc9800381ec39417afd9ad4ada92a5368fad
+  commit: fbbbdb20a8cbb455740387638743c9e4d6816520
   branch: main
-  committed_at: '2026-09-26T21:56:54Z'
+  committed_at: '2026-09-29T17:16:59Z'
 phases:
   source: not_configured
   completed: []
@@ -15,25 +15,33 @@ phases:
   next: null
 build:
   status: passed
-  run_id: '36274644482'
-  commit: d1bdcc9800381ec39417afd9ad4ada92a5368fad
+  run_id: '36603837350'
+  commit: fbbbdb20a8cbb455740387638743c9e4d6816520
   run_attempt: '1'
-  at: '2026-09-26T21:59:20Z'
+  at: '2026-09-29T17:20:54Z'
   timestamp_source: observed
+  workflow_name: Repo Knowledge Sync
+  event_type: push
+  actor: soobujmiah
+  run_url: https://github.com/soobujmiah/ggen/actions/runs/36603837350
 test:
   status: failed
-  run_id: '36274644482'
-  commit: d1bdcc9800381ec39417afd9ad4ada92a5368fad
+  run_id: '36603837350'
+  commit: fbbbdb20a8cbb455740387638743c9e4d6816520
   run_attempt: '1'
-  at: '2026-09-26T21:59:20Z'
+  at: '2026-09-29T17:20:54Z'
   timestamp_source: observed
+  workflow_name: Repo Knowledge Sync
+  event_type: push
+  actor: soobujmiah
+  run_url: https://github.com/soobujmiah/ggen/actions/runs/36603837350
   summary: 'core: dart test (success), app: flutter test (failure)'
 last_successful_build:
-  commit: d1bdcc9800381ec39417afd9ad4ada92a5368fad
-  at: '2026-09-26T21:59:20Z'
-  run_id: '36274644482'
+  commit: fbbbdb20a8cbb455740387638743c9e4d6816520
+  at: '2026-09-29T17:20:54Z'
+  run_id: '36603837350'
 last_failed_build: null
 sync:
   status: ok
-  last_synced_at: '2026-09-26T21:59:20Z'
+  last_synced_at: '2026-09-29T17:20:54Z'
   source: ci
