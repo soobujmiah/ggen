@@ -1,0 +1,8 @@
+event_id: commit-fd8404f6d3c3-fa6178b556005c2d
+repository: soobujmiah/ggen
+commit: fd8404f6d3c3e4b234f818b920083514eeb5fdc2
+kind: commit
+occurred_at: '2026-09-29T22:36:53Z'
+status: completed
+summary: Declare the repository's canonical type and add the documentation scaffold
+  (migration waves 2/3)
